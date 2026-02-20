@@ -161,7 +161,9 @@ public class LuceneSearchIndexMetricValuesSupplier extends LuceneIndexMetricValu
       indexStatsMetricFactory.perIndexObjectValueGauge(
           MetricNames.NUM_EMBEDDED_ROOT_DOCS,
           this,
-          LuceneSearchIndexMetricValuesSupplier::getNumEmbeddedRootDocs);
+          CachedGauge.of(
+              LuceneSearchIndexMetricValuesSupplier::getNumEmbeddedRootDocs,
+              Duration.ofMinutes(1)));
     }
 
     if (this.indexReader instanceof LuceneSearchIndexReader reader

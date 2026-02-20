@@ -676,7 +676,8 @@ public class TestInitializedLuceneSearchIndex {
             .get(LuceneSearchIndexMetricValuesSupplier.MetricNames.NUM_LUCENE_FIELDS)
             .gauge();
     Assert.assertEquals(0, numDocsGauge.value(), 0.1);
-    Assert.assertEquals(0, numFieldsGauge.value(), 0.1);
+    // Do not read numFieldsGauge here: NUM_LUCENE_FIELDS is cached by CachedGauge, so the first
+    // read would cache 0 and the post-update assertion would fail. First read after adding the doc.
 
     // Add 1 document.
     BsonDocument bsonDoc =

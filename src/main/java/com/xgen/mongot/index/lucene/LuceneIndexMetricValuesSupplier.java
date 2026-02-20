@@ -91,7 +91,7 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.NUM_LUCENE_FIELDS,
         this,
-        LuceneIndexMetricValuesSupplier::getNumFields,
+        CachedGauge.of(LuceneIndexMetricValuesSupplier::getNumFields, Duration.ofMinutes(1)),
         getNumPartitionTag().and(indexFeatureVersionTag));
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.NUM_LUCENE_DOCS,
@@ -125,14 +125,18 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.INDEX_SIZE_BYTES,
             this.indexBackingStrategy,
-            strategy -> strategy.getIndexSizeForIndexPartition(indexPartitionId),
+            CachedGauge.of(
+                strategy -> strategy.getIndexSizeForIndexPartition(indexPartitionId),
+                Duration.ofMinutes(1)),
             getIndexPartitionTags(indexPartitionId).and(indexFeatureVersionTag));
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.NUM_LUCENE_FIELDS,
             indexPartitionWriter,
-            indexWriter ->
-                FunctionalUtils.getOrDefaultIfThrows(
-                    indexWriter::getNumFields, WriterClosedException.class, 0),
+            CachedGauge.of(
+                indexWriter ->
+                    FunctionalUtils.getOrDefaultIfThrows(
+                        indexWriter::getNumFields, WriterClosedException.class, 0),
+                Duration.ofMinutes(1)),
             getIndexPartitionTags(indexPartitionId).and(indexFeatureVersionTag));
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.NUM_LUCENE_DOCS,
@@ -161,9 +165,11 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.REQUIRED_MEMORY,
             indexPartitionWriter,
-            indexWriter ->
-                FunctionalUtils.getOrDefaultIfThrows(
-                    this.indexReader::getRequiredMemoryForVectorData, Exception.class, 0L),
+            CachedGauge.of(
+                indexWriter ->
+                    FunctionalUtils.getOrDefaultIfThrows(
+                        this.indexReader::getRequiredMemoryForVectorData, Exception.class, 0L),
+                Duration.ofMinutes(1)),
             getIndexPartitionTags(indexPartitionId).and(indexFeatureVersionTag));
       }
     }
