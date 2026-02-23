@@ -163,7 +163,7 @@ public class AnalyzerRegistryTest {
 
     // Ensure the analyzer wrapper is working (that is, it is filtering out tokens larger than
     // MAX_TOKEN_SIZE). This test is basically repeating
-    // TestTokenByteSizeFilter::testLuceneMaxTermSizeTerm but with the wrapped analyzer rather than
+    // TokenByteSizeFilterTest::testLuceneMaxTermSizeTerm but with the wrapped analyzer rather than
     // the filter.
 
     // Term less than max.

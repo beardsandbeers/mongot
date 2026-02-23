@@ -1,6 +1,6 @@
 java_test(
-    name = "TestGenBsonProto",
-    srcs = ["TestGenBsonProto.java"],
+    name = "GenBsonProtoTest",
+    srcs = ["GenBsonProtoTest.java"],
     deps = [
         "//src/main/java/com/xgen/mongot/util",
         "//src/main/java/com/xgen/proto",

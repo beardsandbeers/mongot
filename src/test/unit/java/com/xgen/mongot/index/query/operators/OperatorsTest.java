@@ -30,15 +30,15 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      OperatorsTest.TestFieldPath.class,
-      OperatorsTest.TestStringPath.class,
+      OperatorsTest.FieldPathTest.class,
+      OperatorsTest.StringPathTest.class,
       OperatorsTest.TestQuery.class,
-      OperatorsTest.TestScore.class,
+      OperatorsTest.ScoreTest.class,
     })
 public class OperatorsTest {
 
   @RunWith(Parameterized.class)
-  public static class TestFieldPath {
+  public static class FieldPathTest {
 
     private static final String SUITE_NAME = "operators-field-path";
     private static final BsonDeserializationTestSuite<List<FieldPath>> TEST_SUITE =
@@ -46,7 +46,7 @@ public class OperatorsTest {
 
     private final TestSpecWrapper<List<FieldPath>> testSpec;
 
-    public TestFieldPath(TestSpecWrapper<List<FieldPath>> testSpec) {
+    public FieldPathTest(TestSpecWrapper<List<FieldPath>> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -150,7 +150,7 @@ public class OperatorsTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestStringPath {
+  public static class StringPathTest {
 
     private static final String SUITE_NAME = "operators-string-path";
     private static final BsonDeserializationTestSuite<List<StringPath>> TEST_SUITE =
@@ -158,7 +158,7 @@ public class OperatorsTest {
 
     private final TestSpecWrapper<List<StringPath>> testSpec;
 
-    public TestStringPath(TestSpecWrapper<List<StringPath>> testSpec) {
+    public StringPathTest(TestSpecWrapper<List<StringPath>> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -226,7 +226,7 @@ public class OperatorsTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestScore {
+  public static class ScoreTest {
 
     private static final String SUITE_NAME = "operators-score";
     private static final BsonDeserializationTestSuite<Score> TEST_SUITE =
@@ -234,7 +234,7 @@ public class OperatorsTest {
 
     private final TestSpecWrapper<Score> testSpec;
 
-    public TestScore(TestSpecWrapper<Score> testSpec) {
+    public ScoreTest(TestSpecWrapper<Score> testSpec) {
       this.testSpec = testSpec;
     }
 
