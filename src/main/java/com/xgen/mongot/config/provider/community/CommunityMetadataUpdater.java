@@ -36,7 +36,7 @@ public class CommunityMetadataUpdater {
   private final MetadataService metadataService;
   private final CachedIndexInfoProvider indexInfoProvider;
   private final NamedScheduledExecutorService executorService;
-  private final Duration period;
+  private final Duration runFrequency;
 
   // We cache the keys and hash-codes of all entries stored in metadata for the current server. This
   // way we can identify if an object changed (by its hash code changing) and only update their
@@ -54,11 +54,11 @@ public class CommunityMetadataUpdater {
       MetadataService metadataService,
       CachedIndexInfoProvider indexInfoProvider,
       MeterRegistry meterRegistry,
-      Duration period) {
+      Duration runFrequency) {
     this.serverInfo = serverInfo;
     this.metadataService = metadataService;
     this.indexInfoProvider = indexInfoProvider;
-    this.period = period;
+    this.runFrequency = runFrequency;
     this.executorService =
         Executors.singleThreadScheduledExecutor(
             "metadata-updater", Thread.MAX_PRIORITY, meterRegistry);
@@ -70,7 +70,7 @@ public class CommunityMetadataUpdater {
     this.executorService.scheduleWithFixedDelay(
         () -> Crash.because("community metadata updater failed").ifThrows(this::run),
         0,
-        this.period.toMillis(),
+        this.runFrequency.toMillis(),
         TimeUnit.MILLISECONDS);
   }
 

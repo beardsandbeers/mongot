@@ -23,6 +23,15 @@ public class MongotCommunity implements Runnable, IVersionProvider {
   @CommandLine.Option(names = "--config", description = "Path to the mongot YAML config file")
   public Path configPath;
 
+  // This flag informs the system it was started up in test mode and modifies some behaviour when
+  // running $listSearchIndexes for internal e2e and integration tests. It should not be applied
+  // when running in prod.
+  //
+  // This flag does 3 things:
+  // 1. Includes numDocs in the $listSearchIndexes response as it's needed for internal e2e tests.
+  // 2. When calling $listSearchIndexes on the indexCatalog collection returns ALL indexes.
+  // 3. Increases the frequency the CommunityMetadataUpdater runs to facilitate more timely status
+  //    updates when calling $listSearchIndexes
   @CommandLine.Option(
       names = "--internalListAllIndexesForTesting",
       hidden = true,

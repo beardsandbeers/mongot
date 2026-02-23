@@ -237,8 +237,12 @@ public class CommunityMongotBootstrapper {
             isAutoEmbeddingViewWriter);
 
     var metadataUpdater =
-        new CommunityMetadataUpdater(
-            serverInfo, metadataService, configManager, meterRegistry, Duration.ofSeconds(30));
+        metadataUpdater(
+            serverInfo,
+            metadataService,
+            configManager,
+            meterRegistry,
+            internalListAllIndexesForTesting);
 
     // Create different servers that will service $search requests from the mongod, as
     // well as some other requests (e.g. some from the proxy), but do not start them yet.
@@ -605,6 +609,27 @@ public class CommunityMongotBootstrapper {
                         Optional.of(endpoint)),
                     serviceConfig.compatibleModels))
         .toList();
+  }
+
+  private static CommunityMetadataUpdater metadataUpdater(
+      CommunityServerInfo serverInfo,
+      MetadataService metadataService,
+      ConfigManager configManager,
+      MeterRegistry meterRegistry,
+      boolean internalListAllIndexesForTesting) {
+    Duration runFrequency =
+        internalListAllIndexesForTesting ? Duration.ofSeconds(2) : Duration.ofSeconds(30);
+
+    if (internalListAllIndexesForTesting) {
+      LOG.atInfo()
+          .addKeyValue("runFrequency", runFrequency)
+          .log(
+              "Starting up with 'internalListAllIndexesForTesting' flag, "
+                  + "increasing run frequency of community metadata updater.");
+    }
+
+    return new CommunityMetadataUpdater(
+        serverInfo, metadataService, configManager, meterRegistry, runFrequency);
   }
 
   private static DefaultConfigManager configManager(
