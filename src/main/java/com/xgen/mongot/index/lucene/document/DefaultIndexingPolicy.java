@@ -42,6 +42,11 @@ public class DefaultIndexingPolicy {
       VectorIndexDefinition indexDefinition,
       IndexCapabilities indexCapabilities,
       IndexingMetricsUpdater indexingMetricsUpdater) {
+    // Check if the index has a nested root (embedded vector fields)
+    if (indexDefinition.getMappings().hasNestedRoot()) {
+      return VectorEmbeddedIndexingPolicy.create(
+          indexDefinition, indexCapabilities, indexingMetricsUpdater);
+    }
     return VectorIndexDocumentIndexingPolicy.create(
         indexDefinition, indexCapabilities, indexingMetricsUpdater);
   }
@@ -159,6 +164,85 @@ public class DefaultIndexingPolicy {
     }
   }
 
+  /**
+   * {@link LuceneIndexingPolicy} for vector indexes that have a nested root (see {@link
+   * VectorIndexDefinition#getNestedRoot()}).
+   *
+   * <p>When a vector index has a nested root, vector fields live under an array path (e.g. {@code
+   * "sections"}). This policy creates {@link DocumentBlockBuilder}s that use {@link
+   * com.xgen.mongot.index.lucene.document.block.VectorEmbeddedDocumentBuilder}, so each source BSON
+   * document can produce multiple Lucene documents in a block: one root document plus one child
+   * document per element of the array at the nested root.
+   *
+   * <p>When the index has no nested root, {@link
+   * DefaultIndexingPolicy#create(VectorIndexDefinition, IndexCapabilities, IndexingMetricsUpdater)}
+   * uses {@link VectorIndexDocumentIndexingPolicy} instead, which produces a single Lucene document
+   * per source document.
+   */
+  static class VectorEmbeddedIndexingPolicy implements LuceneIndexingPolicy {
+    private final VectorIndexDocumentIndexingPolicy rootDocumentIndexingPolicy;
+    private final VectorIndexFieldMapping mapping;
+    private final IndexCapabilities indexCapabilities;
+    private final IndexingMetricsUpdater indexingMetricsUpdater;
+    private final VectorIndexDefinition vectorIndexDefinition;
+
+    VectorEmbeddedIndexingPolicy(
+        VectorIndexDocumentIndexingPolicy rootDocumentIndexingPolicy,
+        VectorIndexFieldMapping mapping,
+        IndexCapabilities indexCapabilities,
+        IndexingMetricsUpdater indexingMetricsUpdater,
+        VectorIndexDefinition vectorIndexDefinition) {
+      this.rootDocumentIndexingPolicy = rootDocumentIndexingPolicy;
+      this.mapping = mapping;
+      this.indexCapabilities = indexCapabilities;
+      this.indexingMetricsUpdater = indexingMetricsUpdater;
+      this.vectorIndexDefinition = vectorIndexDefinition;
+    }
+
+    static VectorEmbeddedIndexingPolicy create(
+        VectorIndexDefinition indexDefinition,
+        IndexCapabilities indexCapabilities,
+        IndexingMetricsUpdater indexingMetricsUpdater) {
+      return new VectorEmbeddedIndexingPolicy(
+          VectorIndexDocumentIndexingPolicy.create(
+              indexDefinition, indexCapabilities, indexingMetricsUpdater),
+          indexDefinition.getMappings(),
+          indexCapabilities,
+          indexingMetricsUpdater,
+          indexDefinition);
+    }
+
+    @Override
+    public DocumentBlockBuilder createBuilder(byte[] id) {
+      return createBuilder(id, ImmutableMap.of());
+    }
+
+    @Override
+    public DocumentBlockBuilder createBuilder(
+        byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
+      // Create the root document builder using the raw builder method
+      LuceneVectorIndexDocumentBuilder rawBuilder =
+          this.rootDocumentIndexingPolicy.createRawBuilder(id, autoEmbeddings);
+
+      Optional<StoredBuilder> storedBuilder =
+          StoredDocumentBuilder.create(this.vectorIndexDefinition.getStoredSource());
+
+      DocumentBuilder rootBuilder =
+          RootDocumentBuilder.create(this.vectorIndexDefinition.getIndexId(), rawBuilder,
+              storedBuilder, Optional.empty(),
+              this.indexCapabilities, this.indexingMetricsUpdater);
+
+      // Wrap it in a VectorEmbeddedDocumentBuilder to handle embedded document blocks
+      return com.xgen.mongot.index.lucene.document.block.VectorEmbeddedDocumentBuilder.createRoot(
+          rootBuilder,
+          this.mapping,
+          id,
+          this.indexingMetricsUpdater,
+          this.indexCapabilities,
+          autoEmbeddings);
+    }
+  }
+
   public static class VectorIndexDocumentIndexingPolicy implements LuceneIndexingPolicy {
     private final VectorIndexDefinition indexDefinition;
     private final VectorIndexFieldMapping mapping;
@@ -195,13 +279,7 @@ public class DefaultIndexingPolicy {
     @Override
     public DocumentBlockBuilder createBuilder(
         byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
-      LuceneVectorIndexDocumentBuilder builder =
-          LuceneVectorIndexDocumentBuilder.createRoot(
-              id,
-              this.mapping,
-              this.indexCapabilities,
-              this.indexingMetricsUpdater,
-              autoEmbeddings);
+      LuceneVectorIndexDocumentBuilder builder = createRawBuilder(id, autoEmbeddings);
 
       Optional<StoredBuilder> storedBuilder =
           StoredDocumentBuilder.create(this.indexDefinition.getStoredSource());
@@ -213,6 +291,17 @@ public class DefaultIndexingPolicy {
           Optional.empty(),
           this.indexCapabilities,
           this.indexingMetricsUpdater);
+    }
+
+    /**
+     * Creates a raw {@link LuceneVectorIndexDocumentBuilder} without wrapping it in a {@link
+     * RootDocumentBuilder}. This is used by {@link VectorEmbeddedIndexingPolicy} to get the raw
+     * builder for embedded document handling.
+     */
+    LuceneVectorIndexDocumentBuilder createRawBuilder(
+        byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
+      return LuceneVectorIndexDocumentBuilder.createRoot(
+          id, this.mapping, this.indexCapabilities, this.indexingMetricsUpdater, autoEmbeddings);
     }
   }
 }

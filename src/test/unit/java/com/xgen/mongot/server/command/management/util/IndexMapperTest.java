@@ -2,10 +2,84 @@ package com.xgen.mongot.server.command.management.util;
 
 import static com.xgen.mongot.index.status.IndexStatus.StatusCode;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
+import com.xgen.mongot.index.definition.IndexDefinition;
+import com.xgen.mongot.index.definition.VectorIndexDefinition;
+import com.xgen.mongot.server.command.management.definition.common.UserVectorIndexDefinition;
+import com.xgen.mongot.util.FieldPath;
+import com.xgen.testing.mongot.index.definition.VectorIndexDefinitionBuilder;
+import com.xgen.testing.mongot.server.command.management.definition.UserVectorIndexDefinitionBuilder;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
+import org.bson.types.ObjectId;
 import org.junit.Test;
 
+/** Tests for {@link IndexMapper} vector definition mapping, including nestedRoot round-trip. */
 public class IndexMapperTest {
+
+  private static final String INDEX_NAME = "testVectorIndex";
+  private static final ObjectId INDEX_ID = new ObjectId("507f191e810c19729de860ea");
+  private static final UUID COLLECTION_UUID =
+      UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa");
+  private static final String DB = "testDb";
+  private static final String COLLECTION = "testColl";
+  private static final long DEFINITION_VERSION = 1L;
+  private static final Instant DEFINITION_VERSION_CREATED_AT = Instant.EPOCH;
+
+  /** User definition with nestedRoot → internal definition preserves nestedRoot. */
+  @Test
+  public void testToInternal_PreservesNestedRoot() {
+    UserVectorIndexDefinitionBuilder builder =
+        UserVectorIndexDefinitionBuilder.builder()
+            .addVectorField(
+                256,
+                com.xgen.mongot.index.definition.VectorSimilarity.COSINE,
+                com.xgen.mongot.index.definition.VectorQuantization.NONE,
+                "sections.embedding")
+            .addFilterField("sections.name");
+    UserVectorIndexDefinition userDef =
+        new UserVectorIndexDefinition(
+            builder.build().fields(),
+            builder.build().numPartitions(),
+            Optional.empty(),
+            Optional.of(FieldPath.parse("sections")));
+
+    IndexDefinition internal =
+        IndexMapper.toInternal(
+            INDEX_NAME,
+            Optional.of(INDEX_ID),
+            userDef,
+            COLLECTION_UUID,
+            DB,
+            COLLECTION,
+            Optional.empty(),
+            DEFINITION_VERSION,
+            DEFINITION_VERSION_CREATED_AT);
+
+    assertTrue(internal.getType() == IndexDefinition.Type.VECTOR_SEARCH);
+    VectorIndexDefinition vectorDef = internal.asVectorDefinition();
+    assertEquals(Optional.of(FieldPath.parse("sections")), vectorDef.getNestedRoot());
+  }
+
+  /** Internal definition with nestedRoot → user definition preserves nestedRoot. */
+  @Test
+  public void testToExternal_PreservesNestedRoot() {
+    VectorIndexDefinition internalDef =
+        VectorIndexDefinitionBuilder.builder()
+            .nestedRoot("sections")
+            .withCosineVectorField("sections.embedding", 256)
+            .withFilterPath("sections.name")
+            .build();
+
+    var userDef = IndexMapper.toExternal(internalDef);
+
+    assertTrue(userDef instanceof UserVectorIndexDefinition);
+    assertEquals(
+        Optional.of(FieldPath.parse("sections")),
+        ((UserVectorIndexDefinition) userDef).nestedRoot());
+  }
 
   @Test
   public void testCalculateStatus_mainIndexPending_returnsMainStatus() {

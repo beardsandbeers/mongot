@@ -54,6 +54,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/path/string",
         "//src/main/java/com/xgen/mongot/index/query/sort",
         "//src/main/java/com/xgen/mongot/index/version",
+        "//src/main/java/com/xgen/mongot/util",
         "//src/main/java/com/xgen/testing/mongot/integration/index/serialization/variations",
         "@maven//:org_mongodb_bson",
     ],

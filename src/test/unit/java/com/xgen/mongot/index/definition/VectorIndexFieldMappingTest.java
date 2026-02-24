@@ -201,10 +201,10 @@ public class VectorIndexFieldMappingTest {
     Assert.assertTrue(mapping.hasNestedRoot());
     Assert.assertTrue(mapping.isNestedRoot(nestedRoot));
     Assert.assertFalse(mapping.isNestedRoot(simpleVectorPath));
-    Assert.assertEquals(mapping.getFieldDefinition(simpleVectorPath),
-        Optional.of(simpleVectorField));
-    Assert.assertEquals(mapping.getFieldDefinition(nestedVectorPath),
-        Optional.of(nestedVectorField));
+    Assert.assertEquals(
+        mapping.getFieldDefinition(simpleVectorPath), Optional.of(simpleVectorField));
+    Assert.assertEquals(
+        mapping.getFieldDefinition(nestedVectorPath), Optional.of(nestedVectorField));
     Assert.assertTrue(mapping.childPathExists(simpleVectorPath));
     Assert.assertTrue(mapping.childPathExists(nestedRoot));
     Assert.assertTrue(mapping.childPathExists(nestedVectorPath));
@@ -227,16 +227,15 @@ public class VectorIndexFieldMappingTest {
         VectorIndexFilterFieldDefinition.create(filterPathUnderNested);
     VectorIndexFilterFieldDefinition filterAtRoot =
         VectorIndexFilterFieldDefinition.create(filterPathAtRoot);
-    List<VectorIndexFieldDefinition> fields =
-        List.of(vectorField, filterUnderNested, filterAtRoot);
+    List<VectorIndexFieldDefinition> fields = List.of(vectorField, filterUnderNested, filterAtRoot);
     VectorIndexFieldMapping mapping =
         VectorIndexFieldMapping.create(fields, Optional.of(nestedRoot));
 
     Assert.assertTrue(mapping.hasNestedRoot());
     Assert.assertTrue(mapping.isNestedRoot(nestedRoot));
     Assert.assertEquals(mapping.getFieldDefinition(vectorPath), Optional.of(vectorField));
-    Assert.assertEquals(mapping.getFieldDefinition(filterPathUnderNested),
-        Optional.of(filterUnderNested));
+    Assert.assertEquals(
+        mapping.getFieldDefinition(filterPathUnderNested), Optional.of(filterUnderNested));
     Assert.assertEquals(mapping.getFieldDefinition(filterPathAtRoot), Optional.of(filterAtRoot));
     Assert.assertTrue(mapping.subDocumentExists(nestedRoot));
   }

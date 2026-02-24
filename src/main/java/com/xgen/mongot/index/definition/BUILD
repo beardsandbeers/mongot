@@ -52,6 +52,7 @@ java_library(
         "UuidFieldDefinition.java",
         "VectorAutoEmbedFieldDefinition.java",
         "VectorDataFieldDefinition.java",
+        "VectorEmbeddedDocumentsFieldDefinition.java",
         "VectorFieldDefinitionResolver.java",
         "VectorFieldSpecification.java",
         "VectorIndexCapabilities.java",

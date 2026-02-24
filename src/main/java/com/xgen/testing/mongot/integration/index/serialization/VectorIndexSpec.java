@@ -5,10 +5,12 @@ import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.StoredSourceDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
 import com.xgen.mongot.index.version.IndexFormatVersion;
+import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import com.xgen.mongot.util.bson.parser.DocumentParser;
 import com.xgen.mongot.util.bson.parser.Field;
+import com.xgen.mongot.util.bson.parser.FieldPathField;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
@@ -21,7 +23,8 @@ public class VectorIndexSpec extends IndexSpec {
           ImmutableList.of(),
           IndexDefinition.Fields.NUM_PARTITIONS.getDefaultValue(),
           Fields.RUN_FOR.getDefaultValue(),
-          Optional.of(StoredSourceDefinition.defaultValue()));
+          Optional.of(StoredSourceDefinition.defaultValue()),
+          Optional.empty());
 
   static class Fields {
     static final Field.Required<List<VectorIndexFieldDefinition>> FIELDS =
@@ -44,22 +47,31 @@ public class VectorIndexSpec extends IndexSpec {
             .classField(StoredSourceDefinition::fromBson)
             .optional()
             .noDefault();
+
+    static final Field.Optional<FieldPath> NESTED_ROOT =
+        Field.builder("nestedRoot")
+            .classField(FieldPathField::parse, FieldPathField::encode)
+            .optional()
+            .noDefault();
   }
 
   private final List<VectorIndexFieldDefinition> fields;
   private final int numPartitions;
   private final VectorIndexRunForSpec runFor;
   private final Optional<StoredSourceDefinition> storedSource;
+  private final Optional<FieldPath> nestedRoot;
 
   public VectorIndexSpec(
       List<VectorIndexFieldDefinition> fields,
       int numPartitions,
       VectorIndexRunForSpec runFor,
-      Optional<StoredSourceDefinition> storedSource) {
+      Optional<StoredSourceDefinition> storedSource,
+      Optional<FieldPath> nestedRoot) {
     this.fields = fields;
     this.numPartitions = numPartitions;
     this.runFor = runFor;
     this.storedSource = storedSource;
+    this.nestedRoot = nestedRoot;
   }
 
   @Override
@@ -94,13 +106,18 @@ public class VectorIndexSpec extends IndexSpec {
     return this.storedSource;
   }
 
+  public Optional<FieldPath> getNestedRoot() {
+    return this.nestedRoot;
+  }
+
   /** Builds IndexSpec from Bson. */
   public static VectorIndexSpec fromBson(DocumentParser parser) throws BsonParseException {
     return new VectorIndexSpec(
         parser.getField(Fields.FIELDS).unwrap(),
         parser.getField(IndexDefinition.Fields.NUM_PARTITIONS).unwrap(),
         parser.getField(Fields.RUN_FOR).unwrap(),
-        parser.getField(Fields.STORED_SOURCE).unwrap());
+        parser.getField(Fields.STORED_SOURCE).unwrap(),
+        parser.getField(Fields.NESTED_ROOT).unwrap());
   }
 
   @Override
@@ -110,6 +127,7 @@ public class VectorIndexSpec extends IndexSpec {
     builder.field(Fields.RUN_FOR, this.runFor);
     this.storedSource.ifPresent(
         storedSource -> builder.field(Fields.STORED_SOURCE, Optional.of(storedSource)));
+    builder.field(Fields.NESTED_ROOT, this.nestedRoot);
     return builder.build();
   }
 

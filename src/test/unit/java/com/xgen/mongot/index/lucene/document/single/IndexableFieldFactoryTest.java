@@ -162,8 +162,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -177,11 +177,11 @@ public class IndexableFieldFactoryTest {
             VectorQuantization.NONE,
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
-    // KNN vector field should account for the 2nd field in the document.
-    assertEquals(2, wrapper.luceneDocument.getFields().size());
+    // KNN vector field should account for the 3rd field in the document.
+    assertEquals(3, wrapper.luceneDocument.getFields().size());
     String expectedFloatVectorFieldName =
         FieldName.TypeField.KNN_VECTOR.getLuceneFieldName(rootPath, Optional.empty());
-    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(1).name());
+    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(2).name());
   }
 
   @Test
@@ -196,8 +196,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -211,11 +211,11 @@ public class IndexableFieldFactoryTest {
             VectorQuantization.NONE,
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
-    // KNN vector field should account for the 2nd field in the document.
-    assertEquals(2, wrapper.luceneDocument.getFields().size());
+    // KNN vector field should account for the 3rd field in the document.
+    assertEquals(3, wrapper.luceneDocument.getFields().size());
     String expectedFloatVectorFieldName =
         FieldName.TypeField.KNN_BYTE.getLuceneFieldName(rootPath, Optional.empty());
-    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(1).name());
+    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(2).name());
   }
 
   @Test
@@ -230,8 +230,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -245,11 +245,11 @@ public class IndexableFieldFactoryTest {
             VectorQuantization.SCALAR,
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
-    // KNN vector field should account for the 2nd field in the document.
-    assertEquals(2, wrapper.luceneDocument.getFields().size());
+    // KNN vector field should account for the 3rd field in the document.
+    assertEquals(3, wrapper.luceneDocument.getFields().size());
     String expectedFloatVectorFieldName =
         FieldName.TypeField.KNN_F32_Q7.getLuceneFieldName(rootPath, Optional.empty());
-    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(1).name());
+    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(2).name());
   }
 
   @Test
@@ -264,8 +264,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -280,8 +280,8 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // No fields should be added to the document.
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
   }
 
@@ -297,8 +297,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -312,11 +312,11 @@ public class IndexableFieldFactoryTest {
             VectorQuantization.NONE,
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
-    // KNN vector field should account for the 2nd field in the document.
-    assertEquals(2, wrapper.luceneDocument.getFields().size());
+    // KNN vector field should account for the 3rd field in the document.
+    assertEquals(3, wrapper.luceneDocument.getFields().size());
     String expectedFloatVectorFieldName =
         FieldName.TypeField.KNN_BIT.getLuceneFieldName(rootPath, Optional.empty());
-    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(1).name());
+    assertEquals(expectedFloatVectorFieldName, wrapper.luceneDocument.getFields().get(2).name());
   }
 
   @Test
@@ -331,8 +331,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -347,7 +347,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // No fields should be added to the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
   }
 
@@ -363,8 +363,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -379,7 +379,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // No fields should be added to the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
   }
 
@@ -395,8 +395,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -411,7 +411,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // No fields should be added to the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
   }
 
@@ -427,8 +427,8 @@ public class IndexableFieldFactoryTest {
             new IndexingMetricsUpdater(
                 SearchIndex.mockMetricsFactory(), IndexDefinition.Type.SEARCH));
 
-    // ID field should account for the 1 field in the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    // ID field and embedded root field should account for the 2 fields in the document.
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     String expectedIdFieldName = FieldName.MetaField.ID.getLuceneFieldName();
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
 
@@ -443,7 +443,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // No fields should be added to the document.
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     assertEquals(expectedIdFieldName, wrapper.luceneDocument.getFields().getFirst().name());
   }
 
@@ -468,7 +468,7 @@ public class IndexableFieldFactoryTest {
 
     // Initially, the field can be indexed
     assertTrue(wrapper.canIndexVectorField(checkFieldName));
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
 
     // First vector: dimension mismatch - should mark field as invalid
     IndexableFieldFactory.addKnnVectorField(
@@ -482,7 +482,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // No field should be added due to dimension mismatch
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     // Field should be marked as invalid, preventing subsequent indexing
     assertFalse(wrapper.canIndexVectorField(checkFieldName));
 
@@ -498,7 +498,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // Still no field should be added because the field was marked invalid
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
     // Field should still be marked as invalid
     assertFalse(wrapper.canIndexVectorField(checkFieldName));
   }
@@ -529,7 +529,7 @@ public class IndexableFieldFactoryTest {
 
     // Initially, the field can be indexed
     assertTrue(wrapper.canIndexVectorField(checkFieldName));
-    assertEquals(1, wrapper.luceneDocument.getFields().size());
+    assertEquals(2, wrapper.luceneDocument.getFields().size());
 
     // First vector: should be successfully indexed
     IndexableFieldFactory.addKnnVectorField(
@@ -543,7 +543,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // First vector should be added to the document
-    assertEquals(2, wrapper.luceneDocument.getFields().size());
+    assertEquals(3, wrapper.luceneDocument.getFields().size());
     // Field should now be marked as indexed, preventing subsequent indexing
     assertFalse(wrapper.canIndexVectorField(checkFieldName));
 
@@ -560,7 +560,7 @@ public class IndexableFieldFactoryTest {
             new VectorIndexingAlgorithm.HnswIndexingAlgorithm()));
 
     // Still only one vector field should be in the document (the first one)
-    assertEquals(2, wrapper.luceneDocument.getFields().size());
+    assertEquals(3, wrapper.luceneDocument.getFields().size());
     // Field should still be marked as indexed
     assertFalse(wrapper.canIndexVectorField(checkFieldName));
 
@@ -843,13 +843,13 @@ public class IndexableFieldFactoryTest {
 
     FieldPath fieldPath = FieldPath.newRoot("testField");
 
-    // Initially only ID field exists
+    // Initially ID field and embedded root field exist
     int initialFieldCount = wrapper.luceneDocument.getFields().size();
-    assertEquals(1, initialFieldCount);
+    assertEquals(2, initialFieldCount);
 
     IndexableFieldFactory.addNullField(wrapper, fieldPath);
 
-    // Should have ID field, StringField, and SortedDocValuesField
+    // Should have ID field, embedded root field, StringField, and SortedDocValuesField
     assertEquals(initialFieldCount + 2, wrapper.luceneDocument.getFields().size());
 
     // Verify duplicate call is skipped

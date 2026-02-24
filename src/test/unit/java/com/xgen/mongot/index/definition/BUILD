@@ -35,6 +35,7 @@ java_test_suite(
         "TokenFieldDefinitionTest.java",
         "TypeSetDefinitionTest.java",
         "VectorDataFieldDefinitionTest.java",
+        "VectorEmbeddedDocumentsFieldDefinitionTest.java",
         "VectorFieldDefinitionResolverTest.java",
         "VectorIndexDefinitionGenerationTest.java",
         "VectorIndexDefinitionTest.java",

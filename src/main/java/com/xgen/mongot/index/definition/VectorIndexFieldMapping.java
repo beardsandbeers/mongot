@@ -6,6 +6,17 @@ import com.xgen.mongot.util.FieldPath;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Mapping of vector index field definitions to their paths.
+ *
+ * <p>This class tracks:
+ *
+ * <ul>
+ *   <li>Field definitions mapped by their paths
+ *   <li>Document paths (ancestor paths of all fields)
+ *   <li>Embedded vector roots (array fields containing subdocuments with vectors)
+ * </ul>
+ */
 public record VectorIndexFieldMapping(
     ImmutableMap<FieldPath, VectorIndexFieldDefinition> fieldMap,
     ImmutableSet<String> documentPaths,

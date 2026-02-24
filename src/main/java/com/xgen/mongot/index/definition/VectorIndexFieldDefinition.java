@@ -16,6 +16,7 @@ public abstract class VectorIndexFieldDefinition implements DocumentEncodable {
     VECTOR,
     FILTER,
     TEXT,
+    EMBEDDED_DOCUMENTS,
     AUTO_EMBED
   }
 
@@ -33,12 +34,12 @@ public abstract class VectorIndexFieldDefinition implements DocumentEncodable {
   }
 
   public static VectorIndexFieldDefinition fromBson(DocumentParser parser)
-      throws
-      BsonParseException {
+      throws BsonParseException {
     return switch (parser.getField(Fields.TYPE).unwrap()) {
       case VECTOR -> VectorDataFieldDefinition.fromBson(parser);
       case FILTER -> VectorIndexFilterFieldDefinition.fromBson(parser);
       case TEXT -> VectorTextFieldDefinition.fromBson(parser);
+      case EMBEDDED_DOCUMENTS -> VectorEmbeddedDocumentsFieldDefinition.fromBson(parser);
       case AUTO_EMBED -> VectorAutoEmbedFieldDefinition.fromBson(parser);
     };
   }
