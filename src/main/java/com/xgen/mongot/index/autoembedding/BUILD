@@ -19,6 +19,7 @@ java_library(
         "@maven//:org_mongodb_bson",
     ],
     deps = [
+        "//src/main/java/com/xgen/mongot/catalog",
         "//src/main/java/com/xgen/mongot/embedding/config",
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
         "//src/main/java/com/xgen/mongot/embedding/mongodb",
@@ -33,9 +34,12 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/status",
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/metrics",
+        "//src/main/java/com/xgen/mongot/replication/mongodb/common",
         "//src/main/java/com/xgen/mongot/util",
         "//src/main/java/com/xgen/mongot/util/mongodb",
+        "@maven//:commons_codec_commons_codec",
         "@maven//:org_mongodb_bson",
+        "@maven//:org_mongodb_mongodb_driver_core",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )

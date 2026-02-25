@@ -1,6 +1,7 @@
 package com.xgen.mongot.embedding.mongodb.leasing;
 
 import com.xgen.mongot.index.status.IndexStatus;
+import com.xgen.mongot.index.status.IndexStatus.StatusCode;
 
 /**
  * Utility class containing methods for resolving the effective status of an auto-embedding related
@@ -8,28 +9,38 @@ import com.xgen.mongot.index.status.IndexStatus;
  */
 public class StatusResolutionUtils {
 
+  /**
+   * Return effective status of the MV when there are multiple versions as indexes are being updated
+   */
   public static IndexStatus getEffectiveMaterializedViewStatus(
       Lease.IndexDefinitionVersionStatus requestedIndexDefinitionVersionStatus,
       Lease.IndexDefinitionVersionStatus latestIndexDefinitionVersionStatus) {
-    // There are a few scenarios we need to handle here before returning the status. Here, we assume
-    // the latest index definition version is the staged version in the case of the requested and
-    // latest being different.
-    // Scenario 1: There are two versions, one live and one staged. Staged one gets into failed
-    // status, we want to return failed status for both versions.
-    if (latestIndexDefinitionVersionStatus.indexStatusCode() == IndexStatus.StatusCode.FAILED) {
-      return IndexStatus.failed("Index failed.");
+    StatusCode requestedStatus = requestedIndexDefinitionVersionStatus.indexStatusCode();
+    StatusCode latestStatus = latestIndexDefinitionVersionStatus.indexStatusCode();
+
+    // Same Version: Pass through
+    if (requestedIndexDefinitionVersionStatus.equals(latestIndexDefinitionVersionStatus)) {
+      return new IndexStatus(requestedStatus);
     }
-    // Scenario 2: There are two versions, one live and one staged. Live one reached queryable
-    // state but staged one is still being built. In this case, we want to return
-    // RECOVERING_TRANSIENT for the old one to indicate that the version is queryable but might
-    // be stale and at the same time we don't want the config manager to initiate a new attempt. We
-    // return the actual status for the staged one.
-    if (requestedIndexDefinitionVersionStatus.isQueryable()
-        && !latestIndexDefinitionVersionStatus.isQueryable()) {
-      return IndexStatus.recoveringTransient(
-          "New version is being built but old version is queryable.");
+
+    // Terminal/DNE states in requested always take precedence
+    if (requestedStatus == StatusCode.FAILED
+        || requestedStatus == StatusCode.STALE
+        || requestedStatus == StatusCode.DOES_NOT_EXIST) {
+      return new IndexStatus(requestedStatus);
     }
-    // Scenario 3: In all other cases, we return the status of the requested version.
-    return new IndexStatus(requestedIndexDefinitionVersionStatus.indexStatusCode());
+
+    // Latest hasn't started building yet - indicate transition with RECOVERING_TRANSIENT
+    if (latestStatus == StatusCode.UNKNOWN || latestStatus == StatusCode.NOT_STARTED) {
+      return IndexStatus.recoveringTransient("New version pending build");
+    }
+
+    // Latest is actively building - use requested (old version serving)
+    if (latestStatus == StatusCode.INITIAL_SYNC) {
+      return new IndexStatus(requestedStatus);
+    }
+
+    // Latest has progressed past building - use its status
+    return new IndexStatus(latestStatus);
   }
 }

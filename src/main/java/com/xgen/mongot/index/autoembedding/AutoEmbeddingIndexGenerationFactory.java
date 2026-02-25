@@ -4,9 +4,11 @@ import static com.xgen.mongot.embedding.utils.AutoEmbeddingIndexDefinitionUtils.
 import static com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration.MIN_VERSION_FOR_MATERIALIZED_VIEW_EMBEDDING;
 import static com.xgen.mongot.index.mongodb.MaterializedViewWriter.MV_DATABASE_NAME;
 
+import com.xgen.mongot.catalog.InitializedIndexCatalog;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata.MaterializedViewSchemaMetadata;
 import com.xgen.mongot.index.Index;
 import com.xgen.mongot.index.IndexFactory;
+import com.xgen.mongot.index.InitializedVectorIndex;
 import com.xgen.mongot.index.VectorIndex;
 import com.xgen.mongot.index.analyzer.InvalidAnalyzerDefinitionException;
 import com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration;
@@ -15,7 +17,9 @@ import com.xgen.mongot.index.version.MaterializedViewGeneration;
 import com.xgen.mongot.util.Check;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * Factory that generates composite AutoEmbedding index generation, used by ConfigManager to create
@@ -26,10 +30,12 @@ import java.util.UUID;
  */
 public class AutoEmbeddingIndexGenerationFactory {
 
+  /** Fetch a new AutoEmbeddingIndexGeneration */
   public static AutoEmbeddingIndexGeneration getAutoEmbeddingIndexGeneration(
       IndexFactory indexFactory,
       MaterializedViewIndexFactory matViewIndexFactory,
-      VectorIndexDefinitionGeneration rawDefinitionGeneration)
+      VectorIndexDefinitionGeneration rawDefinitionGeneration,
+      InitializedIndexCatalog initializedIndexCatalog)
       throws IOException, InvalidAnalyzerDefinitionException {
     Check.checkArg(
         rawDefinitionGeneration.getIndexDefinition().isAutoEmbeddingIndex()
@@ -43,9 +49,18 @@ public class AutoEmbeddingIndexGenerationFactory {
         derivedIndexDefinitionGeneration(
             rawDefinitionGeneration, matViewIndex.getMaterializedViewCollectionUuid());
     Index vectorIndex = indexFactory.getIndex(derivedIndexDefinitionGeneration);
+    // Supplier that looks up initialized index from catalog
+    Supplier<Optional<InitializedVectorIndex>> initializedIndexSupplier =
+        () ->
+            initializedIndexCatalog
+                .getIndex(derivedIndexDefinitionGeneration.getGenerationId())
+                .filter(idx -> idx instanceof InitializedVectorIndex)
+                .map(idx -> (InitializedVectorIndex) idx);
     return new AutoEmbeddingIndexGeneration(
         new AutoEmbeddingCompositeIndex(
-            matViewIndex, Check.instanceOf(vectorIndex, VectorIndex.class)),
+            matViewIndex,
+            Check.instanceOf(vectorIndex, VectorIndex.class),
+            initializedIndexSupplier),
         rawDefinitionGeneration,
         derivedIndexDefinitionGeneration);
   }

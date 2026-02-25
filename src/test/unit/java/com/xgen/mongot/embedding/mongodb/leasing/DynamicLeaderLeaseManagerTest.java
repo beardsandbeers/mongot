@@ -516,7 +516,7 @@ public class DynamicLeaderLeaseManagerTest {
   private Lease createLease(GenerationId generationId, String owner, Instant expiration) {
     return new Lease(
         getLeaseKeyFromCatalog(generationId),
-        1,
+        1L,
         "fa41efe9-dd13-4976-a6ce-009682ec4257",
         "collection-name",
         owner,
@@ -526,16 +526,16 @@ public class DynamicLeaderLeaseManagerTest {
         "0",
         Map.of(
             "0",
-            new Lease.IndexDefinitionVersionStatus(
-                false, IndexStatus.StatusCode.UNKNOWN)), // IndexStatus.StatusCode.UNKNOWN
-        new MaterializedViewCollectionMetadata(VERSION_ZERO, UUID.randomUUID(), "collection-name"));
+            new Lease.IndexDefinitionVersionStatus(false, IndexStatus.StatusCode.UNKNOWN)),
+        new MaterializedViewCollectionMetadata(VERSION_ZERO, UUID.randomUUID(), "collection-name"),
+        null);
   }
 
   private Lease createLeaseWithCommitInfo(
       GenerationId generationId, String owner, String commitInfo) {
     return new Lease(
         getLeaseKeyFromCatalog(generationId),
-        1,
+        1L,
         "fa41efe9-dd13-4976-a6ce-009682ec4257",
         "collection-name",
         owner,
@@ -543,8 +543,11 @@ public class DynamicLeaderLeaseManagerTest {
         1L,
         commitInfo,
         "0",
-        Map.of("0", new Lease.IndexDefinitionVersionStatus(false, IndexStatus.StatusCode.UNKNOWN)),
-        new MaterializedViewCollectionMetadata(VERSION_ZERO, UUID.randomUUID(), "collection-name"));
+        Map.of(
+            "0",
+            new Lease.IndexDefinitionVersionStatus(false, IndexStatus.StatusCode.UNKNOWN)),
+        new MaterializedViewCollectionMetadata(VERSION_ZERO, UUID.randomUUID(), "collection-name"),
+        null);
   }
 
   @SuppressWarnings("unchecked")

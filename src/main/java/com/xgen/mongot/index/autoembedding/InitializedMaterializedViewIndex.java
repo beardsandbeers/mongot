@@ -25,9 +25,11 @@ import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.index.version.MaterializedViewGenerationId;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonArray;
+import org.bson.BsonTimestamp;
 
 public class InitializedMaterializedViewIndex implements InitializedVectorIndex {
   private static final NoOpIndexReader NO_OP_INDEX_READER = new NoOpIndexReader();
@@ -139,6 +141,11 @@ public class InitializedMaterializedViewIndex implements InitializedVectorIndex 
 
   @Override
   public void close() throws IOException {}
+
+  /** Returns the oplog position at which the MV first became STEADY. */
+  public Optional<BsonTimestamp> getSteadyAsOfOplogPosition() {
+    return this.leaseManager.getSteadyAsOfOplogPosition(this.generationId);
+  }
 
   public UUID getMaterializedViewCollectionUuid() {
     return this.materializedViewWriter.getCollectionUuid();

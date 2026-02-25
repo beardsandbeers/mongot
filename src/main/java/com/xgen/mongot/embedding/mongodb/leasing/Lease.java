@@ -1,7 +1,9 @@
 package com.xgen.mongot.embedding.mongodb.leasing;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.errorprone.annotations.Var;
 import com.mongodb.lang.NonNull;
+import com.mongodb.lang.Nullable;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.status.IndexStatus;
@@ -58,7 +60,8 @@ import org.bson.codecs.pojo.annotations.BsonId;
  *        "schemaFieldMapping": {"title": "_autoEmbed.title"},
  *        "mvMetadataSchemaVersion": 1
  *      }
- *     }
+ *     },
+ *     "steadyAsOfOplogPosition": {"$timestamp": {"t": 1702857600, "i": 1}}
  *   }
  * </pre>
  */
@@ -73,7 +76,8 @@ public record Lease(
     String commitInfo,
     String latestIndexDefinitionVersion,
     Map<String, IndexDefinitionVersionStatus> indexDefinitionVersionStatusMap,
-    @NonNull MaterializedViewCollectionMetadata materializedViewCollectionMetadata)
+    @NonNull MaterializedViewCollectionMetadata materializedViewCollectionMetadata,
+    @Nullable BsonTimestamp steadyAsOfOplogPosition)
     implements DocumentEncodable {
 
   private static final long SCHEMA_VERSION = 1L;
@@ -157,6 +161,13 @@ public record Lease(
                 .allowUnknownFields()
                 .optional()
                 .noDefault();
+
+    /**
+     * The oplog position when the leader's MV transitioned to STEADY state. Used by followers to
+     * detect MV replication lag. Null if MV has never reached STEADY or for legacy documents.
+     */
+    public static final Field.Optional<BsonTimestamp> STEADY_AS_OF_OPLOG_POSITION =
+        Field.builder("steadyAsOfOplogPosition").bsonTimestampField().optional().noDefault();
   }
 
   public static Lease fromBson(DocumentParser parser) throws BsonParseException {
@@ -179,7 +190,8 @@ public record Lease(
                 new MaterializedViewCollectionMetadata(
                     MaterializedViewCollectionMetadata.MaterializedViewSchemaMetadata.VERSION_ZERO,
                     UUID.fromString(parser.getField(Fields.COLLECTION_UUID).unwrap()),
-                    parser.getField(Fields.COLLECTION_NAME).unwrap())));
+                    parser.getField(Fields.COLLECTION_NAME).unwrap())),
+        parser.getField(Fields.STEADY_AS_OF_OPLOG_POSITION).unwrap().orElse(null));
   }
 
   public static Lease fromBson(BsonDocument bsonDocument) throws BsonParseException {
@@ -244,7 +256,8 @@ public record Lease(
         Map.of(
             indexDefinitionVersion,
             new IndexDefinitionVersionStatus(false, initialIndexStatus.getStatusCode())),
-        materializedViewCollectionMetadata);
+        materializedViewCollectionMetadata,
+        null);
   }
 
   public Lease withUpdatedCheckpoint(EncodedUserData commitInfo) {
@@ -259,7 +272,8 @@ public record Lease(
         commitInfo.asString(),
         this.latestIndexDefinitionVersion,
         this.indexDefinitionVersionStatusMap,
-        this.materializedViewCollectionMetadata);
+        this.materializedViewCollectionMetadata,
+        this.steadyAsOfOplogPosition);
   }
 
   /** Creates a new lease with a new index definition version, preserving the highWaterMark. */
@@ -299,16 +313,33 @@ public record Lease(
         newCommitInfo,
         indexDefinitionVersion,
         newVersionStatus,
-        this.materializedViewCollectionMetadata);
+        this.materializedViewCollectionMetadata,
+        // This means that when a new version starts, this is reset until we have a STEADY
+        // transition
+        null);
   }
 
-  public Lease withUpdatedStatus(IndexStatus indexStatus, long indexDefinitionVersion) {
+  /**
+   * Updates status and potentially sets steadyAsOfOplogPosition when transitioned to STEADY
+   *
+   * @param indexStatus the new status
+   * @param indexDefinitionVersion version being updated
+   */
+  public Lease withUpdatedStatus(
+      IndexStatus indexStatus, long indexDefinitionVersion, @Nullable BsonTimestamp oplogPosition) {
     var isSteady = indexStatus.getStatusCode() == IndexStatus.StatusCode.STEADY;
     Map<String, IndexDefinitionVersionStatus> newVersionStatus =
         new HashMap<>(this.indexDefinitionVersionStatusMap);
     newVersionStatus.put(
         String.valueOf(indexDefinitionVersion),
         new IndexDefinitionVersionStatus(isSteady, indexStatus.getStatusCode()));
+
+    // Set steadyAsOfOplogPosition only on first STEADY transition
+    @Var BsonTimestamp newSteadyPosition = this.steadyAsOfOplogPosition;
+    if (isSteady && this.steadyAsOfOplogPosition == null) {
+      newSteadyPosition = oplogPosition;
+    }
+
     return new Lease(
         this.id,
         SCHEMA_VERSION,
@@ -320,7 +351,8 @@ public record Lease(
         this.commitInfo,
         this.latestIndexDefinitionVersion,
         newVersionStatus,
-        this.materializedViewCollectionMetadata);
+        this.materializedViewCollectionMetadata,
+        newSteadyPosition);
   }
 
   /**
@@ -342,7 +374,8 @@ public record Lease(
         this.commitInfo,
         this.latestIndexDefinitionVersion,
         this.indexDefinitionVersionStatusMap,
-        this.materializedViewCollectionMetadata);
+        this.materializedViewCollectionMetadata,
+        this.steadyAsOfOplogPosition);
   }
 
   /**
@@ -365,6 +398,11 @@ public record Lease(
     }
   }
 
+  /** Fetch the last steady oplog position from the lease */
+  public Optional<BsonTimestamp> getSteadyAsOfOplogPosition() {
+    return Optional.ofNullable(this.steadyAsOfOplogPosition);
+  }
+
   @Override
   public BsonDocument toBson() {
     return BsonDocumentBuilder.builder()
@@ -381,6 +419,8 @@ public record Lease(
         .field(
             Fields.MATERIALIZED_VIEW_COLLECTION_METADATA,
             Optional.of(this.materializedViewCollectionMetadata))
+        .field(
+            Fields.STEADY_AS_OF_OPLOG_POSITION, Optional.ofNullable(this.steadyAsOfOplogPosition))
         .build();
   }
 }

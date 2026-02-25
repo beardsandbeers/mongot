@@ -37,10 +37,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
@@ -343,7 +345,10 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
     if (isLeader(generationId)) {
       ensureLeaseExists(generationId);
       Lease currentLease = this.leases.get(getLeaseKey(generationId));
-      Lease updatedLease = currentLease.withUpdatedStatus(indexStatus, indexDefinitionVersion);
+
+      BsonTimestamp oplogPosition = currentLease.extractHighWaterMark().orElse(null);
+      Lease updatedLease =
+          currentLease.withUpdatedStatus(indexStatus, indexDefinitionVersion, oplogPosition);
       updateLeaseInDatabase(
           generationId,
           currentLease,
@@ -544,6 +549,12 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
       LOG.warn("Error attempting to acquire leadership for {}", generationId, e);
       return false;
     }
+  }
+
+  @Override
+  public Optional<BsonTimestamp> getSteadyAsOfOplogPosition(GenerationId generationId) {
+    return Optional.ofNullable(this.leases.get(getLeaseKey(generationId)))
+        .flatMap(Lease::getSteadyAsOfOplogPosition);
   }
 
   /**

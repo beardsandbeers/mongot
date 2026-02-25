@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import org.bson.BsonTimestamp;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -94,7 +95,8 @@ public class LeaseTest {
                   new MaterializedViewSchemaMetadata(
                       1L, Map.of(FieldPath.parse("title"), FieldPath.parse("_autoEmbed.title"))),
                   UUID.fromString(COLLECTION_UUID),
-                  COLLECTION_NAME)));
+                  COLLECTION_NAME),
+              null));
     }
 
     private static BsonDeserializationTestSuite.ValidSpec<Lease>
@@ -116,7 +118,8 @@ public class LeaseTest {
                   new Lease.IndexDefinitionVersionStatus(
                       false, IndexStatus.StatusCode.INITIAL_SYNC)),
               new MaterializedViewCollectionMetadata(
-                  VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME)));
+                  VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME),
+              null));
     }
   }
 
@@ -167,7 +170,8 @@ public class LeaseTest {
                   "1",
                   new Lease.IndexDefinitionVersionStatus(
                       false, IndexStatus.StatusCode.INITIAL_SYNC)),
-              customMetadata);
+              customMetadata,
+              null);
       return BsonSerializationTestSuite.TestSpec.create("leaseWithMaterializedViewMetadata", lease);
     }
 
@@ -189,7 +193,8 @@ public class LeaseTest {
                   new Lease.IndexDefinitionVersionStatus(
                       false, IndexStatus.StatusCode.INITIAL_SYNC)),
               new MaterializedViewCollectionMetadata(
-                  VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME));
+                  VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME),
+              null);
       return BsonSerializationTestSuite.TestSpec.create(
           "leaseWithEmptyMaterializedViewMetadata", lease);
     }
@@ -261,7 +266,85 @@ public class LeaseTest {
       assertEquals(EncodedUserData.EMPTY.asString(), v2Lease.commitInfo());
     }
 
-    private Lease createLeaseWithCommitInfo(String commitInfo) {
+    @Test
+    public void testSteadyAsOfOplogPosition_serialization() {
+      // Field present - serialized to BSON correctly
+      BsonTimestamp position = new BsonTimestamp(1000, 1);
+      Lease leaseWithPosition = createLeaseWithSteadyPosition(position);
+
+      var bson = leaseWithPosition.toBson();
+      assertTrue(bson.containsKey("steadyAsOfOplogPosition"));
+      assertEquals(position, bson.getTimestamp("steadyAsOfOplogPosition"));
+
+      // Field absent - omitted from BSON
+      Lease leaseWithoutPosition = createLeaseWithSteadyPosition(null);
+
+      var bsonEmpty = leaseWithoutPosition.toBson();
+      assertFalse(bsonEmpty.containsKey("steadyAsOfOplogPosition"));
+    }
+
+    @Test
+    public void testWithUpdatedStatus_steadyAsOfOplogPositionLifecycle() {
+      BsonTimestamp firstSteadyPosition = new BsonTimestamp(1000, 1);
+      BsonTimestamp laterPosition = new BsonTimestamp(2000, 1);
+
+      // Start with no position
+      Lease initialLease = createLeaseWithSteadyPosition(null);
+      assertFalse(initialLease.getSteadyAsOfOplogPosition().isPresent());
+
+      // Non-STEADY transition doesn't set position
+      Lease afterInitialSync =
+          initialLease.withUpdatedStatus(IndexStatus.initialSync(), 1L, firstSteadyPosition);
+      assertFalse(afterInitialSync.getSteadyAsOfOplogPosition().isPresent());
+
+      // First STEADY transition sets position
+      Lease afterFirstSteady =
+          afterInitialSync.withUpdatedStatus(IndexStatus.steady(), 1L, firstSteadyPosition);
+      assertTrue(afterFirstSteady.getSteadyAsOfOplogPosition().isPresent());
+      assertEquals(firstSteadyPosition, afterFirstSteady.getSteadyAsOfOplogPosition().get());
+
+      // Subsequent STEADY transition preserves original position
+      Lease afterSecondSteady =
+          afterFirstSteady.withUpdatedStatus(IndexStatus.steady(), 1L, laterPosition);
+      assertTrue(afterSecondSteady.getSteadyAsOfOplogPosition().isPresent());
+      assertEquals(firstSteadyPosition, afterSecondSteady.getSteadyAsOfOplogPosition().get());
+    }
+
+    @Test
+    public void testSteadyAsOfOplogPositionLifecycle() {
+      // newLease starts with null steadyAsOfOplogPosition
+      var newLease =
+          Lease.newLease(
+              LEASE_ID,
+              UUID.fromString(COLLECTION_UUID),
+              COLLECTION_NAME,
+              LEASE_OWNER,
+              "1",
+              IndexStatus.initialSync(),
+              new MaterializedViewCollectionMetadata(
+                  VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME));
+      assertFalse(
+          "New lease should have empty steadyAsOfOplogPosition",
+          newLease.getSteadyAsOfOplogPosition().isPresent());
+
+      // withUpdatedCheckpoint preserves steadyAsOfOplogPosition
+      var steadyPosition = new BsonTimestamp(1234567890L);
+      var leaseWithSteadyPosition = createLeaseWithSteadyPosition(steadyPosition);
+      var afterCheckpoint = leaseWithSteadyPosition.withUpdatedCheckpoint(EncodedUserData.EMPTY);
+      assertTrue(
+          "withUpdatedCheckpoint should preserve steadyAsOfOplogPosition",
+          afterCheckpoint.getSteadyAsOfOplogPosition().isPresent());
+      assertEquals(steadyPosition, afterCheckpoint.getSteadyAsOfOplogPosition().get());
+
+      // withNewIndexDefinitionVersion resets steadyAsOfOplogPosition to null
+      var afterNewVersion =
+          leaseWithSteadyPosition.withNewIndexDefinitionVersion("2", IndexStatus.initialSync());
+      assertFalse(
+          "withNewIndexDefinitionVersion should reset steadyAsOfOplogPosition",
+          afterNewVersion.getSteadyAsOfOplogPosition().isPresent());
+    }
+
+    private static Lease createLeaseWithCommitInfo(String commitInfo) {
       return new Lease(
           LEASE_ID,
           Lease.FIRST_LEASE_VERSION,
@@ -276,7 +359,27 @@ public class LeaseTest {
               "1",
               new Lease.IndexDefinitionVersionStatus(false, IndexStatus.StatusCode.INITIAL_SYNC)),
           new MaterializedViewCollectionMetadata(
-              VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME));
+              VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME),
+          null);
+    }
+
+    private static Lease createLeaseWithSteadyPosition(@Nullable BsonTimestamp steadyPosition) {
+      return new Lease(
+          LEASE_ID,
+          Lease.FIRST_LEASE_VERSION,
+          COLLECTION_UUID,
+          COLLECTION_NAME,
+          LEASE_OWNER,
+          Instant.now(),
+          Lease.FIRST_LEASE_VERSION,
+          "",
+          "1",
+          Map.of(
+              "1",
+              new Lease.IndexDefinitionVersionStatus(false, IndexStatus.StatusCode.INITIAL_SYNC)),
+          new MaterializedViewCollectionMetadata(
+              VERSION_ZERO, UUID.fromString(COLLECTION_UUID), COLLECTION_NAME),
+          steadyPosition);
     }
   }
 }

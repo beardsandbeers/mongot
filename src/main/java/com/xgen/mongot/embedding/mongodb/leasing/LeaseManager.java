@@ -9,8 +9,10 @@ import com.xgen.mongot.index.version.GenerationId;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.bson.BsonTimestamp;
 
 // TODO(CLOUDP-371278): Refactor interface to have stricter type that only allows MatView related
 // IndexGeneration and GenerationId
@@ -117,6 +119,15 @@ public interface LeaseManager {
    *     there are no follower generation IDs.
    */
   FollowerPollResult pollFollowerStatuses();
+
+  /**
+   * Returns the oplog position at which the MV first became STEADY. Used by Lucene to determine if
+   * it has caught up.
+   *
+   * @param generationId the generation id
+   * @return the steady-as-of position, or empty if MV hasn't reached STEADY yet
+   */
+  Optional<BsonTimestamp> getSteadyAsOfOplogPosition(GenerationId generationId);
 
   /**
    * Performs a heartbeat for all managed leases. For dynamic leader election, this renews the

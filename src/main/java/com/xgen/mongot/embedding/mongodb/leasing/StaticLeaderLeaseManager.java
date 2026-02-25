@@ -32,10 +32,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,9 +80,11 @@ public class StaticLeaderLeaseManager implements LeaseManager {
   // Maps GenerationId to its definition version (as String) for use in pollFollowerStatuses().
   private final Map<GenerationId, String> generationIdToDefinitionVersion;
   private final MongoCollection<BsonDocument> collection;
+  private final MongoClient mongoClient;
   private final boolean isLeader;
   private final MaterializedViewCollectionMetadataCatalog mvMetadataCatalog;
 
+  /** Init static lease manager */
   public StaticLeaderLeaseManager(
       MongoClient mongoClient,
       MetricsFactory metricsFactory,
@@ -95,11 +99,12 @@ public class StaticLeaderLeaseManager implements LeaseManager {
     this.leases = new ConcurrentHashMap<>();
     this.managedGenerationIds = ConcurrentHashMap.newKeySet();
     this.generationIdToDefinitionVersion = new ConcurrentHashMap<>();
+    this.mongoClient = mongoClient;
     // Use LINEARIZABLE read concern for lease operations to ensure we always read the most
     // up-to-date lease state. This is critical for lease correctness.
     // LINEARIZABLE read concern requires ReadPreference.primary() to work correctly.
     this.collection =
-        mongoClient
+        this.mongoClient
             .getDatabase(databaseName)
             .getCollection(LEASE_COLLECTION_NAME, BsonDocument.class)
             .withReadConcern(ReadConcern.LINEARIZABLE)
@@ -259,7 +264,10 @@ public class StaticLeaderLeaseManager implements LeaseManager {
     if (this.isLeader) {
       ensureLeaseExists(generationId);
       Lease currentLease = this.leases.get(getLeaseKey(generationId));
-      Lease updatedLease = currentLease.withUpdatedStatus(indexStatus, indexDefinitionVersion);
+
+      BsonTimestamp oplogPosition = currentLease.extractHighWaterMark().orElse(null);
+      Lease updatedLease =
+          currentLease.withUpdatedStatus(indexStatus, indexDefinitionVersion, oplogPosition);
       updateLeaseInDatabase(
           generationId,
           currentLease,
@@ -283,6 +291,7 @@ public class StaticLeaderLeaseManager implements LeaseManager {
     @Var
     Lease.IndexDefinitionVersionStatus latestStatus =
         new Lease.IndexDefinitionVersionStatus(false, IndexStatus.StatusCode.UNKNOWN);
+
     try {
       Lease lease = getLeaseFromDatabase(generationId);
       if (lease != null) {
@@ -344,6 +353,12 @@ public class StaticLeaderLeaseManager implements LeaseManager {
     }
     // Static leader doesn't support dynamic leader election, so no expired leases
     return new LeaseManager.FollowerPollResult(statuses, Collections.emptySet());
+  }
+
+  @Override
+  public Optional<BsonTimestamp> getSteadyAsOfOplogPosition(GenerationId generationId) {
+    return Optional.ofNullable(this.leases.get(getLeaseKey(generationId)))
+        .flatMap(Lease::getSteadyAsOfOplogPosition);
   }
 
   private void ensureLeaseExists(GenerationId generationId) {
