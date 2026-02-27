@@ -74,4 +74,25 @@ public interface QueryFactoryContext {
    * the current query is targeting.
    */
   FieldDefinitionResolver getFieldDefinitionResolver();
+
+  /**
+   * Gets the vector index field definition for a given path (only applicable for vector indexes).
+   *
+   * @param path the field path
+   * @return Optional containing the field definition, or empty if not found or not a vector index
+   */
+  default Optional<com.xgen.mongot.index.definition.VectorIndexFieldDefinition>
+      getVectorIndexFieldDefinition(FieldPath path) {
+    return Optional.empty();
+  }
+
+  /**
+   * Returns the nested root path for embedded vector documents, if specified at the index level.
+   * Only applicable for vector indexes.
+   *
+   * @return Optional containing the nested root path, or empty if not an embedded vector index
+   */
+  default Optional<FieldPath> getNestedRoot() {
+    return Optional.empty();
+  }
 }

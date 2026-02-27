@@ -79,7 +79,8 @@ public class VectorQueryTimeMappingChecksTest {
     var checks = new VectorQueryTimeMappingChecks(resolver);
     var path = FieldPath.newRoot("foo");
 
-    Mockito.when(resolver.isIndexed(path, VectorIndexFieldDefinition.Type.FILTER)).thenReturn(true);
+    Mockito.when(resolver.isIndexed(path, Optional.empty(), VectorIndexFieldDefinition.Type.FILTER))
+        .thenReturn(true);
     Assert.assertTrue(checks.indexedAsDate(path, Optional.empty()));
     Assert.assertTrue(checks.indexedAsNumber(path, Optional.empty()));
     Assert.assertTrue(checks.indexedAsBoolean(path, Optional.empty()));
@@ -93,7 +94,7 @@ public class VectorQueryTimeMappingChecksTest {
     var checks = new VectorQueryTimeMappingChecks(resolver);
     var path = FieldPath.newRoot("foo");
 
-    Mockito.when(resolver.isIndexed(path, VectorIndexFieldDefinition.Type.FILTER))
+    Mockito.when(resolver.isIndexed(path, Optional.empty(), VectorIndexFieldDefinition.Type.FILTER))
         .thenReturn(false);
     Assert.assertFalse(checks.indexedAsDate(path, Optional.empty()));
     Assert.assertFalse(checks.indexedAsNumber(path, Optional.empty()));

@@ -40,6 +40,51 @@
       }
     },
     {
+      "description": "with-parentFilter",
+      "value": {
+        "index": "myVectorIndex",
+        "path": "description",
+        "exact": true,
+        "queryVector": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "parentFilter": {
+          "rating": {
+            "$gte": 8.0
+          }
+        },
+        "limit": 10,
+        "returnStoredSource" : false
+      }
+    },
+    {
+      "description": "with-filter-and-parentFilter",
+      "value": {
+        "index": "myVectorIndex",
+        "path": "description",
+        "exact": true,
+        "queryVector": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "filter": {
+          "my-field": {
+            "$eq": "action"
+          }
+        },
+        "parentFilter": {
+          "rating": {
+            "$gte": 8.5
+          }
+        },
+        "limit": 10,
+        "returnStoredSource" : false
+      }
+    },
+    {
       "description": "simple-auto-embedding-query",
       "value": {
         "index": "myVectorIndex",

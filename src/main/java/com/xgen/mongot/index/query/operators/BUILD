@@ -47,6 +47,7 @@ java_library(
         "TermRegexOperator.java",
         "TermWildcardOperator.java",
         "TextOperator.java",
+        "VectorEmbeddedOptions.java",
         "VectorSearchCriteria.java",
         "VectorSearchFilter.java",
         "VectorSearchOperator.java",

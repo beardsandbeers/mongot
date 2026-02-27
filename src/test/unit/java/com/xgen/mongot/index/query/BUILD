@@ -11,6 +11,7 @@ java_test_suite(
         "PaginationTest.java",
         "SearchQueryTimeMappingChecksTest.java",
         "TrackingTest.java",
+        "VectorEmbeddedFilterTest.java",
         "VectorQueryTimeMappingChecksTest.java",
     ],
     data = ["//src/test/unit/resources/index/query:srcs"],

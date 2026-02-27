@@ -13,6 +13,7 @@ public class ExactVectorCriteriaBuilder {
   private Optional<Vector> queryVector = Optional.empty();
   private Optional<VectorSearchQueryInput> query = Optional.empty();
   private Optional<VectorSearchFilter> filter = Optional.empty();
+  private Optional<VectorSearchFilter> parentFilter = Optional.empty();
   private Optional<Integer> limit = Optional.empty();
   private Optional<Boolean> returnStoredSource = Optional.empty();
 
@@ -29,6 +30,7 @@ public class ExactVectorCriteriaBuilder {
             .returnStoredSource(criteria.returnStoredSource());
     criteria.filter().ifPresent(builder::filter);
     criteria.query().ifPresent(builder::query);
+    criteria.parentFilter().ifPresent(builder::parentFilter);
     return builder;
   }
 
@@ -61,6 +63,11 @@ public class ExactVectorCriteriaBuilder {
     return this;
   }
 
+  public ExactVectorCriteriaBuilder parentFilter(VectorSearchFilter parentFilter) {
+    this.parentFilter = Optional.of(parentFilter);
+    return this;
+  }
+
   public ExactVectorCriteriaBuilder limit(int limit) {
     this.limit = Optional.of(limit);
     return this;
@@ -84,7 +91,9 @@ public class ExactVectorCriteriaBuilder {
         this.queryVector,
         this.query,
         this.filter,
+        this.parentFilter,
         this.limit.get(),
-        this.returnStoredSource.orElse(false));
+        this.returnStoredSource.orElse(false),
+        Optional.empty());
   }
 }

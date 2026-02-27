@@ -58,6 +58,8 @@ public class ApproximateVectorSearchQueryTest {
           simple(),
           implicitApproximateQuery(),
           filter(),
+          parentFilter(),
+          filterAndParentFilter(),
           bsonFloatVectorQuery(),
           bsonByteVectorQuery(),
           simpleAutoEmbeddingQuery(),
@@ -120,6 +122,68 @@ public class ApproximateVectorSearchQueryTest {
                                                       ValueBuilder.intNumber(1),
                                                       ValueBuilder.intNumber(2),
                                                       ValueBuilder.intNumber(3)))
+                                              .build()))
+                                  .build()))
+                      .build())
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorSearchQuery> parentFilter()
+        throws BsonParseException {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with-parentFilter",
+          VectorQueryBuilder.builder()
+              .index("myVectorIndex")
+              .criteria(
+                  ApproximateVectorQueryCriteriaBuilder.builder()
+                      .limit(10)
+                      .numCandidates(10)
+                      .queryVector(Vector.fromFloats(new float[] {2f, 2f, 2f}, NATIVE))
+                      .path(FieldPath.newRoot("description"))
+                      .parentFilter(
+                          new VectorSearchFilter.ClauseFilter(
+                              ClauseBuilder.simpleClause()
+                                  .path(FieldPath.newRoot("rating"))
+                                  .operators(
+                                      List.of(
+                                          MqlFilterOperatorBuilder.gte()
+                                              .value(ValueBuilder.doubleNumber(8.0))
+                                              .build()))
+                                  .build()))
+                      .build())
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorSearchQuery>
+        filterAndParentFilter() throws BsonParseException {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with-filter-and-parentFilter",
+          VectorQueryBuilder.builder()
+              .index("myVectorIndex")
+              .criteria(
+                  ApproximateVectorQueryCriteriaBuilder.builder()
+                      .limit(10)
+                      .numCandidates(10)
+                      .queryVector(Vector.fromFloats(new float[] {2f, 2f, 2f}, NATIVE))
+                      .path(FieldPath.newRoot("description"))
+                      .filter(
+                          new VectorSearchFilter.ClauseFilter(
+                              ClauseBuilder.simpleClause()
+                                  .path(FieldPath.newRoot("my-field"))
+                                  .operators(
+                                      List.of(
+                                          MqlFilterOperatorBuilder.eq()
+                                              .value(ValueBuilder.string("action"))
+                                              .build()))
+                                  .build()))
+                      .parentFilter(
+                          new VectorSearchFilter.ClauseFilter(
+                              ClauseBuilder.simpleClause()
+                                  .path(FieldPath.newRoot("rating"))
+                                  .operators(
+                                      List.of(
+                                          MqlFilterOperatorBuilder.gte()
+                                              .value(ValueBuilder.doubleNumber(8.5))
                                               .build()))
                                   .build()))
                       .build())
@@ -240,10 +304,13 @@ public class ApproximateVectorSearchQueryTest {
 
     /** Test data. */
     @Parameterized.Parameters(name = "{0}")
-    public static Iterable<BsonSerializationTestSuite.TestSpec<VectorSearchQuery>> data() {
+    public static Iterable<BsonSerializationTestSuite.TestSpec<VectorSearchQuery>> data()
+        throws BsonParseException {
       return List.of(
           simple(),
           filter(),
+          parentFilter(),
+          filterAndParentFilter(),
           simpleAutoEmbeddingQuery(),
           simpleAutoEmbeddingQueryWithMultiModalFormat(),
           emptyIndex(),
@@ -308,6 +375,68 @@ public class ApproximateVectorSearchQueryTest {
                                                       ValueBuilder.string("one"),
                                                       ValueBuilder.string("two"),
                                                       ValueBuilder.string("three")))
+                                              .build()))
+                                  .build()))
+                      .build())
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<VectorSearchQuery> parentFilter()
+        throws BsonParseException {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with-parentFilter",
+          VectorQueryBuilder.builder()
+              .index("myVectorIndex")
+              .criteria(
+                  ApproximateVectorQueryCriteriaBuilder.builder()
+                      .limit(10)
+                      .numCandidates(10)
+                      .queryVector(Vector.fromFloats(new float[] {2f, 2f, 2f}, NATIVE))
+                      .path(FieldPath.newRoot("description"))
+                      .parentFilter(
+                          new VectorSearchFilter.ClauseFilter(
+                              ClauseBuilder.simpleClause()
+                                  .path(FieldPath.newRoot("rating"))
+                                  .operators(
+                                      List.of(
+                                          MqlFilterOperatorBuilder.gte()
+                                              .value(ValueBuilder.doubleNumber(8.0))
+                                              .build()))
+                                  .build()))
+                      .build())
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<VectorSearchQuery>
+        filterAndParentFilter() throws BsonParseException {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with-filter-and-parentFilter",
+          VectorQueryBuilder.builder()
+              .index("myVectorIndex")
+              .criteria(
+                  ApproximateVectorQueryCriteriaBuilder.builder()
+                      .limit(10)
+                      .numCandidates(10)
+                      .queryVector(Vector.fromFloats(new float[] {2f, 2f, 2f}, NATIVE))
+                      .path(FieldPath.newRoot("description"))
+                      .filter(
+                          new VectorSearchFilter.ClauseFilter(
+                              ClauseBuilder.simpleClause()
+                                  .path(FieldPath.newRoot("my-field"))
+                                  .operators(
+                                      List.of(
+                                          MqlFilterOperatorBuilder.eq()
+                                              .value(ValueBuilder.string("action"))
+                                              .build()))
+                                  .build()))
+                      .parentFilter(
+                          new VectorSearchFilter.ClauseFilter(
+                              ClauseBuilder.simpleClause()
+                                  .path(FieldPath.newRoot("rating"))
+                                  .operators(
+                                      List.of(
+                                          MqlFilterOperatorBuilder.gte()
+                                              .value(ValueBuilder.doubleNumber(8.5))
                                               .build()))
                                   .build()))
                       .build())

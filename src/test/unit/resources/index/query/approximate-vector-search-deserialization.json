@@ -58,6 +58,55 @@
       }
     },
     {
+      "description": "with-parentFilter",
+      "value": {
+        "index": "myVectorIndex",
+        "path": "description",
+        "numCandidates": {
+          "$numberLong": "10"
+        },
+        "limit": 10,
+        "queryVector": [
+          2,
+          2,
+          2
+        ],
+        "parentFilter": {
+          "rating": {
+            "$gte": 8.0
+          }
+        },
+        "returnStoredSource" : false
+      }
+    },
+    {
+      "description": "with-filter-and-parentFilter",
+      "value": {
+        "index": "myVectorIndex",
+        "path": "description",
+        "numCandidates": {
+          "$numberLong": "10"
+        },
+        "limit": 10,
+        "queryVector": [
+          2,
+          2,
+          2
+        ],
+        "filter": {
+          "my-field": {
+            "$eq": "action"
+          }
+        },
+        "parentFilter": {
+          "rating": {
+            "$gte": 8.5
+          }
+        },
+        "returnStoredSource" : false
+      }
+    },
+    {
       "description": "bson-float32-query-vector",
       "value": {
         "index": "myVectorIndex",

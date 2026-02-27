@@ -41,32 +41,32 @@ public class VectorQueryTimeMappingChecks implements QueryTimeMappingChecks {
 
   @Override
   public boolean indexedAsDate(FieldPath path, Optional<FieldPath> embeddedRoot) {
-    return isIndexedAsVectorFilter(path);
+    return isIndexedAsVectorFilter(path, embeddedRoot);
   }
 
   @Override
   public boolean indexedAsBoolean(FieldPath path, Optional<FieldPath> embeddedRoot) {
-    return isIndexedAsVectorFilter(path);
+    return isIndexedAsVectorFilter(path, embeddedRoot);
   }
 
   @Override
   public boolean indexedAsToken(FieldPath path, Optional<FieldPath> embeddedRoot) {
-    return isIndexedAsVectorFilter(path);
+    return isIndexedAsVectorFilter(path, embeddedRoot);
   }
 
   @Override
   public boolean indexedAsNumber(FieldPath path, Optional<FieldPath> embeddedRoot) {
-    return isIndexedAsVectorFilter(path);
+    return isIndexedAsVectorFilter(path, embeddedRoot);
   }
 
   @Override
   public boolean indexedAsObjectId(FieldPath path, Optional<FieldPath> embeddedRoot) {
-    return isIndexedAsVectorFilter(path);
+    return isIndexedAsVectorFilter(path, embeddedRoot);
   }
 
   @Override
   public boolean indexedAsUuid(FieldPath path, Optional<FieldPath> embeddedRoot) {
-    return isIndexedAsVectorFilter(path);
+    return isIndexedAsVectorFilter(path, embeddedRoot);
   }
 
   @Override
@@ -99,8 +99,8 @@ public class VectorQueryTimeMappingChecks implements QueryTimeMappingChecks {
     throw new UnsupportedOperationException();
   }
 
-  private boolean isIndexedAsVectorFilter(FieldPath path) {
-    return this.resolver.isIndexed(path, VectorIndexFieldDefinition.Type.FILTER);
+  private boolean isIndexedAsVectorFilter(FieldPath path, Optional<FieldPath> embeddedRoot) {
+    return this.resolver.isIndexed(path, embeddedRoot, VectorIndexFieldDefinition.Type.FILTER);
   }
 
   @Override

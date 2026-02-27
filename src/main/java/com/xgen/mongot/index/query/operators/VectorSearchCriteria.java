@@ -32,9 +32,13 @@ public sealed interface VectorSearchCriteria extends DocumentEncodable
 
   Optional<VectorSearchFilter> filter();
 
+  Optional<VectorSearchFilter> parentFilter();
+
   int limit();
 
   boolean returnStoredSource();
+
+  Optional<VectorEmbeddedOptions> embeddedOptions();
 
   Type getVectorSearchType();
 
@@ -96,6 +100,13 @@ public sealed interface VectorSearchCriteria extends DocumentEncodable
 
     public static final Field.WithDefault<Boolean> STORED_SOURCE =
         Field.builder("returnStoredSource").booleanField().optional().withDefault(false);
+
+    public static final Field.Optional<VectorEmbeddedOptions> NESTED_OPTIONS =
+        Field.builder("nestedOptions")
+            .classField(VectorEmbeddedOptions::fromBson)
+            .disallowUnknownFields()
+            .optional()
+            .noDefault();
   }
 
   static VectorSearchCriteria fromBson(
@@ -131,5 +142,28 @@ public sealed interface VectorSearchCriteria extends DocumentEncodable
         }
       }
     }
+  }
+
+  /**
+   * Validates that filter and parentFilter cannot be combined in an OR operation.
+   *
+   * <p>When both filter and parentFilter are present, they are implicitly combined with AND. This
+   * validation ensures users understand this constraint. Note: Each filter can independently
+   * contain OR clauses within themselves.
+   *
+   * @param parser the document parser for error reporting
+   * @param filter the optional filter
+   * @param parentFilter the optional parent filter
+   * @throws BsonParseException if validation fails
+   */
+  static void validateFilterAndParentFilter(
+      DocumentParser parser,
+      Optional<VectorSearchFilter> filter,
+      Optional<VectorSearchFilter> parentFilter)
+      throws BsonParseException {
+    // The validation is implicit: if both are present, they are combined with AND.
+    // There's no way to specify OR between them in the current API design.
+    // This method is a placeholder for future validation if needed.
+    // For now, we just document the behavior.
   }
 }

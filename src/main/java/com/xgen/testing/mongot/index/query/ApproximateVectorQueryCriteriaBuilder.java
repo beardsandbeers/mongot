@@ -14,6 +14,7 @@ public class ApproximateVectorQueryCriteriaBuilder {
   private Optional<Vector> queryVector = Optional.empty();
   private Optional<VectorSearchQueryInput> query = Optional.empty();
   private Optional<VectorSearchFilter> filter = Optional.empty();
+  private Optional<VectorSearchFilter> parentFilter = Optional.empty();
   private Optional<Integer> numCandidates = Optional.empty();
   private Optional<Integer> limit = Optional.empty();
   private final Optional<VectorSearchCriteria.ExplainOptions> explainOptions = Optional.empty();
@@ -36,6 +37,7 @@ public class ApproximateVectorQueryCriteriaBuilder {
 
     criteria.filter().ifPresent(builder::filter);
     criteria.query().ifPresent(builder::query);
+    criteria.parentFilter().ifPresent(builder::parentFilter);
     return builder;
   }
 
@@ -60,6 +62,11 @@ public class ApproximateVectorQueryCriteriaBuilder {
 
   public ApproximateVectorQueryCriteriaBuilder filter(VectorSearchFilter filter) {
     this.filter = Optional.of(filter);
+    return this;
+  }
+
+  public ApproximateVectorQueryCriteriaBuilder parentFilter(VectorSearchFilter parentFilter) {
+    this.parentFilter = Optional.of(parentFilter);
     return this;
   }
 
@@ -92,9 +99,11 @@ public class ApproximateVectorQueryCriteriaBuilder {
         this.queryVector,
         this.query,
         this.filter,
+        this.parentFilter,
         this.limit.get(),
         this.numCandidates.get(),
         this.explainOptions,
-        this.returnStoredSource.orElse(false));
+        this.returnStoredSource.orElse(false),
+        Optional.empty());
   }
 }

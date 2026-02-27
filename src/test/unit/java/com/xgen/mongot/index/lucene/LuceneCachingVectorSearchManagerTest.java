@@ -60,10 +60,12 @@ public class LuceneCachingVectorSearchManagerTest {
                 Optional.of(queryVector),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 limit,
                 numCandidates,
                 Optional.empty(),
-                false),
+                false,
+                Optional.empty()),
             Optional.empty());
 
     insertDocumentsIntoLucene(luceneFieldName);
@@ -106,10 +108,12 @@ public class LuceneCachingVectorSearchManagerTest {
                 Optional.of(queryVector),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 limit,
                 numCandidates,
                 Optional.empty(),
-                false),
+                false,
+                Optional.empty()),
             Optional.empty());
 
     insertDocumentsIntoLucene(luceneFieldName);

@@ -346,7 +346,8 @@ public class IndexableFieldFactory {
 
   static void addTokenField(
       AbstractDocumentWrapper document, FieldPath path, String analyzedString) {
-    String luceneFieldName = FieldName.TypeField.TOKEN.getLuceneFieldName(path, Optional.empty());
+    String luceneFieldName =
+        FieldName.TypeField.TOKEN.getLuceneFieldName(path, document.getEmbeddedRoot());
     addSortableStringField(document, luceneFieldName, new BytesRef(analyzedString));
   }
 

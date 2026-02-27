@@ -60,8 +60,18 @@ public sealed interface VectorSearchFilter extends DocumentEncodable
     static final Field.Optional<Clause> CLAUSE_FILTER =
         Field.builder("filter").classField(Clause::fromBson).optional().noDefault();
 
+    static final Field.Optional<Clause> CLAUSE_PARENT_FILTER =
+        Field.builder("parentFilter").classField(Clause::fromBson).optional().noDefault();
+
     public static final Field.Optional<Operator> OPERATOR_FILTER =
         Field.builder("filter")
+            .classField(Operator::exactlyOneFromBson)
+            .disallowUnknownFields()
+            .optional()
+            .noDefault();
+
+    public static final Field.Optional<Operator> OPERATOR_PARENT_FILTER =
+        Field.builder("parentFilter")
             .classField(Operator::exactlyOneFromBson)
             .disallowUnknownFields()
             .optional()
@@ -74,6 +84,16 @@ public sealed interface VectorSearchFilter extends DocumentEncodable
       case OPERATOR ->
           parser.getField(Fields.OPERATOR_FILTER).unwrap().map(OperatorFilter::new);
       case CLAUSE -> parser.getField(Fields.CLAUSE_FILTER).unwrap().map(ClauseFilter::new);
+    };
+  }
+
+  static Optional<VectorSearchFilter> fromBsonParentFilter(DocumentParser parser, Type type)
+      throws BsonParseException {
+    return switch (type) {
+      case OPERATOR ->
+          parser.getField(Fields.OPERATOR_PARENT_FILTER).unwrap().map(OperatorFilter::new);
+      case CLAUSE ->
+          parser.getField(Fields.CLAUSE_PARENT_FILTER).unwrap().map(ClauseFilter::new);
     };
   }
 }

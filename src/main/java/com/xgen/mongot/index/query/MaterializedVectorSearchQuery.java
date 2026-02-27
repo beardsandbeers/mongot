@@ -67,18 +67,22 @@ public record MaterializedVectorSearchQuery(VectorSearchQuery vectorSearchQuery,
               Optional.of(this.vector),
               approximate.query(),
               approximate.filter(),
+              approximate.parentFilter(),
               approximate.limit(),
               approximate.numCandidates(),
               approximate.explainOptions(),
-              approximate.returnStoredSource());
+              approximate.returnStoredSource(),
+              approximate.embeddedOptions());
       case ExactVectorSearchCriteria exact ->
           new ExactVectorSearchCriteria(
               exact.path(),
               Optional.of(this.vector),
               exact.query(),
               exact.filter(),
+              exact.parentFilter(),
               exact.limit(),
-              exact.returnStoredSource());
+              exact.returnStoredSource(),
+              exact.embeddedOptions());
     };
   }
 }

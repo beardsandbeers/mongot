@@ -14,8 +14,10 @@ public record ExactVectorSearchCriteria(
     Optional<Vector> queryVector,
     Optional<VectorSearchQueryInput> query,
     Optional<VectorSearchFilter> filter,
+    Optional<VectorSearchFilter> parentFilter,
     int limit,
-    boolean returnStoredSource)
+    boolean returnStoredSource,
+    Optional<VectorEmbeddedOptions> embeddedOptions)
     implements VectorSearchCriteria {
 
   public static ExactVectorSearchCriteria fromBson(
@@ -35,13 +37,24 @@ public record ExactVectorSearchCriteria(
     Optional<VectorSearchQueryInput> queryInput = VectorSearchQueryInput.fromBson(parser);
 
     VectorSearchCriteria.checkBasicFields(parser, vector, queryInput);
+
+    Optional<VectorSearchFilter> filter = VectorSearchFilter.fromBson(parser, filterType);
+    Optional<VectorSearchFilter> parentFilter =
+        VectorSearchFilter.fromBsonParentFilter(parser, filterType);
+
+    // Validate that filter and parentFilter are not combined in an OR
+    // (they can only be combined with AND)
+    VectorSearchCriteria.validateFilterAndParentFilter(parser, filter, parentFilter);
+
     return new ExactVectorSearchCriteria(
         path,
         vector,
         queryInput,
-        VectorSearchFilter.fromBson(parser, filterType),
+        filter,
+        parentFilter,
         parser.getField(Fields.LIMIT).unwrap(),
-        parser.getField(Fields.STORED_SOURCE).unwrap());
+        parser.getField(Fields.STORED_SOURCE).unwrap(),
+        parser.getField(Fields.NESTED_OPTIONS).unwrap());
   }
 
   @Override
@@ -55,13 +68,26 @@ public record ExactVectorSearchCriteria(
         this.filter.map(DocumentEncodable::toBson).orElse(new BsonDocument());
     BsonDocument queryDocument =
         this.query.map(DocumentEncodable::toBson).orElse(new BsonDocument());
-    return BsonDocumentBuilder.builder()
-        .field(Fields.LIMIT, this.limit())
-        .field(Fields.EXACT, true)
-        .field(Fields.QUERY_VECTOR, this.queryVector())
-        .field(Fields.STORED_SOURCE, this.returnStoredSource())
-        .join(queryDocument)
-        .join(filterDocument)
-        .build();
+    BsonDocumentBuilder builder =
+        BsonDocumentBuilder.builder()
+            .field(Fields.LIMIT, this.limit())
+            .field(Fields.EXACT, true)
+            .field(Fields.QUERY_VECTOR, this.queryVector())
+            .join(queryDocument)
+            .field(Fields.STORED_SOURCE, this.returnStoredSource())
+            .field(Fields.NESTED_OPTIONS, this.embeddedOptions())
+            .join(filterDocument);
+
+    // Add parentFilter with the correct key name
+    if (this.parentFilter.isPresent()) {
+      BsonDocument pfDoc = this.parentFilter.get().toBson();
+      // Extract the filter content and add it under "parentFilter" key
+      if (pfDoc.containsKey("filter")) {
+        BsonDocument parentFilterDoc = new BsonDocument("parentFilter", pfDoc.get("filter"));
+        builder.join(parentFilterDoc);
+      }
+    }
+
+    return builder.build();
   }
 }

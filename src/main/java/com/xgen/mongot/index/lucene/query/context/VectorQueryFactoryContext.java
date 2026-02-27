@@ -110,4 +110,25 @@ public class VectorQueryFactoryContext implements QueryFactoryContext {
                 new InvalidQueryException(
                     String.format("%s is not indexed as a vector field", fieldPath)));
   }
+
+  /**
+   * Gets the vector index field definition for a given path.
+   *
+   * @param path the field path
+   * @return Optional containing the field definition, or empty if not found
+   */
+  public Optional<VectorIndexFieldDefinition> getVectorIndexFieldDefinition(FieldPath path) {
+    return this.resolver.getFields().stream()
+        .filter(definition -> definition.getPath().equals(path))
+        .findFirst();
+  }
+
+  /**
+   * Returns the nested root path for embedded vector documents, if specified at the index level.
+   *
+   * @return Optional containing the nested root path, or empty if not an embedded vector index
+   */
+  public Optional<FieldPath> getNestedRoot() {
+    return this.resolver.getNestedRoot();
+  }
 }

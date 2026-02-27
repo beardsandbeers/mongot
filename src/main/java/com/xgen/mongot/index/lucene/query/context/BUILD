@@ -16,6 +16,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/lucene/query/util",
         "//src/main/java/com/xgen/mongot/index/query",
         "//src/main/java/com/xgen/mongot/index/version",
+        "//src/main/java/com/xgen/mongot/util",
         "@maven//:org_apache_lucene_lucene_core",
     ],
     deps = [
