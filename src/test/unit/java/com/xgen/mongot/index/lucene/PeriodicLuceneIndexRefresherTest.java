@@ -126,7 +126,7 @@ public class PeriodicLuceneIndexRefresherTest {
 
   private static LuceneSearcherManager getSearcherManager() throws Exception {
     SingleLuceneIndexWriter writer = getIndexWriter();
-    return new LuceneSearcherManager(
+    return LuceneSearcherManager.create(
         writer.getLuceneWriter(),
         new LuceneSearcherFactory(
             MOCK_INDEX_DEFINITION,

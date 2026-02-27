@@ -90,7 +90,7 @@ public class LuceneVectorSearchManagerTest {
     this.indexWriter.commit();
 
     LuceneSearcherManager searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,

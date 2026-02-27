@@ -165,7 +165,7 @@ public class CloseablePhantomCleanerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     SearchIndex.MOCK_INDEX_DEFINITION,
@@ -221,7 +221,7 @@ public class CloseablePhantomCleanerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     SearchIndex.MOCK_INDEX_DEFINITION,
@@ -289,8 +289,7 @@ public class CloseablePhantomCleanerTest {
                     false,
                     new DefaultQueryCacheProvider(),
                     Optional.empty(),
-                    SearchIndex.mockQueryMetricsUpdater(IndexDefinition.Type.SEARCH)),
-                SearchIndex.mockMetricsFactory()) {
+                    SearchIndex.mockQueryMetricsUpdater(IndexDefinition.Type.SEARCH))) {
               @Override
               protected void decRef(LuceneIndexSearcher reference) throws IOException {
                 super.decRef(reference);

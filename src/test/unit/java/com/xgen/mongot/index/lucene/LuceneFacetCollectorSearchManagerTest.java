@@ -117,7 +117,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -168,7 +168,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -254,7 +254,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -308,7 +308,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -367,7 +367,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -418,7 +418,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -486,7 +486,7 @@ public class LuceneFacetCollectorSearchManagerTest {
     this.indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_FACET_INDEX_DEFINITION,

@@ -211,7 +211,7 @@ public class LuceneSearchIndexReaderTest {
                 Optional.empty(),
                 SearchIndex.mockQueryMetricsUpdater(IndexDefinition.Type.SEARCH)));
     LuceneSearcherManager searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.writer, this.searcherFactory, SearchIndex.mockMetricsFactory());
     Analyzer analyzer =
         LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty());
@@ -834,7 +834,7 @@ public class LuceneSearchIndexReaderTest {
             .build();
 
     LuceneSearcherManager searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.writer,
             searcherFactory != null ? searcherFactory : this.searcherFactory,
             SearchIndex.mockMetricsFactory());

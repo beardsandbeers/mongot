@@ -154,7 +154,7 @@ class InitializedLuceneVectorIndex implements InitializedVectorIndex {
                     luceneIndexSnapshotter.map(
                         snapshotter -> snapshotter.getSnapshotDeletionPolicy(indexPartitionId))),
             luceneIndexWriter ->
-                new LuceneSearcherManager(
+                LuceneSearcherManager.create(
                     luceneIndexWriter.getLuceneWriter(),
                     searcherFactory,
                     vectorIndexProperties.metricsFactory));

@@ -76,7 +76,7 @@ public class ReachabilityCheckerTest {
     indexDocumentsAndCommit(indexWriter, vectorFieldName, secondSegmentDocs);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -126,7 +126,7 @@ public class ReachabilityCheckerTest {
     indexDocumentsAndCommit(indexWriter, vectorFieldName, vectors);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -201,7 +201,7 @@ public class ReachabilityCheckerTest {
     indexWriter.commit();
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,

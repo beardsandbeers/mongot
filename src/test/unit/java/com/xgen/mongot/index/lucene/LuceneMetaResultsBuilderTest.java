@@ -147,7 +147,7 @@ public class LuceneMetaResultsBuilderTest {
 
       // Create searcher infrastructure
       var searcherManager =
-          new LuceneSearcherManager(
+          LuceneSearcherManager.create(
               writer,
               new LuceneSearcherFactory(
                   SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -245,7 +245,7 @@ public class LuceneMetaResultsBuilderTest {
       writer.commit();
 
       var searcherManager =
-          new LuceneSearcherManager(
+          LuceneSearcherManager.create(
               writer,
               new LuceneSearcherFactory(
                   SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -328,7 +328,7 @@ public class LuceneMetaResultsBuilderTest {
       writer.commit();
 
       var searcherManager =
-          new LuceneSearcherManager(
+          LuceneSearcherManager.create(
               writer,
               new LuceneSearcherFactory(
                   SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -413,7 +413,7 @@ public class LuceneMetaResultsBuilderTest {
       writer.commit();
 
       var searcherManager =
-          new LuceneSearcherManager(
+          LuceneSearcherManager.create(
               writer,
               new LuceneSearcherFactory(
                   SearchIndex.MOCK_FACET_INDEX_DEFINITION,
@@ -511,7 +511,7 @@ public class LuceneMetaResultsBuilderTest {
       writer.commit();
 
       var searcherManager =
-          new LuceneSearcherManager(
+          LuceneSearcherManager.create(
               writer,
               new LuceneSearcherFactory(
                   SearchIndex.MOCK_FACET_INDEX_DEFINITION,

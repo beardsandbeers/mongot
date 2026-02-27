@@ -1356,7 +1356,7 @@ public class SingleLuceneIndexWriterTest {
 
       // assert that the document can be found and facets are calculated correctly
       try (var manager =
-          new LuceneSearcherManager(
+          LuceneSearcherManager.create(
               writer.getLuceneWriter(),
               new LuceneSearcherFactory(
                   indexDefinition,

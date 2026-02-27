@@ -165,7 +165,7 @@ class InitializedLuceneSearchIndex implements InitializedSearchIndex {
                         snapshotter -> snapshotter.getSnapshotDeletionPolicy(indexPartitionId)),
                     featureFlags),
             luceneIndexWriter ->
-                new LuceneSearcherManager(
+                LuceneSearcherManager.create(
                     luceneIndexWriter.getLuceneWriter(),
                     searcherFactory,
                     searchIndexProperties.metricsFactory));

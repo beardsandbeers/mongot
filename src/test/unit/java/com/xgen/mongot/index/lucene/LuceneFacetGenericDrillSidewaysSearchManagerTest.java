@@ -83,7 +83,7 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
     addTestDocuments(true);
 
     LuceneSearcherManager searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 SearchIndex.MOCK_INDEX_DEFINITION,

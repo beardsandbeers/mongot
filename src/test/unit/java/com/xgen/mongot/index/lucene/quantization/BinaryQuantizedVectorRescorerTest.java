@@ -155,7 +155,7 @@ public class BinaryQuantizedVectorRescorerTest {
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -210,7 +210,7 @@ public class BinaryQuantizedVectorRescorerTest {
     KnnFloatVectorQuery luceneQuery =
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -247,7 +247,7 @@ public class BinaryQuantizedVectorRescorerTest {
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -300,7 +300,7 @@ public class BinaryQuantizedVectorRescorerTest {
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -351,7 +351,7 @@ public class BinaryQuantizedVectorRescorerTest {
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -399,7 +399,7 @@ public class BinaryQuantizedVectorRescorerTest {
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -455,7 +455,7 @@ public class BinaryQuantizedVectorRescorerTest {
         Check.instanceOf(manager.getLuceneQuery(), KnnFloatVectorQuery.class);
 
     var searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,

@@ -30,7 +30,7 @@ public class LuceneSearcherManagerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),
@@ -54,7 +54,7 @@ public class LuceneSearcherManagerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var metricsFactory = SearchIndex.mockMetricsFactory();
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             writer,
             new LuceneSearcherFactory(
                 getIndexDefinition(),
@@ -75,7 +75,7 @@ public class LuceneSearcherManagerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),
@@ -104,7 +104,7 @@ public class LuceneSearcherManagerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),
@@ -127,7 +127,7 @@ public class LuceneSearcherManagerTest {
     try (var directory = new ByteBuffersDirectory()) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),
@@ -150,7 +150,7 @@ public class LuceneSearcherManagerTest {
     try (Directory directory = new ByteBuffersDirectory()) {
       try (IndexWriter writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),
@@ -180,7 +180,7 @@ public class LuceneSearcherManagerTest {
         writer.addDocument(doc);
 
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),
@@ -204,7 +204,7 @@ public class LuceneSearcherManagerTest {
     try (var directory = new NIOFSDirectory(folder.getRoot().toPath())) {
       try (var writer = new IndexWriter(directory, new IndexWriterConfig())) {
         var manager =
-            new LuceneSearcherManager(
+            LuceneSearcherManager.create(
                 writer,
                 new LuceneSearcherFactory(
                     getIndexDefinition(),

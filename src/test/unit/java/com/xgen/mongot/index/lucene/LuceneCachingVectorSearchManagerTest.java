@@ -69,7 +69,7 @@ public class LuceneCachingVectorSearchManagerTest {
     insertDocumentsIntoLucene(luceneFieldName);
 
     LuceneSearcherManager searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,
@@ -115,7 +115,7 @@ public class LuceneCachingVectorSearchManagerTest {
     insertDocumentsIntoLucene(luceneFieldName);
 
     LuceneSearcherManager searcherManager =
-        new LuceneSearcherManager(
+        LuceneSearcherManager.create(
             this.indexWriter,
             new LuceneSearcherFactory(
                 VectorIndex.MOCK_VECTOR_DEFINITION,

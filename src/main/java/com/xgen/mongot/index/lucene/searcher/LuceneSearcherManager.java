@@ -32,16 +32,31 @@ public class LuceneSearcherManager extends ReferenceManager<LuceneIndexSearcher>
 
   private final LuceneSearcherFactory factory;
 
-  public LuceneSearcherManager(
-      IndexWriter writer, LuceneSearcherFactory factory, PerIndexMetricsFactory metrics)
+  /**
+   * Protected constructor - does not register gauges. Use {@link #create} to construct instances.
+   * Protected to allow test subclasses.
+   */
+  protected LuceneSearcherManager(IndexWriter writer, LuceneSearcherFactory factory)
       throws IOException {
     this.factory = factory;
     this.current = getSearcher(DirectoryReader.open(writer));
+  }
 
+  /**
+   * Static factory method that constructs the manager and registers all gauges.
+   */
+  public static LuceneSearcherManager create(
+      IndexWriter writer, LuceneSearcherFactory factory, PerIndexMetricsFactory metrics)
+      throws IOException {
+    LuceneSearcherManager manager = new LuceneSearcherManager(writer, factory);
+
+    // Register gauges after construction is complete
     metrics.perIndexObjectValueGauge(
         SEGMENT_COUNT_METRIC,
-        this,
+        manager,
         CachedGauge.of(LuceneSearcherManager::getSegmentCount, Duration.ofMinutes(1)));
+
+    return manager;
   }
 
   private double getSegmentCount() {
