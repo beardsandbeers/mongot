@@ -210,6 +210,108 @@ public class VectorSearchCommandIndexSizeMetricsTest {
         .isEqualTo("unquantized");
   }
 
+  @Test
+  public void testNestedVectorSearchCounterIncremented() throws Exception {
+    var mocks = new Mocks();
+    var metricsFactory = createSimpleMetricsFactory();
+    var metrics = new VectorSearchCommand.Metrics(metricsFactory);
+
+    // Build a nested vector index definition with nestedRoot
+    FieldPath nestedPath = FieldPath.parse("sections.embedding");
+    VectorIndexDefinition nestedIndexDef =
+        VectorIndexDefinitionBuilder.builder()
+            .withVectorField(
+                nestedPath.toString(),
+                3,
+                VectorSimilarity.DOT_PRODUCT,
+                VectorQuantization.NONE,
+                new VectorIndexingAlgorithm.HnswIndexingAlgorithm())
+            .nestedRoot("sections")
+            .build();
+    lenient().when(mocks.indexGeneration.getDefinition()).thenReturn(nestedIndexDef);
+    lenient().when(mocks.initializedIndex.getDefinition()).thenReturn(nestedIndexDef);
+
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+
+    VectorSearchQuery vectorSearchQuery =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(nestedPath)
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(vectorSearchQuery)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            metadata,
+            MOCK_EMBEDDING_SERVICE,
+            metrics);
+
+    command.run();
+
+    var counter = metricsFactory.get("nestedVectorSearchQueries").counter();
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(1);
+  }
+
+  @Test
+  public void testNestedVectorSearchCounterNotIncrementedForNonNestedQuery() throws Exception {
+    var mocks = new Mocks();
+    var metricsFactory = createSimpleMetricsFactory();
+    var metrics = new VectorSearchCommand.Metrics(metricsFactory);
+
+    // Non-nested index definition (no nestedRoot)
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+
+    VectorSearchQuery vectorSearchQuery =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(vectorSearchQuery)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            metadata,
+            MOCK_EMBEDDING_SERVICE,
+            metrics);
+
+    command.run();
+
+    var counter = metricsFactory.get("nestedVectorSearchQueries").counter();
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(0);
+  }
+
   private static VectorSearchCommand buildVectorSearchCommandWithFeatureFlags(
       Mocks mocks,
       VectorSearchCommand.Metrics metrics,

@@ -333,6 +333,11 @@ public class VectorSearchCommand implements Command {
       return createExhaustedCursorBatch(new BsonArray()).toBson();
     }
 
+    // Record nested vector search query counter at command receipt, consistent with other counters.
+    if (isNestedVectorSearch(vectorSearchQuery, optionalIndex.get().getDefinition())) {
+      this.metrics.nestedVectorSearchQueries.increment();
+    }
+
     if (isEnvoyMetadataPresent()) {
       LOG.atTrace()
           .addKeyValue("envoyMetadata", this.searchEnvoyMetadata.get())
@@ -683,6 +688,29 @@ public class VectorSearchCommand implements Command {
   }
 
   /**
+   * Determines whether a vector search query is a nested (embedded) vector search.
+   *
+   * <p>A query is considered nested if the query specifies {@code nestedOptions} (embeddedOptions),
+   * or if the query's field path falls under the index definition's {@code nestedRoot}.
+   *
+   * @param vectorSearchQuery The vector search query
+   * @param definition The index definition
+   * @return true if the query is a nested vector search
+   */
+  private static boolean isNestedVectorSearch(
+      VectorSearchQuery vectorSearchQuery, IndexDefinition definition) {
+    if (vectorSearchQuery.criteria().embeddedOptions().isPresent()) {
+      return true;
+    }
+    if (definition.getType() == VECTOR_SEARCH) {
+      return definition.asVectorDefinition().getNestedRoot()
+          .map(nestedRoot -> vectorSearchQuery.criteria().path().isChildOf(nestedRoot))
+          .orElse(false);
+    }
+    return false;
+  }
+
+  /**
    * Categorizes index size into predefined buckets.
    *
    * @param indexSizeBytes The index size in bytes
@@ -806,6 +834,7 @@ public class VectorSearchCommand implements Command {
     private final Counter bsonByteVectorQueries;
     private final Counter bsonBitVectorQueries;
     private final Counter vectorStoredSourceQueries;
+    private final Counter nestedVectorSearchQueries;
     private final AtomicLong concurrentExactQueries;
     private final AtomicLong concurrentApproximateQueries;
     private final AtomicLong concurrentAutoEmbeddingQueries;
@@ -835,6 +864,7 @@ public class VectorSearchCommand implements Command {
       this.bsonByteVectorQueries = metricsFactory.counter("bsonByteVectorQueries");
       this.bsonBitVectorQueries = metricsFactory.counter("bsonBitVectorQueries");
       this.vectorStoredSourceQueries = metricsFactory.counter("vectorStoredSourceQueries");
+      this.nestedVectorSearchQueries = metricsFactory.counter("nestedVectorSearchQueries");
       this.concurrentExactQueries = metricsFactory.numGauge("concurrentExactQueries");
       this.concurrentApproximateQueries = metricsFactory.numGauge("concurrentApproximateQueries");
       this.concurrentAutoEmbeddingQueries =
