@@ -63,4 +63,9 @@ public class DefaultServerState implements ServerState {
   public static DefaultServerState create(MongoClient mongoClient) {
     return new DefaultServerState(new MetadataClient<>(mongoClient, COLLECTION_NAME));
   }
+
+  @VisibleForTesting
+  static DefaultServerState createForTesting(MongoClient client, String databaseName) {
+    return new DefaultServerState(new MetadataClient<>(client, databaseName, COLLECTION_NAME));
+  }
 }

@@ -84,4 +84,11 @@ public class DefaultAuthoritativeIndexCatalog implements AuthoritativeIndexCatal
   public static DefaultAuthoritativeIndexCatalog create(MongoClient client) {
     return new DefaultAuthoritativeIndexCatalog(new MetadataClient<>(client, COLLECTION_NAME));
   }
+
+  @VisibleForTesting
+  static DefaultAuthoritativeIndexCatalog createForTesting(
+      MongoClient client, String databaseName) {
+    return new DefaultAuthoritativeIndexCatalog(
+        new MetadataClient<>(client, databaseName, COLLECTION_NAME));
+  }
 }

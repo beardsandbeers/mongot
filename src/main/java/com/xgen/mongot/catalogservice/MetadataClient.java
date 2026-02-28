@@ -1,5 +1,6 @@
 package com.xgen.mongot.catalogservice;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.BulkWriteOptions;
@@ -23,10 +24,17 @@ public class MetadataClient<T extends DocumentEncodable> {
   public static final String DATABASE_NAME = "__mdb_internal_search";
 
   private final MongoClient mongoClient;
+  private final String databaseName;
   private final String collectionName;
 
   public MetadataClient(MongoClient mongoClient, String collectionName) {
+    this(mongoClient, DATABASE_NAME, collectionName);
+  }
+
+  @VisibleForTesting
+  MetadataClient(MongoClient mongoClient, String databaseName, String collectionName) {
     this.mongoClient = mongoClient;
+    this.databaseName = databaseName;
     this.collectionName = collectionName;
   }
 
@@ -159,7 +167,7 @@ public class MetadataClient<T extends DocumentEncodable> {
 
   private MongoCollection<BsonDocument> getCollection() {
     return this.mongoClient
-        .getDatabase(DATABASE_NAME)
+        .getDatabase(this.databaseName)
         .getCollection(this.collectionName, BsonDocument.class);
   }
 }

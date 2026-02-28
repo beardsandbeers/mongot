@@ -104,4 +104,9 @@ public class DefaultIndexStats implements IndexStats {
   public static DefaultIndexStats create(MongoClient mongoClient) {
     return new DefaultIndexStats(new MetadataClient<>(mongoClient, COLLECTION_NAME));
   }
+
+  @VisibleForTesting
+  static DefaultIndexStats createForTesting(MongoClient client, String databaseName) {
+    return new DefaultIndexStats(new MetadataClient<>(client, databaseName, COLLECTION_NAME));
+  }
 }
