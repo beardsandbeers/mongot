@@ -1,10 +1,13 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.init;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.lucene.directory.IndexDirectoryFactory;
 import com.xgen.mongot.index.lucene.searcher.LuceneSearcherManager;
+import com.xgen.mongot.index.lucene.writer.LuceneIndexWriter;
+import com.xgen.mongot.index.lucene.writer.MultiLuceneIndexWriter;
+import com.xgen.mongot.index.lucene.writer.SingleLuceneIndexWriter;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.Crash;
 import java.io.Closeable;
@@ -16,7 +19,8 @@ import java.util.function.Consumer;
 import org.apache.lucene.store.Directory;
 
 /**
- * This class will be used to initialize {@link LuceneSearchIndex} and {@link LuceneVectorIndex}.
+ * This class will be used to initialize {@link com.xgen.mongot.index.lucene.LuceneSearchIndex} and
+ * {@link com.xgen.mongot.index.lucene.LuceneVectorIndex}.
  *
  * <p>When there is an exception during the initialization, it will attempt to close resources.
  */

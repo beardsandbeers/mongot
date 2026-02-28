@@ -1,5 +1,6 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.writer;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.errorprone.annotations.Var;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
@@ -22,8 +23,11 @@ import com.xgen.mongot.index.lucene.commit.LuceneCommitData;
 import com.xgen.mongot.index.lucene.document.DefaultIndexingPolicy;
 import com.xgen.mongot.index.lucene.document.LuceneIndexingPolicy;
 import com.xgen.mongot.index.lucene.document.builder.DocumentBlockBuilder;
+import com.xgen.mongot.index.lucene.document.context.IndexingPolicyBuilderContext;
 import com.xgen.mongot.index.lucene.field.FieldName;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.similarity.LuceneSimilarity;
+import com.xgen.mongot.index.lucene.sort.LuceneIndexSortFactory;
 import com.xgen.mongot.index.lucene.util.LuceneCodecUtils;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
 import com.xgen.mongot.index.version.IndexCapabilities;
@@ -58,7 +62,7 @@ import org.bson.types.ObjectId;
 
 /** LuceneIndexWriter is an IndexWriter that indexes documents into a Lucene index. */
 @SuppressWarnings("GuardedBy") // Uses LockGuard instead
-class SingleLuceneIndexWriter implements LuceneIndexWriter {
+public class SingleLuceneIndexWriter implements LuceneIndexWriter {
 
   private final DefaultKeyValueLogger logger;
 
@@ -151,7 +155,8 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     this.closed = false;
   }
 
-  static SingleLuceneIndexWriter createForVectorIndex(
+  /** Creates a writer for a Lucene-native vector index. */
+  public static SingleLuceneIndexWriter createForVectorIndex(
       Directory directory,
       InstrumentedConcurrentMergeScheduler.PerIndexPartitionMergeScheduler mergeScheduler,
       MergePolicy mergePolicy,
@@ -164,12 +169,12 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
       Optional<IndexDeletionPolicy> indexDeletionPolicy)
       throws IOException {
 
-    Map<FieldPath, VectorFieldSpecification> pathToField =
+    Map<FieldPath, VectorFieldSpecification> vectorFields =
         LuceneCodecUtils.extractVectorFieldsFromVectorIndex(indexDefinition.getFields());
 
     IndexWriterConfig indexWriterConfig =
         new org.apache.lucene.index.IndexWriterConfig()
-            .setCodec(new LuceneCodec(pathToField))
+            .setCodec(new LuceneCodec(vectorFields))
             .setMergePolicy(mergePolicy)
             .setRAMBufferSizeMB(ramBufferSizeMb)
             .setMergeScheduler(mergeScheduler)
@@ -206,7 +211,8 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     return writer;
   }
 
-  static SingleLuceneIndexWriter createForSearchIndex(
+  /** Creates a writer for a Lucene search index. */
+  public static SingleLuceneIndexWriter createForSearchIndex(
       Directory directory,
       InstrumentedConcurrentMergeScheduler.PerIndexPartitionMergeScheduler mergeScheduler,
       MergePolicy mergePolicy,
@@ -275,7 +281,7 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     return writer;
   }
 
-  org.apache.lucene.index.IndexWriter getLuceneWriter() {
+  public org.apache.lucene.index.IndexWriter getLuceneWriter() {
     try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
       ensureOpen("getLuceneWriter");
       return this.luceneWriter;
@@ -288,7 +294,7 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     updateIndex(LuceneDocumentIdEncoder.encodeDocumentId(event.getDocumentId()), event);
   }
 
-  void updateIndex(byte[] encodedDocumentId, DocumentEvent event)
+  public void updateIndex(byte[] encodedDocumentId, DocumentEvent event)
       throws IOException, FieldExceededLimitsException {
     try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
       ensureOpen("updateIndex");
@@ -316,7 +322,7 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     }
   }
 
-  LuceneCommitData.IndexWriterData getInternalWriterData() {
+  public LuceneCommitData.IndexWriterData getInternalWriterData() {
     try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
       ensureOpen("getInternalWriterData");
       LuceneCommitData commitData =
@@ -417,7 +423,7 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
         .or(this::exceededDocsLimits);
   }
 
-  Optional<FieldExceededLimitsException> exceededFieldLimits() {
+  public Optional<FieldExceededLimitsException> exceededFieldLimits() {
     if (this.fieldLimit.isEmpty()) {
       return Optional.empty();
     }
@@ -439,7 +445,7 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     return Optional.empty();
   }
 
-  Optional<DocsExceededLimitsException> exceededDocsLimits() {
+  public Optional<DocsExceededLimitsException> exceededDocsLimits() {
     return this.docsLimit.flatMap(
         limit -> {
           var numDocs = this.luceneWriter.getDocStats().maxDoc;
@@ -456,7 +462,7 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
     return getFieldNames().size();
   }
 
-  Set<String> getFieldNames() throws WriterClosedException {
+  public Set<String> getFieldNames() throws WriterClosedException {
     try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
       if (this.closed) {
         throw WriterClosedException.create("getFieldNames");
@@ -509,8 +515,11 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
         .log("indexing document");
 
     try {
-      DocumentBlockBuilder builder =
-          this.indexingPolicy.createBuilder(encodedDocumentId, event.getAutoEmbeddings());
+      IndexingPolicyBuilderContext context =
+          IndexingPolicyBuilderContext.builder()
+              .autoEmbeddings(event.getAutoEmbeddings())
+              .build();
+      DocumentBlockBuilder builder = this.indexingPolicy.createBuilder(encodedDocumentId, context);
       BsonDocumentProcessor.process(document, builder);
 
       List<Document> documentBlock = builder.buildBlock();
@@ -615,14 +624,15 @@ class SingleLuceneIndexWriter implements LuceneIndexWriter {
    * @param operation - the operation that failed
    * @param documentIdString - the string representation of the document ID
    */
-  void doLogIndexingFailure(Throwable e, String operation, String documentIdString) {
+  @VisibleForTesting
+  public void doLogIndexingFailure(Throwable e, String operation, String documentIdString) {
     this.logger
         .atError()
         .addKeyValue("operation", operation)
         .addKeyValue("documentId", documentIdString)
         .addKeyValue("exceptionType", e.getClass().getSimpleName())
         .log(
-            "Indexing failure during %s operation for document with _id: %s", operation,
-            documentIdString);
+            "Indexing failure during %s operation for document with _id: %s",
+            operation, documentIdString);
   }
 }

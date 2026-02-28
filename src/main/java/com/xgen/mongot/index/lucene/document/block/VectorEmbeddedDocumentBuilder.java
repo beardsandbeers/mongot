@@ -8,6 +8,7 @@ import com.xgen.mongot.index.ingestion.handlers.DocumentHandler;
 import com.xgen.mongot.index.ingestion.handlers.FieldValueHandler;
 import com.xgen.mongot.index.lucene.document.builder.DocumentBlockBuilder;
 import com.xgen.mongot.index.lucene.document.builder.DocumentBuilder;
+import com.xgen.mongot.index.lucene.document.context.IndexingPolicyBuilderContext;
 import com.xgen.mongot.index.lucene.document.single.LuceneVectorIndexDocumentBuilder;
 import com.xgen.mongot.index.lucene.document.single.VectorIndexDocumentWrapper;
 import com.xgen.mongot.index.version.IndexCapabilities;
@@ -127,8 +128,11 @@ public class VectorEmbeddedDocumentBuilder implements DocumentBlockBuilder {
     DocumentBlock childBlock = parentBlock.newChild(documentWrapper, () -> Optional.empty());
 
     LuceneVectorIndexDocumentBuilder documentBuilder =
-        LuceneVectorIndexDocumentBuilder.create(
-            documentWrapper, mapping, Optional.of(path), autoEmbeddings);
+        new LuceneVectorIndexDocumentBuilder(
+            documentWrapper,
+            mapping,
+            Optional.of(path),
+            IndexingPolicyBuilderContext.builder().autoEmbeddings(autoEmbeddings).build());
 
     return new VectorEmbeddedDocumentBuilder(
         documentBuilder,

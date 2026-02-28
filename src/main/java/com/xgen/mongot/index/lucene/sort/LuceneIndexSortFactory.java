@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.sort;
 
 import com.google.common.collect.ImmutableSet;
 import com.xgen.mongot.index.definition.FieldDefinition;

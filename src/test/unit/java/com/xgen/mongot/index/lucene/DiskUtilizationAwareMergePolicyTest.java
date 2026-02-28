@@ -3,6 +3,7 @@ package com.xgen.mongot.index.lucene;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.xgen.mongot.index.lucene.merge.DiskUtilizationAwareMergePolicy;
 import com.xgen.mongot.monitor.ToggleGate;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;

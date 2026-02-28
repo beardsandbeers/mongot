@@ -16,6 +16,7 @@ import com.xgen.mongot.index.analyzer.InvalidAnalyzerDefinitionException;
 import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
 import com.xgen.mongot.index.definition.IndexSortValidator;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
+import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.lucene.blobstore.LuceneIndexSnapshotter;
 import com.xgen.mongot.index.lucene.blobstore.LuceneIndexSnapshotterManager;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
@@ -23,7 +24,11 @@ import com.xgen.mongot.index.lucene.directory.ByteReadCollector;
 import com.xgen.mongot.index.lucene.directory.EnvironmentVariantPerfConfig;
 import com.xgen.mongot.index.lucene.directory.IndexDirectoryFactory;
 import com.xgen.mongot.index.lucene.directory.IndexDirectoryHelper;
+import com.xgen.mongot.index.lucene.merge.DiskUtilizationAwareMergePolicy;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
+import com.xgen.mongot.index.lucene.merge.MergePolicyFactory;
 import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
+import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.metrics.PerIndexMetricsFactory;
@@ -214,6 +219,8 @@ public class LuceneIndexFactory implements IndexFactory {
             definitionGeneration.getGenerationId());
 
     if (definitionGeneration.getType() == Type.VECTOR) {
+      VectorIndexDefinition vectorDef =
+          definitionGeneration.getIndexDefinition().asVectorDefinition();
       return LuceneVectorIndex.createDiskBacked(
           this.indexDirectoryHelper.getIndexDirectoryPath(definitionGeneration),
           this.indexDirectoryHelper.getIndexMetadataPath(definitionGeneration),
@@ -225,7 +232,7 @@ public class LuceneIndexFactory implements IndexFactory {
           this.refreshExecutor,
           this.concurrentSearchExecutor,
           this.concurrentVectorRescoringExecutor,
-          definitionGeneration.getIndexDefinition().asVectorDefinition(),
+          vectorDef,
           definitionGeneration.generation().indexFormatVersion,
           this.indexRemover,
           metricsFactory);
@@ -286,11 +293,13 @@ public class LuceneIndexFactory implements IndexFactory {
             this.config,
             this.byteReadCollector,
             this.featureFlags.isEnabled(Feature.CACHE_WARMER));
+    GenerationId generationId = definitionGeneration.getGenerationId();
+
     if (definitionGeneration.getType() == Type.VECTOR) {
       var luceneVectorIndex = Check.instanceOf(index, LuceneVectorIndex.class);
       return InitializedLuceneVectorIndex.create(
           luceneVectorIndex,
-          definitionGeneration.getGenerationId(),
+          generationId,
           directoryFactory,
           this.indexDirectoryHelper,
           luceneIndexSnapshotter,
@@ -299,7 +308,7 @@ public class LuceneIndexFactory implements IndexFactory {
       var luceneSearchIndex = Check.instanceOf(index, LuceneSearchIndex.class);
       return InitializedLuceneSearchIndex.create(
           luceneSearchIndex,
-          definitionGeneration.getGenerationId(),
+          generationId,
           directoryFactory,
           this.indexDirectoryHelper,
           luceneIndexSnapshotter,

@@ -15,6 +15,8 @@ import com.xgen.mongot.index.DocumentMetadata;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.FieldExceededLimitsException;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
+import com.xgen.mongot.index.lucene.writer.MultiLuceneIndexWriter;
+import com.xgen.mongot.index.lucene.writer.SingleLuceneIndexWriter;
 import com.xgen.mongot.util.BsonUtils;
 import java.util.HexFormat;
 import java.util.List;

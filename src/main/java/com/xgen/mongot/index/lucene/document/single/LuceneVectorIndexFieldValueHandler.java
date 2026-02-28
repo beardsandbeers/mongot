@@ -13,6 +13,7 @@ import com.xgen.mongot.index.definition.VectorIndexVectorFieldDefinition;
 import com.xgen.mongot.index.ingestion.handlers.DocumentHandler;
 import com.xgen.mongot.index.ingestion.handlers.FieldValueHandler;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
+import com.xgen.mongot.index.lucene.document.context.IndexingPolicyBuilderContext;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.Vector;
 import java.util.Optional;
@@ -33,26 +34,18 @@ public class LuceneVectorIndexFieldValueHandler implements FieldValueHandler {
 
   final Optional<VectorIndexFieldDefinition> fieldDefinition;
   final FieldPath path;
-  final ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings;
+  final IndexingPolicyBuilderContext context;
 
-  private LuceneVectorIndexFieldValueHandler(
+  LuceneVectorIndexFieldValueHandler(
       VectorIndexDocumentWrapper documentWrapper,
       VectorIndexFieldMapping mapping,
       FieldPath path,
-      ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
+      IndexingPolicyBuilderContext context) {
     this.documentWrapper = documentWrapper;
     this.mapping = mapping;
     this.path = path;
     this.fieldDefinition = mapping.getFieldDefinition(path);
-    this.autoEmbeddings = autoEmbeddings;
-  }
-
-  static FieldValueHandler create(
-      VectorIndexDocumentWrapper documentWrapper,
-      VectorIndexFieldMapping mapping,
-      FieldPath path,
-      ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
-    return new LuceneVectorIndexFieldValueHandler(documentWrapper, mapping, path, autoEmbeddings);
+    this.context = context;
   }
 
   @Override
@@ -157,9 +150,9 @@ public class LuceneVectorIndexFieldValueHandler implements FieldValueHandler {
   @Override
   public void handleString(Supplier<String> supplier) {
     // replace string as vector in autoEmbeddings if this is auto-embedding field.
-    if (isVectorTextField() && this.autoEmbeddings.containsKey(this.path)) {
+    if (isVectorTextField() && this.context.autoEmbeddings().containsKey(this.path)) {
       String stringValue = supplier.get();
-      ImmutableMap<String, Vector> textToVector = this.autoEmbeddings.get(this.path);
+      ImmutableMap<String, Vector> textToVector = this.context.autoEmbeddings().get(this.path);
       if (!textToVector.containsKey(stringValue)) {
         // failed to deserialize auto embedding text to vector field.
         return;
@@ -238,8 +231,8 @@ public class LuceneVectorIndexFieldValueHandler implements FieldValueHandler {
       return Optional.empty();
     }
     return Optional.of(
-        LuceneVectorIndexDocumentBuilder.create(
-            this.documentWrapper, this.mapping, Optional.of(this.path), this.autoEmbeddings));
+        new LuceneVectorIndexDocumentBuilder(
+            this.documentWrapper, this.mapping, Optional.of(this.path), this.context));
   }
 
   private boolean isNotFilterField() {

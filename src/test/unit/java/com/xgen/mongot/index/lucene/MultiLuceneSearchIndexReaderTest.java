@@ -44,6 +44,7 @@ import com.xgen.mongot.index.lucene.directory.IndexDirectoryFactory;
 import com.xgen.mongot.index.lucene.directory.IndexDirectoryHelper;
 import com.xgen.mongot.index.lucene.explain.information.CollectorExplainInformation;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.searcher.LuceneIndexSearcher;
 import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
 import com.xgen.mongot.index.query.CollectorQuery;

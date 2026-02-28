@@ -9,7 +9,9 @@ import com.xgen.mongot.index.IndexUnavailableException;
 import com.xgen.mongot.index.VectorIndex;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
+import com.xgen.mongot.index.lucene.backing.IndexBackingStrategy;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.index.version.IndexFormatVersion;
@@ -112,7 +114,7 @@ public class LuceneVectorIndex implements VectorIndex {
         indexDefinition,
         indexFormatVersion,
         metricsFactory,
-        IndexBackingStrategy.diskBacked(
+        IndexBackingStrategyFactory.diskBacked(
             refreshExecutor,
             config.refreshInterval(),
             directoryRemover,

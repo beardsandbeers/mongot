@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.merge;
 
 import com.google.common.base.Stopwatch;
 import com.google.errorprone.annotations.Var;
@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This scheduler is shared by all indices but should not be passed directly to IndexWriter.
  */
-class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeScheduler {
+public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeScheduler {
   /**
    * IndexPartitionIdentifier is a wrapper of GenerationId and optional indexPartitionId. It is used
    * to identify an index-partition in all indexes.
@@ -134,7 +134,7 @@ class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeScheduler {
    * InstrumentedConcurrentMergeScheduler, except for the close(), that only waits for the
    * corresponding index's ongoing merges to finish.
    */
-  static class PerIndexPartitionMergeScheduler extends MergeScheduler {
+  public static class PerIndexPartitionMergeScheduler extends MergeScheduler {
     public InstrumentedConcurrentMergeScheduler getIn() {
       return this.in;
     }
@@ -142,6 +142,7 @@ class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeScheduler {
     private final InstrumentedConcurrentMergeScheduler in;
     private final IndexPartitionIdentifier indexPartitionIdentifier;
 
+    /** Creates a merge scheduler for a specific index partition. */
     public PerIndexPartitionMergeScheduler(
         InstrumentedConcurrentMergeScheduler in,
         IndexPartitionIdentifier indexPartitionIdentifier) {
@@ -200,7 +201,8 @@ class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeScheduler {
         this, new IndexPartitionIdentifier(generationId, optionalIndexPartitionId));
   }
 
-  InstrumentedConcurrentMergeScheduler(MeterRegistry meterRegistry) {
+  /** Creates a new instrumented merge scheduler backed by the given meter registry. */
+  public InstrumentedConcurrentMergeScheduler(MeterRegistry meterRegistry) {
     super();
 
     this.metricsFactory = new MetricsFactory("mergeScheduler", meterRegistry);
@@ -230,9 +232,13 @@ class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeScheduler {
     this.infoStream = infoStream;
   }
 
-  // The implementation is copied from sync() in ConcurrentMergeScheduler in Lucene code, with
-  // only one additional check:
-  // ((InstrumentedMergeThread) t).getIndexPartitionIdentifier().equals(indexPartitionIdentifier).
+  /**
+   * Closes all merge threads associated with the given index partition.
+   *
+   * <p>The implementation is copied from sync() in ConcurrentMergeScheduler in Lucene code, with
+   * only one additional check:
+   * ((InstrumentedMergeThread) t).getIndexPartitionIdentifier().equals(indexPartitionIdentifier).
+   */
   public void close(IndexPartitionIdentifier indexPartitionIdentifier) {
     @Var boolean interrupted = false;
     try {

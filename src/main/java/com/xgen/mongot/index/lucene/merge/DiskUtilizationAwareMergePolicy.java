@@ -1,5 +1,6 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.merge;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.metrics.ServerStatusDataExtractor;
@@ -88,8 +89,11 @@ public class DiskUtilizationAwareMergePolicy extends FilterMergePolicy {
     return maybePruneMergeSpecification(super.findForcedDeletesMerges(segmentInfos, mergeContext));
   }
 
+  /** Prunes the merge specification by removing merges that exceed configured limits. */
+  @VisibleForTesting
   @Nullable
-  MergeSpecification maybePruneMergeSpecification(@Nullable MergeSpecification mergeSpecification) {
+  public MergeSpecification maybePruneMergeSpecification(
+      @Nullable MergeSpecification mergeSpecification) {
     if (mergeSpecification == null) {
       return null;
     }

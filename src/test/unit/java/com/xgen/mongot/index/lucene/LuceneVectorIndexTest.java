@@ -9,6 +9,7 @@ import static org.mockito.Mockito.spy;
 import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexUnavailableException;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.index.status.StaleStatusReason;
@@ -81,7 +82,7 @@ public class LuceneVectorIndexTest {
     var path = temporaryFolder.getRoot().toPath();
 
     var backingStrategy =
-        IndexBackingStrategy.diskBacked(
+        IndexBackingStrategyFactory.diskBacked(
             Mockito.mock(NamedScheduledExecutorService.class),
             LuceneConfigBuilder.builder().dataPath(path).build().refreshInterval(),
             new AtomicDirectoryRemover(TestUtils.getTempFolder().getRoot().toPath()),
@@ -115,7 +116,7 @@ public class LuceneVectorIndexTest {
     doAnswer(answer).when(directoryRemover).deleteDirectory(any());
 
     var backingStrategy =
-        IndexBackingStrategy.diskBacked(
+        IndexBackingStrategyFactory.diskBacked(
             Mockito.mock(NamedScheduledExecutorService.class),
             LuceneConfigBuilder.builder().dataPath(path).build().refreshInterval(),
             directoryRemover,

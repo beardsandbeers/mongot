@@ -36,6 +36,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/ingestion/stored",
         "//src/main/java/com/xgen/mongot/index/lucene/config",
         "//src/main/java/com/xgen/mongot/index/lucene/document/builder",
+        "//src/main/java/com/xgen/mongot/index/lucene/document/context",
         "//src/main/java/com/xgen/mongot/index/lucene/extension",
         "//src/main/java/com/xgen/mongot/index/lucene/field",
         "//src/main/java/com/xgen/mongot/index/lucene/geo",

@@ -24,6 +24,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/ingestion/handlers",
         "//src/main/java/com/xgen/mongot/index/ingestion/stored",
         "//src/main/java/com/xgen/mongot/index/lucene/document/builder",
+        "//src/main/java/com/xgen/mongot/index/lucene/document/context",
         "//src/main/java/com/xgen/mongot/index/lucene/document/single",
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/util",

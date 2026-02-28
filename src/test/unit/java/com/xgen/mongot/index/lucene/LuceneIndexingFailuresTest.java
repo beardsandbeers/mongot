@@ -19,6 +19,8 @@ import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.DocumentMetadata;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.analyzer.wrapper.LuceneAnalyzer;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
+import com.xgen.mongot.index.lucene.writer.SingleLuceneIndexWriter;
 import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.util.BsonUtils;
 import com.xgen.mongot.util.LoggableIdUtils;
@@ -87,8 +89,7 @@ public class LuceneIndexingFailuresTest {
         MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
         indexingMetricsUpdater,
         Optional.empty(),
-        FeatureFlags.getDefault()
-    );
+        FeatureFlags.getDefault());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     // This ensures the spy delegates to a writer that has the mocked luceneWriter
@@ -206,8 +207,7 @@ public class LuceneIndexingFailuresTest {
         MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
         indexingMetricsUpdater,
         Optional.empty(),
-        FeatureFlags.getDefault()
-    );
+        FeatureFlags.getDefault());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     Field luceneWriterField = SingleLuceneIndexWriter.class.getDeclaredField("luceneWriter");
@@ -273,8 +273,7 @@ public class LuceneIndexingFailuresTest {
         MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
         indexingMetricsUpdater,
         Optional.empty(),
-        FeatureFlags.getDefault()
-    );
+        FeatureFlags.getDefault());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     Field luceneWriterField = SingleLuceneIndexWriter.class.getDeclaredField("luceneWriter");
@@ -340,8 +339,7 @@ public class LuceneIndexingFailuresTest {
         MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
         indexingMetricsUpdater,
         Optional.empty(),
-        FeatureFlags.getDefault()
-    );
+        FeatureFlags.getDefault());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     Field luceneWriterField = SingleLuceneIndexWriter.class.getDeclaredField("luceneWriter");
@@ -407,8 +405,7 @@ public class LuceneIndexingFailuresTest {
         MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
         indexingMetricsUpdater,
         Optional.empty(),
-        FeatureFlags.getDefault()
-    );
+        FeatureFlags.getDefault());
 
     // Spy the writer to mock doLogIndexingFailure method
     var spyWriter = spy(writer);

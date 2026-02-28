@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.init;
 
 import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,6 +12,8 @@ import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.lucene.commit.LuceneCommitData;
 import com.xgen.mongot.index.lucene.directory.IndexDirectoryFactory;
 import com.xgen.mongot.index.lucene.searcher.LuceneSearcherManager;
+import com.xgen.mongot.index.lucene.writer.MultiLuceneIndexWriter;
+import com.xgen.mongot.index.lucene.writer.SingleLuceneIndexWriter;
 import com.xgen.mongot.util.CheckedStream;
 import java.io.Closeable;
 import java.io.File;

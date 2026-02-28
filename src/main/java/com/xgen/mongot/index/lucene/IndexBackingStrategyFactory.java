@@ -2,6 +2,7 @@ package com.xgen.mongot.index.lucene;
 
 import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
+import com.xgen.mongot.index.lucene.backing.IndexBackingStrategy;
 import com.xgen.mongot.index.lucene.directory.IndexPathFactory;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.metrics.PerIndexMetricsFactory;
@@ -20,26 +21,13 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.apache.lucene.search.ReferenceManager;
 
-/** IndexBackingStrategy */
-public interface IndexBackingStrategy {
-  Closeable createIndexRefresher(
-      Supplier<IndexStatus> statusRef, ImmutableList<ReferenceManager<?>> searcherManagers);
+/** Factory for creating {@link IndexBackingStrategy} instances. */
+public final class IndexBackingStrategyFactory {
 
-  void releaseResources() throws IOException;
+  private IndexBackingStrategyFactory() {}
 
-  long getIndexSize();
-
-  long getLargestIndexFileSize();
-
-  long getNumFilesInIndex();
-
-  long getIndexSizeForIndexPartition(int indexPartitionId);
-
-  /** Clear metadata associated with the index (this does not release all the index resources). */
-  void clearMetadata() throws IOException;
-
-  /** diskBacked */
-  static IndexBackingStrategy diskBacked(
+  /** Creates a disk-backed strategy. */
+  public static IndexBackingStrategy diskBacked(
       ScheduledExecutorService refreshExecutor,
       Duration refreshInterval,
       AtomicDirectoryRemover directoryRemover,
@@ -47,7 +35,7 @@ public interface IndexBackingStrategy {
       Path metadataDirectoryPath,
       PerIndexMetricsFactory metricsFactory) {
 
-    class LargestFileVistor implements FileVisitor<Path> {
+    class LargestFileVisitor implements FileVisitor<Path> {
       public long largestFileByteSize = 0L;
 
       @Override
@@ -134,7 +122,7 @@ public interface IndexBackingStrategy {
           return 0L;
         }
 
-        var visitor = new LargestFileVistor();
+        var visitor = new LargestFileVisitor();
         try {
           Files.walkFileTree(path, visitor);
           return visitor.largestFileByteSize;

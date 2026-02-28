@@ -1,8 +1,9 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.merge;
 
 import static com.xgen.mongot.util.Check.checkState;
 import static org.apache.lucene.codecs.lucene99.Lucene99HnswVectorsFormat.DEFAULT_MAX_CONN;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.errorprone.annotations.Var;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.xgen.mongot.metrics.MetricsFactory;
@@ -105,7 +106,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
      * @param maxCompoundDataBytes maximum vector field size to encode as a compound file.
      * @return this
      */
-    Builder setMaxCompoundDataBytes(long maxCompoundDataBytes) {
+    public Builder setMaxCompoundDataBytes(long maxCompoundDataBytes) {
       this.maxCompoundDataBytes = maxCompoundDataBytes;
       return this;
     }
@@ -127,7 +128,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
      * @param maxVectorInputBytes bytes
      * @return this
      */
-    Builder setMaxVectorInputBytes(long maxVectorInputBytes) {
+    public Builder setMaxVectorInputBytes(long maxVectorInputBytes) {
       this.maxVectorInputBytes = maxVectorInputBytes;
       return this;
     }
@@ -143,7 +144,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
      * @param mergeBudgetBytes bytes
      * @return this
      */
-    Builder setMergeBudgetBytes(long mergeBudgetBytes) {
+    public Builder setMergeBudgetBytes(long mergeBudgetBytes) {
       this.mergeBudgetBytes = mergeBudgetBytes;
       return this;
     }
@@ -166,7 +167,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
      * @param segmentHeapBytesBudget maximum heap bytes per merge for HNSW data
      * @return this
      */
-    Builder setSegmentHeapBytesBudget(long segmentHeapBytesBudget) {
+    public Builder setSegmentHeapBytesBudget(long segmentHeapBytesBudget) {
       this.segmentHeapBytesBudget = segmentHeapBytesBudget;
       return this;
     }
@@ -186,7 +187,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
      * @param globalHeapBytesBudget total heap budget for concurrent HNSW merges
      * @return this
      */
-    Builder setGlobalHeapBytesBudget(long globalHeapBytesBudget) {
+    public Builder setGlobalHeapBytesBudget(long globalHeapBytesBudget) {
       this.globalHeapBytesBudget = globalHeapBytesBudget;
       return this;
     }
@@ -204,12 +205,12 @@ public class VectorMergePolicy extends FilterMergePolicy {
      * @param maxConn the number of neighbors to assume per HNSW level for estimation
      * @return this
      */
-    Builder setMaxConn(int maxConn) {
+    public Builder setMaxConn(int maxConn) {
       this.maxConn = maxConn;
       return this;
     }
 
-    VectorMergePolicy build(MergePolicy parent, MeterRegistry meterRegistry) {
+    public VectorMergePolicy build(MergePolicy parent, MeterRegistry meterRegistry) {
       return new VectorMergePolicy(
           parent,
           this.maxCompoundDataBytes,
@@ -309,8 +310,10 @@ public class VectorMergePolicy extends FilterMergePolicy {
     return parentCompound && vectorCompound;
   }
 
+  /** Prunes the merge specification by removing merges that exceed configured byte limits. */
+  @VisibleForTesting
   @Nullable
-  MergeSpecification maybePruneMergeSpecification(
+  public MergeSpecification maybePruneMergeSpecification(
       @Nullable MergeSpecification mergeSpecification, MergeContext context) throws IOException {
     // MergePolicy may return a null spec if it does not wish to perform any merges.
     if (mergeSpecification == null) {

@@ -1,6 +1,5 @@
 package com.xgen.mongot.index.lucene.document;
 
-import com.google.common.collect.ImmutableMap;
 import com.xgen.mongot.index.IndexMetricsUpdater.IndexingMetricsUpdater;
 import com.xgen.mongot.index.definition.DocumentFieldDefinition;
 import com.xgen.mongot.index.definition.SearchFieldDefinitionResolver;
@@ -11,13 +10,12 @@ import com.xgen.mongot.index.ingestion.stored.StoredDocumentBuilder;
 import com.xgen.mongot.index.lucene.document.block.EmbeddedDocumentBuilder;
 import com.xgen.mongot.index.lucene.document.builder.DocumentBlockBuilder;
 import com.xgen.mongot.index.lucene.document.builder.DocumentBuilder;
+import com.xgen.mongot.index.lucene.document.context.IndexingPolicyBuilderContext;
 import com.xgen.mongot.index.lucene.document.single.IndexableFieldFactory;
 import com.xgen.mongot.index.lucene.document.single.LuceneSearchIndexDocumentBuilder;
 import com.xgen.mongot.index.lucene.document.single.LuceneVectorIndexDocumentBuilder;
 import com.xgen.mongot.index.lucene.document.single.RootDocumentBuilder;
 import com.xgen.mongot.index.version.IndexCapabilities;
-import com.xgen.mongot.util.FieldPath;
-import com.xgen.mongot.util.bson.Vector;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.lucene.analysis.Analyzer;
@@ -214,15 +212,13 @@ public class DefaultIndexingPolicy {
 
     @Override
     public DocumentBlockBuilder createBuilder(byte[] id) {
-      return createBuilder(id, ImmutableMap.of());
+      return createBuilder(id, IndexingPolicyBuilderContext.builder().build());
     }
 
     @Override
-    public DocumentBlockBuilder createBuilder(
-        byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
-      // Create the root document builder using the raw builder method
+    public DocumentBlockBuilder createBuilder(byte[] id, IndexingPolicyBuilderContext context) {
       LuceneVectorIndexDocumentBuilder rawBuilder =
-          this.rootDocumentIndexingPolicy.createRawBuilder(id, autoEmbeddings);
+          this.rootDocumentIndexingPolicy.createRawBuilder(id, context);
 
       Optional<StoredBuilder> storedBuilder =
           StoredDocumentBuilder.create(this.vectorIndexDefinition.getStoredSource());
@@ -232,14 +228,13 @@ public class DefaultIndexingPolicy {
               storedBuilder, Optional.empty(),
               this.indexCapabilities, this.indexingMetricsUpdater);
 
-      // Wrap it in a VectorEmbeddedDocumentBuilder to handle embedded document blocks
       return com.xgen.mongot.index.lucene.document.block.VectorEmbeddedDocumentBuilder.createRoot(
           rootBuilder,
           this.mapping,
           id,
           this.indexingMetricsUpdater,
           this.indexCapabilities,
-          autoEmbeddings);
+          context.autoEmbeddings());
     }
   }
 
@@ -273,13 +268,12 @@ public class DefaultIndexingPolicy {
 
     @Override
     public DocumentBlockBuilder createBuilder(byte[] id) {
-      return createBuilder(id, ImmutableMap.of());
+      return createBuilder(id, IndexingPolicyBuilderContext.builder().build());
     }
 
     @Override
-    public DocumentBlockBuilder createBuilder(
-        byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
-      LuceneVectorIndexDocumentBuilder builder = createRawBuilder(id, autoEmbeddings);
+    public DocumentBlockBuilder createBuilder(byte[] id, IndexingPolicyBuilderContext context) {
+      LuceneVectorIndexDocumentBuilder builder = createRawBuilder(id, context);
 
       Optional<StoredBuilder> storedBuilder =
           StoredDocumentBuilder.create(this.indexDefinition.getStoredSource());
@@ -299,9 +293,9 @@ public class DefaultIndexingPolicy {
      * builder for embedded document handling.
      */
     LuceneVectorIndexDocumentBuilder createRawBuilder(
-        byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
+        byte[] id, IndexingPolicyBuilderContext context) {
       return LuceneVectorIndexDocumentBuilder.createRoot(
-          id, this.mapping, this.indexCapabilities, this.indexingMetricsUpdater, autoEmbeddings);
+          id, this.mapping, this.indexCapabilities, this.indexingMetricsUpdater, context);
     }
   }
 }

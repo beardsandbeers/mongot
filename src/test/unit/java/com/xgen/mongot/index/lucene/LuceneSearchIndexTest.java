@@ -8,6 +8,7 @@ import static org.mockito.Mockito.spy;
 import com.google.common.util.concurrent.testing.TestingExecutors;
 import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
 import com.xgen.mongot.util.AtomicDirectoryRemover;
@@ -129,7 +130,7 @@ public class LuceneSearchIndexTest {
     var folderPath = temporaryFolder.getRoot().toPath();
 
     var backingStrategy =
-        IndexBackingStrategy.diskBacked(
+        IndexBackingStrategyFactory.diskBacked(
             Mockito.mock(NamedScheduledExecutorService.class),
             LuceneConfigBuilder.builder().dataPath(folderPath).build().refreshInterval(),
             new AtomicDirectoryRemover(TestUtils.getTempFolder().getRoot().toPath()),
@@ -164,7 +165,7 @@ public class LuceneSearchIndexTest {
     doAnswer(answer).when(directoryRemover).deleteDirectory(any());
 
     var backingStrategy =
-        IndexBackingStrategy.diskBacked(
+        IndexBackingStrategyFactory.diskBacked(
             Mockito.mock(NamedScheduledExecutorService.class),
             LuceneConfigBuilder.builder().dataPath(folderPath).build().refreshInterval(),
             directoryRemover,

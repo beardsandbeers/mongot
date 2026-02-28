@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.merge;
 
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;

@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.writer;
 
 import com.google.common.collect.Lists;
 import com.google.common.hash.HashFunction;
@@ -172,7 +172,7 @@ public class MultiLuceneIndexWriter implements LuceneIndexWriter {
     return this.indexWriters.size();
   }
 
-  List<SingleLuceneIndexWriter> getSingleLuceneIndexWriters() {
+  public List<SingleLuceneIndexWriter> getSingleLuceneIndexWriters() {
     return this.indexWriters;
   }
 }

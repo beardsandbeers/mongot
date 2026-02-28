@@ -11,7 +11,9 @@ import com.xgen.mongot.index.analyzer.AnalyzerRegistry;
 import com.xgen.mongot.index.analyzer.definition.AnalyzerDefinition;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
+import com.xgen.mongot.index.lucene.backing.IndexBackingStrategy;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
+import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
 import com.xgen.mongot.index.lucene.synonym.LuceneSynonymRegistry;
 import com.xgen.mongot.index.status.IndexStatus;
@@ -195,7 +197,7 @@ public class LuceneSearchIndex implements SearchIndex {
         indexFormatVersion,
         analyzerRegistry,
         metricsFactory,
-        IndexBackingStrategy.diskBacked(
+        IndexBackingStrategyFactory.diskBacked(
             refreshExecutor,
             config.refreshInterval(),
             directoryRemover,

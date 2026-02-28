@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.lucene;
+package com.xgen.mongot.index.lucene.writer;
 
 import com.xgen.mongot.index.IndexWriter;
 import com.xgen.mongot.index.WriterClosedException;

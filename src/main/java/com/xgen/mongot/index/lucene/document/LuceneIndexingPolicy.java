@@ -1,9 +1,7 @@
 package com.xgen.mongot.index.lucene.document;
 
-import com.google.common.collect.ImmutableMap;
 import com.xgen.mongot.index.lucene.document.builder.DocumentBlockBuilder;
-import com.xgen.mongot.util.FieldPath;
-import com.xgen.mongot.util.bson.Vector;
+import com.xgen.mongot.index.lucene.document.context.IndexingPolicyBuilderContext;
 
 /**
  * Is able to instantiate {@link DocumentBlockBuilder}s given the {@code byte[] id} of a given
@@ -13,8 +11,7 @@ import com.xgen.mongot.util.bson.Vector;
 public interface LuceneIndexingPolicy {
   DocumentBlockBuilder createBuilder(byte[] id);
 
-  default DocumentBlockBuilder createBuilder(
-      byte[] id, ImmutableMap<FieldPath, ImmutableMap<String, Vector>> autoEmbeddings) {
+  default DocumentBlockBuilder createBuilder(byte[] id, IndexingPolicyBuilderContext context) {
     return createBuilder(id);
   }
 }
