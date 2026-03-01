@@ -849,7 +849,9 @@ public class CommunityMongotBootstrapper {
             Optional.of(
                 new HysteresisConfig(
                     DISK_USAGE_PAUSE_REPLICATION_THRESHOLD,
-                    DISK_USAGE_PAUSE_REPLICATION_THRESHOLD)));
+                    DISK_USAGE_PAUSE_REPLICATION_THRESHOLD)),
+            Optional.empty(),
+            Optional.empty());
 
     var replicationConfig = MongoDbReplicationConfig.getDefault();
 

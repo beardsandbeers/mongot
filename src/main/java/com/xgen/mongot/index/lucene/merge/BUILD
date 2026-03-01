@@ -16,6 +16,7 @@ java_library(
     ],
     deps = [
         "//src/main/java/com/xgen/mongot/featureflag",
+        "//src/main/java/com/xgen/mongot/index/lucene/abortable",
         "//src/main/java/com/xgen/mongot/index/lucene/config",
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/metrics",

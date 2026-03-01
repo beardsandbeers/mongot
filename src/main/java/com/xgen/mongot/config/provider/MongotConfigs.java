@@ -86,6 +86,8 @@ public class MongotConfigs implements SanitizableDocumentEncodable {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
             Optional.empty());
 
     var replicationConfig = MongoDbReplicationConfig.getDefault();

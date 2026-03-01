@@ -125,6 +125,16 @@ public class ServerStatusDataExtractorTest {
             LuceneMeterData.SEGMENT_MERGE_TIME_KEY,
             Tags.of(ServerStatusDataExtractor.Scope.LUCENE.getTag()))
         .record(Duration.ofSeconds(5));
+    this.meterRegistry
+        .timer(
+            LuceneMeterData.MERGE_CANCELLATION_TIME_KEY,
+            Tags.of(ServerStatusDataExtractor.Scope.LUCENE.getTag()))
+        .record(Duration.ofMillis(100));
+    this.meterRegistry
+        .counter(
+            LuceneMeterData.NUM_MERGES_ABORTED_KEY,
+            Tags.of(ServerStatusDataExtractor.Scope.LUCENE.getTag()))
+        .increment(2);
 
     var luceneMeterData = new ServerStatusDataExtractor(this.meterRegistry).createLuceneMeterData();
 
@@ -149,6 +159,10 @@ public class ServerStatusDataExtractorTest {
     Assert.assertEquals(
         SerializableTimerBuilder.builder().count(1).totalTime(5.0).max(5.0).mean(5.0).build(),
         luceneMeterData.segmentMerge);
+    Assert.assertEquals(
+        SerializableTimerBuilder.builder().count(1).totalTime(0.1).max(0.1).mean(0.1).build(),
+        luceneMeterData.mergeCancellationTime);
+    Assert.assertEquals(2.0, luceneMeterData.numMergesAborted, 0.0);
     Assert.assertEquals((Integer) 5, this.meterRegistry.gauge("currentlyMergingDocs", 5));
   }
 

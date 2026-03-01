@@ -164,6 +164,8 @@ public class ServerStatusDataExtractor {
     public static final String MERGE_RESULT_SIZE_KEY = "mergeResultSize";
     public static final String MERGED_DOCS_KEY = "mergedDocs";
     public static final String SEGMENT_MERGE_TIME_KEY = "mergeTime";
+    public static final String MERGE_CANCELLATION_TIME_KEY = "mergeCancellationTime";
+    public static final String NUM_MERGES_ABORTED_KEY = "numMergesAborted";
 
     public final double numMerges;
     public final double numSegmentsMerged;
@@ -171,6 +173,8 @@ public class ServerStatusDataExtractor {
     public final SerializableDistributionSummary mergeResultSize;
     public final SerializableDistributionSummary mergedDocs;
     public final SerializableTimer segmentMerge;
+    public final SerializableTimer mergeCancellationTime;
+    public final double numMergesAborted;
 
     @VisibleForTesting
     public LuceneMeterData(
@@ -179,13 +183,17 @@ public class ServerStatusDataExtractor {
         SerializableDistributionSummary mergeSize,
         SerializableDistributionSummary mergeResultSize,
         SerializableDistributionSummary mergedDocs,
-        SerializableTimer segmentMerge) {
+        SerializableTimer segmentMerge,
+        SerializableTimer mergeCancellationTime,
+        double numMergesAborted) {
       this.numMerges = numMerges;
       this.numSegmentsMerged = numSegmentsMerged;
       this.mergeSize = mergeSize;
       this.mergeResultSize = mergeResultSize;
       this.mergedDocs = mergedDocs;
       this.segmentMerge = segmentMerge;
+      this.mergeCancellationTime = mergeCancellationTime;
+      this.numMergesAborted = numMergesAborted;
     }
 
     private static LuceneMeterData create(BaseMeterExtractorBuilder baseMeterExtractorBuilder) {
@@ -216,9 +224,28 @@ public class ServerStatusDataExtractor {
                   .builder()
                   .meterName(SEGMENT_MERGE_TIME_KEY)
                   .getSingleMeter());
+      var mergeCancellationTimer =
+          SerializableTimer.create(
+              baseMeterExtractorBuilder
+                  .builder()
+                  .meterName(MERGE_CANCELLATION_TIME_KEY)
+                  .getSingleMeter());
+      var numMergesAborted =
+          getMeterCount(
+              baseMeterExtractorBuilder
+                  .builder()
+                  .meterName(NUM_MERGES_ABORTED_KEY)
+                  .getSingleMeter());
 
       return new LuceneMeterData(
-          numMerges, numSegmentsMerged, mergeSize, mergeResultSize, mergedDocs, segmentMergeTimer);
+          numMerges,
+          numSegmentsMerged,
+          mergeSize,
+          mergeResultSize,
+          mergedDocs,
+          segmentMergeTimer,
+          mergeCancellationTimer,
+          numMergesAborted);
     }
   }
 

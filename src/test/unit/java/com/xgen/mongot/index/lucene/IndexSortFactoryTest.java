@@ -478,7 +478,7 @@ public class IndexSortFactoryTest {
 
       var mergeScheduler =
           new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-              .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1);
+              .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false);
       mergeScheduler.getIn().setMaxMergesAndThreads(10, 4);
 
       this.indexWriter =

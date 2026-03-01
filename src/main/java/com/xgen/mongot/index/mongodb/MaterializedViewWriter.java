@@ -416,4 +416,10 @@ public class MaterializedViewWriter implements IndexWriter {
       throw new IndexClosedException(message);
     }
   }
+
+  @Override
+  public void cancelMerges() throws IOException {
+    // No-op: MaterializedViewWriter writes to MongoDB, not Lucene, so there are no merges to cancel
+    LOG.debug("cancelMerges() called on MaterializedViewWriter - no action needed");
+  }
 }

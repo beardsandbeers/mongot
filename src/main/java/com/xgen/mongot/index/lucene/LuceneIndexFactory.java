@@ -128,8 +128,20 @@ public class LuceneIndexFactory implements IndexFactory {
       throws IOException {
     var meterRegistry = meterAndFtdcRegistry.meterRegistry();
 
+    long cancelMergeTimeout =
+        config
+            .cancelMergePerThreadTimeoutMs()
+            .orElse(
+                InstrumentedConcurrentMergeScheduler.DEFAULT_CANCEL_MERGE_PER_THREAD_TIMEOUT_MS);
+    long cancelAllMergesTimeout =
+        config
+            .cancelAllMergesPerThreadTimeoutMs()
+            .orElse(
+                InstrumentedConcurrentMergeScheduler
+                    .DEFAULT_CANCEL_ALL_MERGES_PER_THREAD_TIMEOUT_MS);
     InstrumentedConcurrentMergeScheduler mergeScheduler =
-        new InstrumentedConcurrentMergeScheduler(meterRegistry);
+        new InstrumentedConcurrentMergeScheduler(
+            meterRegistry, cancelMergeTimeout, cancelAllMergesTimeout);
     mergeScheduler.setMaxMergesAndThreads(config.numMaxMerges(), config.numMaxMergeThreads());
 
     Gate mergeGate = DiskUtilizationAwareMergePolicy.createMergeGate(config, diskMonitor);
@@ -199,6 +211,21 @@ public class LuceneIndexFactory implements IndexFactory {
     LOG.info("Shutting down.");
     Executors.shutdownOrFail(this.refreshExecutor);
     this.concurrentSearchExecutor.ifPresent(Executors::shutdownOrFail);
+
+    // Cancel all ongoing merges across all indices before closing the scheduler.
+    // This is an optimization to speed up shutdown - if it fails, we log a warning
+    // and continue. The subsequent mergeScheduler.close() will still wait for
+    // merges to complete.
+    // This behavior is controlled by the CANCEL_MERGE feature flag.
+    if (this.featureFlags.isEnabled(Feature.CANCEL_MERGE)) {
+      LOG.info("Cancelling all ongoing merges across all indices for shutdown.");
+      try {
+        this.mergeScheduler.cancelAllMerges();
+      } catch (Exception e) {
+        LOG.warn("Failed to cancel all merges during shutdown, continuing with shutdown anyway", e);
+      }
+    }
+
     Crash.because("failed to close merge scheduler").ifThrows(() -> this.mergeScheduler.close());
     this.metricsFactory.close();
   }

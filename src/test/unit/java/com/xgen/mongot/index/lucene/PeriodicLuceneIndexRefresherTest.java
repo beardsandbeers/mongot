@@ -147,7 +147,7 @@ public class PeriodicLuceneIndexRefresherTest {
         SingleLuceneIndexWriter.createForSearchIndex(
             directory,
             new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-                .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1),
+                .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false),
             new TieredMergePolicy(),
             16D,
             Optional.empty(),

@@ -72,7 +72,8 @@ public enum Feature {
   INDEX_SIZE_QUANTIZATION_METRICS("enableIndexSizeQuantizationMetrics", State.DISABLED),
   LOGGABLE_DOCUMENT_ID("mongotLoggableDocumentId", State.DISABLED),
   CACHE_WARMER("cacheWarmer", State.DISABLED),
-  CONCURRENT_INDEX_PARTITION_SEARCH("enableConcurrentIndexPartitionSearch", State.DISABLED);
+  CONCURRENT_INDEX_PARTITION_SEARCH("enableConcurrentIndexPartitionSearch", State.DISABLED),
+  CANCEL_MERGE("enableCancelMerge", State.DISABLED);
 
   private final String name;
   private final State defaultState;

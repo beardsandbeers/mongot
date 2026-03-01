@@ -2,6 +2,8 @@ package com.xgen.mongot.index.lucene.merge;
 
 import com.google.common.base.Stopwatch;
 import com.google.errorprone.annotations.Var;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
+import com.xgen.mongot.index.lucene.abortable.AbortableDirectory;
 import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.metrics.ServerStatusDataExtractor;
@@ -15,13 +17,17 @@ import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.MergeScheduler;
@@ -96,15 +102,23 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
   static class TaggedMergeSource implements MergeScheduler.MergeSource {
     private final MergeScheduler.MergeSource in;
     private final IndexPartitionIdentifier indexPartitionIdentifier;
+    private final boolean cancelMergeEnabled;
 
     TaggedMergeSource(
-        MergeScheduler.MergeSource in, IndexPartitionIdentifier indexPartitionIdentifier) {
+        MergeScheduler.MergeSource in,
+        IndexPartitionIdentifier indexPartitionIdentifier,
+        boolean cancelMergeEnabled) {
       this.in = in;
       this.indexPartitionIdentifier = indexPartitionIdentifier;
+      this.cancelMergeEnabled = cancelMergeEnabled;
     }
 
     public IndexPartitionIdentifier getIndexPartitionIdentifier() {
       return this.indexPartitionIdentifier;
+    }
+
+    public boolean isCancelMergeEnabled() {
+      return this.cancelMergeEnabled;
     }
 
     @Override
@@ -141,29 +155,75 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
 
     private final InstrumentedConcurrentMergeScheduler in;
     private final IndexPartitionIdentifier indexPartitionIdentifier;
+    private final boolean cancelMergeEnabled;
 
     /** Creates a merge scheduler for a specific index partition. */
     public PerIndexPartitionMergeScheduler(
         InstrumentedConcurrentMergeScheduler in,
-        IndexPartitionIdentifier indexPartitionIdentifier) {
+        IndexPartitionIdentifier indexPartitionIdentifier,
+        boolean cancelMergeEnabled) {
       this.in = in;
       this.indexPartitionIdentifier = indexPartitionIdentifier;
+      this.cancelMergeEnabled = cancelMergeEnabled;
     }
 
     @Override
     public void merge(MergeSource mergeSource, MergeTrigger trigger) throws IOException {
-      var taggedMergeSource = new TaggedMergeSource(mergeSource, this.indexPartitionIdentifier);
+      // Fast-path check if merges have been cancelled for this index or globally.
+      // Note: This check is not atomic with the actual merge scheduling, so a concurrent
+      // cancelMerges() call could still allow a merge to slip through. The authoritative
+      // check happens in getMergeThread() which is synchronized with cancelMerges().
+      if (this.in.isMergeCancelled(this.indexPartitionIdentifier)) {
+        LOG.debug(
+            "Rejecting new merge request for cancelled index: {}, trigger: {}",
+            this.indexPartitionIdentifier,
+            trigger);
+        return;
+      }
+      var taggedMergeSource =
+          new TaggedMergeSource(
+              mergeSource, this.indexPartitionIdentifier, this.cancelMergeEnabled);
       this.in.merge(taggedMergeSource, trigger);
     }
 
     @Override
     public Directory wrapForMerge(MergePolicy.OneMerge merge, Directory in) {
-      return this.in.wrapForMerge(merge, in);
+      // Delegate to the parent scheduler's wrapForMerge which handles AbortableDirectory wrapping
+      // when cancelMergeEnabled is true. We don't wrap again here to avoid double-wrapping.
+      return this.in.wrapForMerge(merge, in, this.cancelMergeEnabled);
     }
 
     @Override
     public void close() throws IOException {
       this.in.close(this.indexPartitionIdentifier);
+    }
+
+    /**
+     * Aborts all running merges for this index partition, then waits for them to complete.
+     *
+     * <p>This method will:
+     *
+     * <ol>
+     *   <li>Block new merges from being scheduled for this index
+     *   <li>Mark all running merges for this index as aborted via {@link
+     *       MergePolicy.OneMerge#setAborted()}
+     *   <li>Wait for running merge threads to detect the abort signal and stop
+     * </ol>
+     *
+     * <p><b>Note on pending merges:</b> Pending merges (those queued in IndexWriter but not yet
+     * started) are not explicitly aborted by this method. However, new merge scheduling is blocked,
+     * so no new merge threads will be started. Pending merges will be discarded when the
+     * IndexWriter is closed.
+     *
+     * <p>Unlike {@link #close()}, this method actively aborts merges rather than just waiting for
+     * them to finish naturally.
+     *
+     * @return true if all merge threads terminated within the timeout, false if some threads are
+     *     still running after the timeout
+     * @throws IOException if there is an error during merge cancellation
+     */
+    public boolean cancelMerges() throws IOException {
+      return this.in.cancelMerges(this.indexPartitionIdentifier);
     }
 
     // We created this method because we cannot easily override the initialize() method
@@ -173,6 +233,23 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
       this.in.setInfoStream(infoStream);
     }
   }
+
+  private static final Logger LOG =
+      LoggerFactory.getLogger(InstrumentedConcurrentMergeScheduler.class);
+
+  /**
+   * Default timeout in milliseconds for waiting on each merge thread to terminate during
+   * cancellation of merges for a single index. If a merge thread does not terminate within
+   * this timeout, a warning is logged and cancellation continues without waiting further.
+   */
+  public static final long DEFAULT_CANCEL_MERGE_PER_THREAD_TIMEOUT_MS = 100_000; // 100 seconds
+
+  /**
+   * Default timeout in milliseconds for waiting on each merge thread to terminate during
+   * global cancellation of all merges (e.g., during shutdown). If a merge thread does not
+   * terminate within this timeout, a warning is logged and cancellation continues.
+   */
+  public static final long DEFAULT_CANCEL_ALL_MERGES_PER_THREAD_TIMEOUT_MS = 50_000; // 50 seconds
 
   private static record SegmentSize(String name, long size) {}
 
@@ -186,24 +263,80 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
   private final DistributionSummary mergeResultSize;
   private final DistributionSummary mergedDocs;
   private final Timer mergeTime;
+  private final Timer mergeCancellationTime;
+  private final Counter numMergesAborted;
   // If our GenerationId is the only reference back to a particular index it is fine to GC.
   private final WeakHashMap<GenerationId, MergeStopwatch> mergeElapsedStopwatches;
+
+  // Configurable timeout for cancelMerges() - per merge thread for a single index
+  private final long cancelMergePerThreadTimeoutMs;
+  // Configurable timeout for cancelAllMerges() - per merge thread during global shutdown
+  private final long cancelAllMergesPerThreadTimeoutMs;
+
+  // Tracks indices that have had their merges cancelled - new merges for these indices will be
+  // rejected. Access must be synchronized on 'this'.
+  @GuardedBy("this")
+  private final Set<IndexPartitionIdentifier> cancelledIndices = new HashSet<>();
+
+  // Global flag to prevent new merges from being scheduled during shutdown.
+  // Once set to true, no new merges will be started for any index.
+  private final AtomicBoolean allMergesCancelled = new AtomicBoolean(false);
 
   // Creates a per index-partition merge scheduler where input 'idx' tags the merge threads that
   // belong to a particular index-partition. The output PerIndexMergeScheduler wraps the running
   // instance of InstrumentedConcurrentMergeScheduler, and only one of its type exists per
   // index-partition.
   public PerIndexPartitionMergeScheduler createForIndexPartition(
-      GenerationId generationId, int indexPartitionId, int numIndexes) {
+      GenerationId generationId, int indexPartitionId, int numIndexes, boolean cancelMergeEnabled) {
     Optional<Integer> optionalIndexPartitionId =
         numIndexes > 1 ? Optional.of(indexPartitionId) : Optional.empty();
     return new PerIndexPartitionMergeScheduler(
-        this, new IndexPartitionIdentifier(generationId, optionalIndexPartitionId));
+        this,
+        new IndexPartitionIdentifier(generationId, optionalIndexPartitionId),
+        cancelMergeEnabled);
   }
 
-  /** Creates a new instrumented merge scheduler backed by the given meter registry. */
+  /**
+   * Creates a new InstrumentedConcurrentMergeScheduler with default timeout values.
+   *
+   * @param meterRegistry the meter registry for metrics
+   */
   public InstrumentedConcurrentMergeScheduler(MeterRegistry meterRegistry) {
+    this(
+        meterRegistry,
+        DEFAULT_CANCEL_MERGE_PER_THREAD_TIMEOUT_MS,
+        DEFAULT_CANCEL_ALL_MERGES_PER_THREAD_TIMEOUT_MS);
+  }
+
+  /**
+   * Creates a new InstrumentedConcurrentMergeScheduler with the specified timeout values.
+   *
+   * @param meterRegistry the meter registry for metrics
+   * @param cancelMergePerThreadTimeoutMs timeout in milliseconds for waiting on each merge thread
+   *     during cancellation of merges for a single index (used by cancelMerges()). Must be
+   *     positive.
+   * @param cancelAllMergesPerThreadTimeoutMs timeout in milliseconds for waiting on each merge
+   *     thread during global cancellation of all merges (used by cancelAllMerges()). Must be
+   *     positive.
+   * @throws IllegalArgumentException if either timeout is not positive
+   */
+  public InstrumentedConcurrentMergeScheduler(
+      MeterRegistry meterRegistry,
+      long cancelMergePerThreadTimeoutMs,
+      long cancelAllMergesPerThreadTimeoutMs) {
     super();
+
+    if (cancelMergePerThreadTimeoutMs <= 0) {
+      throw new IllegalArgumentException(
+          "cancelMergePerThreadTimeoutMs must be positive, got: " + cancelMergePerThreadTimeoutMs);
+    }
+    if (cancelAllMergesPerThreadTimeoutMs <= 0) {
+      throw new IllegalArgumentException(
+          "cancelAllMergesPerThreadTimeoutMs must be positive, got: "
+              + cancelAllMergesPerThreadTimeoutMs);
+    }
+    this.cancelMergePerThreadTimeoutMs = cancelMergePerThreadTimeoutMs;
+    this.cancelAllMergesPerThreadTimeoutMs = cancelAllMergesPerThreadTimeoutMs;
 
     this.metricsFactory = new MetricsFactory("mergeScheduler", meterRegistry);
     var luceneTag = ServerStatusDataExtractor.Scope.LUCENE.getTag();
@@ -223,6 +356,11 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
     this.mergeResultSize =
         this.metricsFactory.summary(
             LuceneMeterData.MERGE_RESULT_SIZE_KEY, Tags.of(luceneTag), 0.5, 0.75, 0.9, 0.99);
+    this.mergeCancellationTime =
+        this.metricsFactory.timer(LuceneMeterData.MERGE_CANCELLATION_TIME_KEY, Tags.of(luceneTag));
+    this.numMergesAborted =
+        this.metricsFactory.counter(
+            LuceneMeterData.NUM_MERGES_ABORTED_KEY, Tags.of(luceneTag));
     this.mergeElapsedStopwatches = new WeakHashMap<>();
   }
 
@@ -230,6 +368,23 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
   // initialize the wrapped per index InstrumentedConcurrentMergeScheduler
   public void setInfoStream(InfoStream infoStream) {
     this.infoStream = infoStream;
+  }
+
+  /**
+   * Checks if merges have been cancelled for the specified index partition or globally.
+   *
+   * @param indexPartitionIdentifier the identifier of the index partition to check
+   * @return true if merges have been cancelled for this index or globally, false otherwise
+   */
+  boolean isMergeCancelled(IndexPartitionIdentifier indexPartitionIdentifier) {
+    // Check global cancellation first (fast path using atomic)
+    if (this.allMergesCancelled.get()) {
+      return true;
+    }
+    // Check per-index cancellation
+    synchronized (this) {
+      return this.cancelledIndices.contains(indexPartitionIdentifier);
+    }
   }
 
   /**
@@ -271,11 +426,298 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
         }
       }
     } finally {
+      // Clean up the cancelled index entry to prevent unbounded growth of the set
+      // during repeated index close/delete cycles
+      synchronized (this) {
+        this.cancelledIndices.remove(indexPartitionIdentifier);
+      }
       // finally, restore interrupt status:
       if (interrupted) {
         Thread.currentThread().interrupt();
       }
     }
+  }
+
+  /** Result of a merge cancellation operation. */
+  private record CancelMergesResult(
+      int numMergesAborted,
+      List<InstrumentedMergeThread> terminatedThreads,
+      List<InstrumentedMergeThread> timedOutThreads,
+      boolean interrupted) {
+
+    boolean allMergesTerminated() {
+      return this.timedOutThreads.isEmpty();
+    }
+  }
+
+  /**
+   * Core implementation for cancelling merges that match the given predicate.
+   *
+   * <p>This method:
+   *
+   * <ol>
+   *   <li>Marks all running merges matching the predicate as aborted
+   *   <li>Collects threads to wait for
+   *   <li>Waits for threads to terminate with the specified timeout
+   * </ol>
+   *
+   * @param threadPredicate predicate to filter which merge threads to cancel
+   * @param perThreadTimeoutMs timeout in milliseconds to wait for each thread
+   * @return result containing counts and lists of terminated/timed-out threads
+   */
+  private CancelMergesResult cancelMergesMatching(
+      Predicate<InstrumentedMergeThread> threadPredicate, long perThreadTimeoutMs) {
+    @Var int numMergesAborted = 0;
+    @Var boolean interrupted = false;
+
+    // Step 1: Mark running merges as aborted and collect threads to wait for.
+    // Safety: The cast to InstrumentedMergeThread is safe because getMergeThread() is
+    // overridden to always return InstrumentedMergeThread instances.
+    List<MergeThread> threadsToWait = new ArrayList<>();
+    synchronized (this) {
+      for (MergeThread t : this.mergeThreads) {
+        if (t.isAlive()) {
+          InstrumentedMergeThread imt = (InstrumentedMergeThread) t;
+          if (threadPredicate.test(imt)) {
+            imt.merge.setAborted();
+            numMergesAborted++;
+            LOG.info(
+                "Marked merge as aborted for index: {}, segments: {}",
+                imt.getIndexPartitionIdentifier(),
+                imt.merge.segments);
+            // Collect thread for waiting, but skip if it's the current thread to avoid deadlock
+            if (t != Thread.currentThread()) {
+              threadsToWait.add(t);
+            }
+          }
+        }
+      }
+    }
+
+    // Step 2: Wait for all threads to complete.
+    // The merge threads will detect the abort signal and stop at the next checkpoint.
+    // Note: joins are sequential, so worst-case total wait time is
+    // threadsToWait.size() * perThreadTimeoutMs. However, threads that
+    // terminate quickly will return from join() immediately, and all threads are
+    // processing the abort signal concurrently.
+    List<InstrumentedMergeThread> terminatedThreads = new ArrayList<>();
+    List<InstrumentedMergeThread> timedOutThreads = new ArrayList<>();
+    for (MergeThread t : threadsToWait) {
+      try {
+        t.join(perThreadTimeoutMs);
+      } catch (InterruptedException ie) {
+        // Record that we were interrupted, but still check if the thread is alive below
+        interrupted = true;
+      }
+      // Always check if thread is still alive after join (whether it completed, timed out,
+      // or was interrupted). This ensures we don't incorrectly treat still-running threads
+      // as terminated, which would cause stopwatches to be cleared prematurely.
+      InstrumentedMergeThread imt = (InstrumentedMergeThread) t;
+      if (t.isAlive()) {
+        timedOutThreads.add(imt);
+        LOG.warn(
+            "Merge thread {} did not terminate within {} ms timeout for index: {}, "
+                + "continuing without waiting further",
+            t.getName(),
+            perThreadTimeoutMs,
+            imt.getIndexPartitionIdentifier());
+      } else {
+        terminatedThreads.add(imt);
+      }
+    }
+
+    return new CancelMergesResult(
+        numMergesAborted, terminatedThreads, timedOutThreads, interrupted);
+  }
+
+  /**
+   * Aborts all running merges for the specified index partition, then waits for them to complete.
+   *
+   * <p>This method will:
+   *
+   * <ol>
+   *   <li>Block new merges from being scheduled for this index
+   *   <li>Mark all running merges for this index as aborted via {@link
+   *       MergePolicy.OneMerge#setAborted()}
+   *   <li>Wait for running merge threads to detect the abort signal and stop
+   * </ol>
+   *
+   * <p><b>Note on pending merges:</b> Pending merges (those queued in IndexWriter but not yet
+   * started) are not explicitly aborted by this method. However, new merge scheduling is blocked,
+   * so no new merge threads will be started. Pending merges will be discarded when the IndexWriter
+   * is closed.
+   *
+   * <p>This is similar to {@link ConcurrentMergeScheduler#close()} but only affects merges for the
+   * specified index partition, allowing other indices to continue merging.
+   *
+   * @param indexPartitionIdentifier the identifier of the index partition whose merges should be
+   *     cancelled
+   * @return true if all merge threads terminated within the timeout, false if some threads are
+   *     still running after the timeout
+   */
+  public boolean cancelMerges(IndexPartitionIdentifier indexPartitionIdentifier) {
+    Stopwatch cancellationStopwatch = Stopwatch.createStarted();
+
+    LOG.info("Starting merge cancellation for index: {}", indexPartitionIdentifier);
+
+    // Block new merges from being scheduled for this index
+    synchronized (this) {
+      this.cancelledIndices.add(indexPartitionIdentifier);
+    }
+    LOG.info("Blocked new merge scheduling for index: {}", indexPartitionIdentifier);
+
+    // Cancel merges matching this index partition
+    CancelMergesResult result =
+        cancelMergesMatching(
+            imt -> imt.getIndexPartitionIdentifier().equals(indexPartitionIdentifier),
+            this.cancelMergePerThreadTimeoutMs);
+
+    try {
+      // Step 3: Only clear stopwatch entries for merges whose threads have actually terminated.
+      // If some threads timed out, their entries remain in the stopwatch so that
+      // mergeElapsedSeconds continues to reflect the stuck merge, making it visible in monitoring.
+      // Note: The stopwatch is keyed by GenerationId (shared across partitions), so we must only
+      // remove entries for the specific merges that were cancelled for this partition, not clear
+      // the entire stopwatch which would wipe entries for other partitions of the same index.
+      MergeStopwatch stopwatch = getMergeStopwatch(indexPartitionIdentifier);
+      synchronized (stopwatch) {
+        for (InstrumentedMergeThread imt : result.terminatedThreads()) {
+          stopwatch.runningMerges.remove(imt.merge);
+        }
+      }
+      if (result.allMergesTerminated()) {
+        LOG.info(
+            "Cleared {} merge stopwatch entries for index: {}",
+            result.terminatedThreads().size(),
+            indexPartitionIdentifier);
+      } else {
+        LOG.warn(
+            "Merge cancellation timed out for index: {}, {} merge thread(s) still running. "
+                + "mergeElapsedSeconds will continue to reflect stuck merges.",
+            indexPartitionIdentifier,
+            result.timedOutThreads().size());
+      }
+    } finally {
+      cancellationStopwatch.stop();
+      long elapsedMs = cancellationStopwatch.elapsed(TimeUnit.MILLISECONDS);
+
+      // Record metrics
+      this.mergeCancellationTime.record(elapsedMs, TimeUnit.MILLISECONDS);
+      this.numMergesAborted.increment(result.numMergesAborted());
+
+      LOG.info(
+          "Completed merge cancellation for index: {}, aborted {} merge(s), elapsed time: {} ms",
+          indexPartitionIdentifier,
+          result.numMergesAborted(),
+          elapsedMs);
+
+      // finally, restore interrupt status:
+      if (result.interrupted()) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    return result.allMergesTerminated();
+  }
+
+  /**
+   * Aborts all running merges across ALL indices, then waits for them to complete.
+   *
+   * <p>This method is intended for global shutdown scenarios where all merge activity should be
+   * terminated immediately. Unlike {@link #cancelMerges(IndexPartitionIdentifier)}, this method
+   * affects merges from all indices on the node.
+   *
+   * <p>This method will:
+   *
+   * <ol>
+   *   <li>Block new merges from being scheduled for all indices
+   *   <li>Mark all running merges across all indices as aborted via {@link
+   *       MergePolicy.OneMerge#setAborted()}
+   *   <li>Wait for all merge threads to detect the abort signal and stop
+   * </ol>
+   *
+   * <p>This should be called during mongot shutdown to ensure all merge activity is terminated
+   * before the process exits.
+   */
+  public void cancelAllMerges() {
+    Stopwatch cancellationStopwatch = Stopwatch.createStarted();
+
+    LOG.info("Starting global merge cancellation for all indices");
+
+    // Block new merges globally
+    this.allMergesCancelled.set(true);
+    LOG.info("Blocked new merge scheduling globally for all indices");
+
+    // Cancel all merges (predicate always returns true)
+    CancelMergesResult result =
+        cancelMergesMatching(imt -> true, this.cancelAllMergesPerThreadTimeoutMs);
+
+    try {
+      // Step 3: Only clear stopwatch entries for merges whose threads have actually terminated.
+      // If some threads timed out, their entries remain in the stopwatch so that
+      // mergeElapsedSeconds continues to reflect the stuck merge, making it visible in monitoring.
+      if (result.allMergesTerminated()) {
+        // All threads terminated - safe to clear all stopwatches
+        synchronized (this.mergeElapsedStopwatches) {
+          for (MergeStopwatch stopwatch : this.mergeElapsedStopwatches.values()) {
+            synchronized (stopwatch) {
+              stopwatch.runningMerges.clear();
+            }
+          }
+        }
+        LOG.info("Cleared all merge stopwatches for all indices");
+      } else {
+        // Some threads are still alive - don't clear their stopwatch entries
+        // The still-running merges will remain in the stopwatch for monitoring
+        LOG.warn(
+            "Global merge cancellation timed out, {} merge thread(s) still running. "
+                + "mergeElapsedSeconds will continue to reflect stuck merges.",
+            result.timedOutThreads().size());
+      }
+    } finally {
+      cancellationStopwatch.stop();
+      long elapsedMs = cancellationStopwatch.elapsed(TimeUnit.MILLISECONDS);
+
+      // Record metrics
+      this.mergeCancellationTime.record(elapsedMs, TimeUnit.MILLISECONDS);
+      this.numMergesAborted.increment(result.numMergesAborted());
+
+      LOG.info(
+          "Completed global merge cancellation, aborted {} merge(s), elapsed time: {} ms",
+          result.numMergesAborted(),
+          elapsedMs);
+
+      // finally, restore interrupt status:
+      if (result.interrupted()) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  /**
+   * Wraps the directory for merge operations, optionally with AbortableDirectory for IO-level
+   * interruption support.
+   *
+   * @param merge the merge operation
+   * @param in the directory to wrap
+   * @param cancelMergeEnabled whether to wrap with AbortableDirectory for cancellation support
+   * @return the wrapped directory
+   */
+  public Directory wrapForMerge(
+      MergePolicy.OneMerge merge, Directory in, boolean cancelMergeEnabled) {
+    if (cancelMergeEnabled) {
+      // Wrap the directory with AbortableDirectory to enable IO-level interruption
+      // This allows merges to be aborted quickly even during long-running operations
+      // like HNSW graph building, which may not have frequent checkpoints
+      return new AbortableDirectory(in, merge);
+    }
+    return in;
+  }
+
+  @Override
+  public Directory wrapForMerge(MergePolicy.OneMerge merge, Directory in) {
+    // Default behavior: no wrapping (feature flag disabled by default)
+    // The PerIndexPartitionMergeScheduler will call wrapForMerge with the cancelMergeEnabled flag
+    return in;
   }
 
   @Override
@@ -285,8 +727,23 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
     var taggedMergeSource = (TaggedMergeSource) mergeSource;
     IndexPartitionIdentifier indexPartitionIdentifier =
         taggedMergeSource.getIndexPartitionIdentifier();
+
+    // Check if merges have been cancelled for this index. This check is synchronized (via this
+    // method's synchronized modifier) with cancelMerges() which also synchronizes on 'this'.
+    // This prevents the race condition where a merge request slips through after cancelMerges()
+    // is called but before the merge thread is created.
+    if (this.cancelledIndices.contains(indexPartitionIdentifier) || this.allMergesCancelled.get()) {
+      // Mark the merge as aborted immediately so it will be skipped when the thread runs
+      merge.setAborted();
+      LOG.debug(
+          "Marking merge as aborted during thread creation for cancelled index: {}, segments: {}",
+          indexPartitionIdentifier,
+          merge.segments);
+    }
+
     ConcurrentMergeScheduler.MergeThread thread =
-        new InstrumentedMergeThread(mergeSource, merge, indexPartitionIdentifier);
+        new InstrumentedMergeThread(
+            mergeSource, merge, indexPartitionIdentifier);
     thread.setDaemon(true);
     thread.setName(threadNamePrefix + " " + indexPartitionIdentifier.toString());
     return thread;
@@ -356,7 +813,6 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
     @Override
     @SuppressWarnings("DoNotCall") // allow calling Thread.run()
     public void run() {
-
       // Log input segments before merge
       List<SegmentSize> inputSegments = new ArrayList<>();
       for (SegmentCommitInfo info : this.merge.segments) {
@@ -390,7 +846,7 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
       } catch (Exception e) {
         LOG.atWarn()
             .addKeyValue("indexId", this.indexPartitionIdentifier.getGenerationId().indexId)
-            .addKeyValue("exceptionMessage", e.getMessage())
+            .setCause(e)
             .log("Exception during merge");
       } finally {
         stopwatch.stopOneMerge(this.merge);

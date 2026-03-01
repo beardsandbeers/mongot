@@ -98,7 +98,9 @@ public record LuceneConfig(
     Optional<Double> deletesPctAllowed,
     Optional<Double> forceMergeDeletesPctAllowed,
     Optional<Double> floorSegmentMB,
-    Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig)
+    Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig,
+    Optional<Long> cancelMergePerThreadTimeoutMs,
+    Optional<Long> cancelAllMergesPerThreadTimeoutMs)
     implements DocumentEncodable {
   private static class Fields {
     private static final Field.Required<Integer> REFRESH_INTERVAL =
@@ -169,6 +171,20 @@ public record LuceneConfig(
                 .disallowUnknownFields()
                 .optional()
                 .noDefault();
+
+    private static final Field.Optional<Long> CANCEL_MERGE_PER_THREAD_TIMEOUT_MS =
+        Field.builder("cancelMergePerThreadTimeoutMs")
+            .longField()
+            .mustBePositive()
+            .optional()
+            .noDefault();
+
+    private static final Field.Optional<Long> CANCEL_ALL_MERGES_PER_THREAD_TIMEOUT_MS =
+        Field.builder("cancelAllMergesPerThreadTimeoutMs")
+            .longField()
+            .mustBePositive()
+            .optional()
+            .noDefault();
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(LuceneConfig.class);
@@ -224,7 +240,9 @@ public record LuceneConfig(
       Optional<Double> deletesPctAllowed,
       Optional<Double> forceMergeDeletesPctAllowed,
       Optional<Double> floorSegmentMB,
-      Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig) {
+      Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig,
+      Optional<Long> cancelMergePerThreadTimeoutMs,
+      Optional<Long> cancelAllMergesPerThreadTimeoutMs) {
     return create(
         Runtime.INSTANCE,
         dataPath,
@@ -253,7 +271,9 @@ public record LuceneConfig(
         deletesPctAllowed,
         forceMergeDeletesPctAllowed,
         floorSegmentMB,
-        mergePolicyDiskUtilizationConfig);
+        mergePolicyDiskUtilizationConfig,
+        cancelMergePerThreadTimeoutMs,
+        cancelAllMergesPerThreadTimeoutMs);
   }
 
   @VisibleForTesting
@@ -285,7 +305,9 @@ public record LuceneConfig(
       Optional<Double> deletesPctAllowed,
       Optional<Double> forceMergeDeletesPctAllowed,
       Optional<Double> floorSegmentMB,
-      Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig) {
+      Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig,
+      Optional<Long> cancelMergePerThreadTimeoutMs,
+      Optional<Long> cancelAllMergesPerThreadTimeoutMs) {
 
     Duration refreshInterval = optionalRefreshInterval.orElse(DEFAULT_REFRESH_INTERVAL);
     checkArg(
@@ -377,7 +399,9 @@ public record LuceneConfig(
         deletesPctAllowed,
         forceMergeDeletesPctAllowed,
         floorSegmentMB,
-        mergePolicyDiskUtilizationConfig);
+        mergePolicyDiskUtilizationConfig,
+        cancelMergePerThreadTimeoutMs,
+        cancelAllMergesPerThreadTimeoutMs);
   }
 
   @Override
@@ -409,6 +433,10 @@ public record LuceneConfig(
         .field(Fields.FORCE_MERGE_DELETES_PCT_ALLOWED, this.forceMergeDeletesPctAllowed)
         .field(Fields.FLOOR_SEGMENT_MB, this.floorSegmentMB)
         .field(Fields.MERGE_POLICY_DISK_UTILIZATION_CONFIG, this.mergePolicyDiskUtilizationConfig)
+        .field(Fields.CANCEL_MERGE_PER_THREAD_TIMEOUT_MS, this.cancelMergePerThreadTimeoutMs)
+        .field(
+            Fields.CANCEL_ALL_MERGES_PER_THREAD_TIMEOUT_MS,
+            this.cancelAllMergesPerThreadTimeoutMs)
         .build();
   }
 

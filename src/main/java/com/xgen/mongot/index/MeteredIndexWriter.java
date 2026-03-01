@@ -62,6 +62,11 @@ public class MeteredIndexWriter implements IndexWriter {
     return this.indexWriter.getNumDocs();
   }
 
+  @Override
+  public void cancelMerges() throws IOException {
+    this.indexWriter.cancelMerges();
+  }
+
   @VisibleForTesting
   public IndexWriter getWrapped() {
     return this.indexWriter;

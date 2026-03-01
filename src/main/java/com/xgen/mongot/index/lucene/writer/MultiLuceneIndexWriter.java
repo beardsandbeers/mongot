@@ -172,6 +172,12 @@ public class MultiLuceneIndexWriter implements LuceneIndexWriter {
     return this.indexWriters.size();
   }
 
+  @Override
+  public void cancelMerges() throws IOException {
+    // Cancel merges on all underlying index writers
+    CheckedStream.from(this.indexWriters).forEachChecked(IndexWriter::cancelMerges);
+  }
+
   public List<SingleLuceneIndexWriter> getSingleLuceneIndexWriters() {
     return this.indexWriters;
   }

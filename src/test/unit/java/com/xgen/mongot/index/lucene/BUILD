@@ -35,6 +35,7 @@ mongot_java_unit_test_suite(
         "//src/main/java/com/xgen/mongot/index/definition",
         "//src/main/java/com/xgen/mongot/index/ingestion",
         "//src/main/java/com/xgen/mongot/index/lucene",
+        "//src/main/java/com/xgen/mongot/index/lucene/abortable",
         "//src/main/java/com/xgen/mongot/index/lucene/codec",
         "//src/main/java/com/xgen/mongot/index/lucene/commit",
         "//src/main/java/com/xgen/mongot/index/lucene/config",

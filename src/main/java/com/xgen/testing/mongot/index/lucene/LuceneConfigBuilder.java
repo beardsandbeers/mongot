@@ -40,8 +40,9 @@ public class LuceneConfigBuilder {
   private Optional<Double> deletesPctAllowed = Optional.empty();
   private Optional<Double> forceMergeDeletesPctAllowed = Optional.empty();
   private Optional<Double> floorSegmentMB = Optional.empty();
-  private Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig =
-      Optional.empty();
+  private Optional<HysteresisConfig> mergePolicyDiskUtilizationConfig = Optional.empty();
+  private Optional<Long> cancelMergePerThreadTimeoutMs = Optional.empty();
+  private Optional<Long> cancelAllMergesPerThreadTimeoutMs = Optional.empty();
 
   public static LuceneConfigBuilder builder() {
     return new LuceneConfigBuilder();
@@ -197,6 +198,17 @@ public class LuceneConfigBuilder {
     return this;
   }
 
+  public LuceneConfigBuilder cancelMergePerThreadTimeoutMs(long cancelMergePerThreadTimeoutMs) {
+    this.cancelMergePerThreadTimeoutMs = Optional.of(cancelMergePerThreadTimeoutMs);
+    return this;
+  }
+
+  public LuceneConfigBuilder cancelAllMergesPerThreadTimeoutMs(
+      long cancelAllMergesPerThreadTimeoutMs) {
+    this.cancelAllMergesPerThreadTimeoutMs = Optional.of(cancelAllMergesPerThreadTimeoutMs);
+    return this;
+  }
+
   public LuceneConfig build() {
     Check.isPresent(this.dataPath, "dataPath");
 
@@ -227,6 +239,8 @@ public class LuceneConfigBuilder {
         this.deletesPctAllowed,
         this.forceMergeDeletesPctAllowed,
         this.floorSegmentMB,
-        this.mergePolicyDiskUtilizationConfig);
+        this.mergePolicyDiskUtilizationConfig,
+        this.cancelMergePerThreadTimeoutMs,
+        this.cancelAllMergesPerThreadTimeoutMs);
   }
 }

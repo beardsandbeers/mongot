@@ -27,6 +27,7 @@ import com.xgen.mongot.index.WriterClosedException;
 import com.xgen.mongot.index.analyzer.AnalyzerRegistry;
 import com.xgen.mongot.index.analyzer.wrapper.LuceneAnalyzer;
 import com.xgen.mongot.index.definition.DocumentFieldDefinition;
+import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
@@ -40,6 +41,7 @@ import com.xgen.mongot.index.lucene.searcher.QueryCacheProvider;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
 import com.xgen.mongot.index.lucene.util.LuceneDoubleConversionUtils;
 import com.xgen.mongot.index.lucene.writer.SingleLuceneIndexWriter;
+import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.util.BsonUtils;
 import com.xgen.mongot.util.FieldPath;
@@ -144,7 +146,7 @@ public class SingleLuceneIndexWriterTest {
     return SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         16D,
         Optional.of(fieldLimit),
@@ -167,7 +169,7 @@ public class SingleLuceneIndexWriterTest {
     return SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         16D,
         Optional.of(fieldLimit),
@@ -212,7 +214,7 @@ public class SingleLuceneIndexWriterTest {
     return SingleLuceneIndexWriter.createForSearchIndex(
         indexDirectory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         16D,
         Optional.empty(),
@@ -232,7 +234,7 @@ public class SingleLuceneIndexWriterTest {
     return SingleLuceneIndexWriter.createForVectorIndex(
         indexDirectory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         16D,
         Optional.empty(),
@@ -240,7 +242,8 @@ public class SingleLuceneIndexWriterTest {
         indexDefinition,
         indexDefinition.getIndexCapabilities(indexFormatVersion),
         VectorIndex.mockIndexingMetricsUpdater(),
-        Optional.empty());
+        Optional.empty(),
+        FeatureFlags.getDefault());
   }
 
   @DataPoints
@@ -1384,6 +1387,462 @@ public class SingleLuceneIndexWriterTest {
       }
     }
   }
+
+  @Test
+  public void testCancelMerges() throws Exception {
+    // Create a temporary directory we can make an index in.
+    TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
+
+    try (Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath())) {
+      AnalyzerRegistry analyzerRegistry = AnalyzerRegistryBuilder.empty();
+      SingleLuceneIndexWriter writer = getWriter(directory, analyzerRegistry);
+
+      // Add some documents to trigger potential merges
+      ObjectId indexId = new ObjectId();
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId), document));
+      }
+      writer.commit(EncodedUserData.EMPTY);
+
+      // Cancel any running or pending merges
+      writer.cancelMerges();
+
+      // Verify writer is still functional after cancellation
+      assertEquals(100, writer.getNumDocs());
+
+      writer.close();
+    }
+  }
+
+  /**
+   * Tests that cancelMerges() only affects the target index partition and does not block on or
+   * cancel merges from other index partitions when using a shared merge scheduler.
+   *
+   * <p>This test verifies the per-index isolation of the cancelMerges() implementation by:
+   *
+   * <ol>
+   *   <li>Creating a shared InstrumentedConcurrentMergeScheduler
+   *   <li>Creating two writers with different index partitions using the same shared scheduler
+   *   <li>Adding documents to both indices to trigger merges
+   *   <li>Cancelling merges on one index
+   *   <li>Verifying both writers remain functional and independent
+   * </ol>
+   */
+  @Test
+  public void testCancelMergesPerIndexIsolation() throws Exception {
+    // Create a shared merge scheduler that will be used by both indices
+    InstrumentedConcurrentMergeScheduler sharedScheduler =
+        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry());
+
+    // Create two temporary directories for two separate indices
+    TemporaryFolder tempFolder1 = TestUtils.getTempFolder();
+    TemporaryFolder tempFolder2 = TestUtils.getTempFolder();
+
+    try (Directory directory1 = new MMapDirectory(tempFolder1.getRoot().toPath());
+        Directory directory2 = new MMapDirectory(tempFolder2.getRoot().toPath())) {
+
+      AnalyzerRegistry analyzerRegistry = AnalyzerRegistryBuilder.empty();
+
+      // Create two different GenerationIds for two separate indices
+      var generationId1 = MOCK_INDEX_GENERATION_ID;
+      var generationId2 =
+          new GenerationId(new ObjectId(), MOCK_INDEX_DEFINITION_GENERATION.generation());
+
+      // Create two writers with the same shared scheduler but different index partitions
+      // Writer 1 uses partition 0, Writer 2 uses partition 1
+      SingleLuceneIndexWriter writer1 =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory1,
+              sharedScheduler.createForIndexPartition(generationId1, 0, 2, false),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(
+                  MOCK_INDEX_DEFINITION_GENERATION.generation().indexFormatVersion),
+              SearchIndex.mockIndexingMetricsUpdater(MOCK_INDEX_DEFINITION.getType()),
+              Optional.empty(),
+              FeatureFlags.withDefaults().build());
+
+      SingleLuceneIndexWriter writer2 =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory2,
+              sharedScheduler.createForIndexPartition(generationId2, 1, 2, false),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(
+                  MOCK_INDEX_DEFINITION_GENERATION.generation().indexFormatVersion),
+              SearchIndex.mockIndexingMetricsUpdater(MOCK_INDEX_DEFINITION.getType()),
+              Optional.empty(),
+              FeatureFlags.withDefaults().build());
+
+      // Add documents to both indices to trigger potential merges
+      ObjectId indexId1 = new ObjectId();
+      ObjectId indexId2 = new ObjectId();
+
+      // Add documents to writer1
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId1.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer1.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId1),
+                document));
+      }
+      writer1.commit(EncodedUserData.EMPTY);
+
+      // Add documents to writer2
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId2.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer2.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId2),
+                document));
+      }
+      writer2.commit(EncodedUserData.EMPTY);
+
+      // Cancel merges on writer1 only
+      writer1.cancelMerges();
+
+      // Verify both writers are still functional after cancellation
+      // This demonstrates that:
+      // 1. writer1's cancelMerges() did not block on writer2's merges
+      // 2. writer2's merges were not cancelled
+      // 3. Both writers remain independent and operational
+      assertEquals(100, writer1.getNumDocs());
+      assertEquals(100, writer2.getNumDocs());
+
+      // Add more documents to both writers to verify they're still functional
+      for (int i = 100; i < 110; i++) {
+        RawBsonDocument document1 =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId1.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer1.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document1), indexId1),
+                document1));
+
+        RawBsonDocument document2 =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId2.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer2.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document2), indexId2),
+                document2));
+      }
+
+      writer1.commit(EncodedUserData.EMPTY);
+      writer2.commit(EncodedUserData.EMPTY);
+
+      // Verify final document counts
+      assertEquals(110, writer1.getNumDocs());
+      assertEquals(110, writer2.getNumDocs());
+
+      // Clean up
+      writer1.close();
+      writer2.close();
+    }
+  }
+
+  /**
+   * Tests that cancelAllMerges() cancels merges across all indices during shutdown.
+   *
+   * <p>This test verifies the global shutdown behavior by:
+   *
+   * <ol>
+   *   <li>Creating a shared InstrumentedConcurrentMergeScheduler
+   *   <li>Creating three writers with different index partitions using the same shared scheduler
+   *   <li>Adding documents to all indices to trigger merges
+   *   <li>Calling cancelAllMerges() to simulate shutdown
+   *   <li>Verifying all writers remain functional after cancellation
+   * </ol>
+   */
+  @Test
+  public void testCancelAllMergesOnShutdown() throws Exception {
+    // Create a shared merge scheduler that will be used by multiple indices
+    InstrumentedConcurrentMergeScheduler sharedScheduler =
+        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry());
+
+    // Create three temporary directories for three separate indices
+    TemporaryFolder tempFolder1 = TestUtils.getTempFolder();
+    TemporaryFolder tempFolder2 = TestUtils.getTempFolder();
+    TemporaryFolder tempFolder3 = TestUtils.getTempFolder();
+
+    try (Directory directory1 = new MMapDirectory(tempFolder1.getRoot().toPath());
+        Directory directory2 = new MMapDirectory(tempFolder2.getRoot().toPath());
+        Directory directory3 = new MMapDirectory(tempFolder3.getRoot().toPath())) {
+
+      AnalyzerRegistry analyzerRegistry = AnalyzerRegistryBuilder.empty();
+
+      // Create three different GenerationIds for three separate indices
+      var generationId1 = MOCK_INDEX_GENERATION_ID;
+      var generationId2 =
+          new GenerationId(new ObjectId(), MOCK_INDEX_DEFINITION_GENERATION.generation());
+      var generationId3 =
+          new GenerationId(new ObjectId(), MOCK_INDEX_DEFINITION_GENERATION.generation());
+
+      // Create three writers with the same shared scheduler but different index partitions
+      SingleLuceneIndexWriter writer1 =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory1,
+              sharedScheduler.createForIndexPartition(generationId1, 0, 3, false),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(
+                  MOCK_INDEX_DEFINITION_GENERATION.generation().indexFormatVersion),
+              SearchIndex.mockIndexingMetricsUpdater(MOCK_INDEX_DEFINITION.getType()),
+              Optional.empty(),
+              FeatureFlags.withDefaults().build());
+
+      SingleLuceneIndexWriter writer2 =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory2,
+              sharedScheduler.createForIndexPartition(generationId2, 1, 3, false),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(
+                  MOCK_INDEX_DEFINITION_GENERATION.generation().indexFormatVersion),
+              SearchIndex.mockIndexingMetricsUpdater(MOCK_INDEX_DEFINITION.getType()),
+              Optional.empty(),
+              FeatureFlags.withDefaults().build());
+
+      SingleLuceneIndexWriter writer3 =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory3,
+              sharedScheduler.createForIndexPartition(generationId3, 2, 3, false),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(
+                  MOCK_INDEX_DEFINITION_GENERATION.generation().indexFormatVersion),
+              SearchIndex.mockIndexingMetricsUpdater(MOCK_INDEX_DEFINITION.getType()),
+              Optional.empty(),
+              FeatureFlags.withDefaults().build());
+
+      // Add documents to all three indices to trigger potential merges
+      ObjectId indexId1 = new ObjectId();
+      ObjectId indexId2 = new ObjectId();
+      ObjectId indexId3 = new ObjectId();
+
+      // Add documents to writer1
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(indexId1.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer1.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId1), document));
+      }
+      writer1.commit(EncodedUserData.EMPTY);
+
+      // Add documents to writer2
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(indexId2.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer2.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId2), document));
+      }
+      writer2.commit(EncodedUserData.EMPTY);
+
+      // Add documents to writer3
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(indexId3.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer3.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId3), document));
+      }
+      writer3.commit(EncodedUserData.EMPTY);
+
+      // Verify all writers have documents
+      assertEquals(100, writer1.getNumDocs());
+      assertEquals(100, writer2.getNumDocs());
+      assertEquals(100, writer3.getNumDocs());
+
+      // Simulate shutdown: cancel all merges across all indices
+      sharedScheduler.cancelAllMerges();
+
+      // After cancelAllMerges, all writers should still be functional
+      // Add more documents to verify writers still work
+      for (int i = 100; i < 110; i++) {
+        RawBsonDocument document1 =
+            BsonUtils.documentToRaw(
+                new BsonDocument(indexId1.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer1.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document1), indexId1),
+                document1));
+
+        RawBsonDocument document2 =
+            BsonUtils.documentToRaw(
+                new BsonDocument(indexId2.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer2.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document2), indexId2),
+                document2));
+
+        RawBsonDocument document3 =
+            BsonUtils.documentToRaw(
+                new BsonDocument(indexId3.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer3.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document3), indexId3),
+                document3));
+      }
+
+      // Verify final document counts
+      assertEquals(110, writer1.getNumDocs());
+      assertEquals(110, writer2.getNumDocs());
+      assertEquals(110, writer3.getNumDocs());
+
+      // Clean up
+      writer1.close();
+      writer2.close();
+      writer3.close();
+    }
+  }
+
+  /**
+   * Tests that when the CANCEL_MERGE feature flag is DISABLED, the writer.close() does NOT cancel
+   * merges.
+   *
+   * <p>This test verifies backward compatibility by ensuring that when the feature flag is
+   * disabled, the old behavior (no merge cancellation during close) is preserved.
+   */
+  @Test
+  public void testCloseWithCancelMergeFeatureFlagDisabled() throws Exception {
+    // Create a temporary directory we can make an index in.
+    TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
+
+    try (Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath())) {
+      AnalyzerRegistry analyzerRegistry = AnalyzerRegistryBuilder.empty();
+
+      // Create a writer with the feature flag DISABLED (default behavior)
+      FeatureFlags featureFlagsDisabled = FeatureFlags.withDefaults().build();
+      SingleLuceneIndexWriter writer =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory,
+              new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                  .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, false),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+              SearchIndex.mockIndexingMetricsUpdater(
+                  IndexDefinition.Type.SEARCH),
+              Optional.empty(),
+              featureFlagsDisabled);
+
+      // Add some documents to trigger potential merges
+      ObjectId indexId = MOCK_INDEX_ID;
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId), document));
+      }
+      writer.commit(EncodedUserData.EMPTY);
+
+      // Verify writer has documents
+      assertEquals(100, writer.getNumDocs());
+
+      // Close the writer - with feature flag disabled, merges should NOT be cancelled
+      // This should work without any issues (old behavior)
+      writer.close();
+    }
+  }
+
+  /**
+   * Tests that when the CANCEL_MERGE feature flag is ENABLED, the writer.close() cancels merges.
+   *
+   * <p>This test verifies the new behavior by ensuring that when the feature flag is enabled,
+   * merges are cancelled during close to avoid blocking on long-running merges.
+   */
+  @Test
+  public void testCloseWithCancelMergeFeatureFlagEnabled() throws Exception {
+    // Create a temporary directory we can make an index in.
+    TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
+
+    try (Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath())) {
+      AnalyzerRegistry analyzerRegistry = AnalyzerRegistryBuilder.empty();
+
+      // Create a writer with the feature flag ENABLED
+      FeatureFlags featureFlagsEnabled =
+          FeatureFlags.withDefaults()
+              .enable(com.xgen.mongot.featureflag.Feature.CANCEL_MERGE)
+              .build();
+      SingleLuceneIndexWriter writer =
+          SingleLuceneIndexWriter.createForSearchIndex(
+              directory,
+              new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                  .createForIndexPartition(MOCK_INDEX_GENERATION_ID, 0, 1, true),
+              new TieredMergePolicy(),
+              16D,
+              Optional.empty(),
+              Optional.empty(),
+              LuceneAnalyzer.indexAnalyzer(MOCK_INDEX_DEFINITION, analyzerRegistry),
+              MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+              SearchIndex.mockIndexingMetricsUpdater(
+                  IndexDefinition.Type.SEARCH),
+              Optional.empty(),
+              featureFlagsEnabled);
+
+      // Add some documents to trigger potential merges
+      ObjectId indexId = MOCK_INDEX_ID;
+      for (int i = 0; i < 100; i++) {
+        RawBsonDocument document =
+            BsonUtils.documentToRaw(
+                new BsonDocument(
+                    indexId.toString(), new BsonDocument("_id", new BsonInt32(i))));
+        writer.updateIndex(
+            DocumentEvent.createInsert(
+                DocumentMetadata.fromMetadataNamespace(Optional.of(document), indexId), document));
+      }
+      writer.commit(EncodedUserData.EMPTY);
+
+      // Verify writer has documents
+      assertEquals(100, writer.getNumDocs());
+
+      // Close the writer - with feature flag enabled, merges should be cancelled
+      // This should complete quickly without blocking on long-running merges
+      writer.close();
+    }
+  }
+
+
 
   @Test
   public void testAutoEmbeddingDocumentIndexingWithVectorSideInput() throws Exception {

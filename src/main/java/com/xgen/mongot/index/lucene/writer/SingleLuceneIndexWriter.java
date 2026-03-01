@@ -124,6 +124,8 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
 
   private final IndexMetricsUpdater.IndexingMetricsUpdater indexingMetricsUpdater;
 
+  private final FeatureFlags featureFlags;
+
   // Rate limiter for indexing failure logging to avoid excessive ID decoding and logging overhead
   private static final RateLimiter INDEXING_FAILURE_LOG_RATE_LIMITER =
       RateLimiter.create(1.0 / 60.0); // Allow 1 log per 60 seconds (same as atMostEvery 1 minute)
@@ -135,7 +137,8 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
       Optional<Integer> fieldLimit,
       Optional<Integer> docsLimit,
       IndexCapabilities indexCapabilities,
-      IndexMetricsUpdater.IndexingMetricsUpdater indexingMetricsUpdater) {
+      IndexMetricsUpdater.IndexingMetricsUpdater indexingMetricsUpdater,
+      FeatureFlags featureFlags) {
     HashMap<String, Object> defaultKeyValues = new HashMap<>();
     defaultKeyValues.put("indexId", indexId);
     defaultKeyValues.put("indexFormatVersion", indexCapabilities);
@@ -151,6 +154,7 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
     this.shutdownSharedLock = shutdownLock.readLock();
 
     this.indexingMetricsUpdater = indexingMetricsUpdater;
+    this.featureFlags = featureFlags;
 
     this.closed = false;
   }
@@ -166,7 +170,8 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
       VectorIndexDefinition indexDefinition,
       IndexCapabilities indexCapabilities,
       IndexMetricsUpdater.IndexingMetricsUpdater indexingMetricsUpdater,
-      Optional<IndexDeletionPolicy> indexDeletionPolicy)
+      Optional<IndexDeletionPolicy> indexDeletionPolicy,
+      FeatureFlags featureFlags)
       throws IOException {
 
     Map<FieldPath, VectorFieldSpecification> vectorFields =
@@ -197,7 +202,8 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
             fieldLimit,
             docsLimit,
             indexCapabilities,
-            indexingMetricsUpdater);
+            indexingMetricsUpdater,
+            featureFlags);
 
     writer
         .logger
@@ -267,7 +273,8 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
             fieldLimit,
             docsLimit,
             resolver.indexCapabilities,
-            indexingMetricsUpdater);
+            indexingMetricsUpdater,
+            featureFlags);
 
     writer
         .logger
@@ -370,6 +377,24 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
       }
 
       try {
+        // Cancel running merges and block new merge scheduling before closing to avoid
+        // blocking on long-running merges (e.g., HNSW graph building).
+        // Note: Pending merges are not explicitly aborted; they will be discarded when
+        // the IndexWriter closes. We call cancelMergesInternal() instead of cancelMerges()
+        // to avoid the ensureOpen() check, since we're in the process of closing.
+        // This behavior is controlled by the CANCEL_MERGE feature flag.
+        if (this.featureFlags.isEnabled(Feature.CANCEL_MERGE)) {
+          try {
+            cancelMergesInternal();
+          } catch (Exception e) {
+            this.logger
+                .atWarn()
+                .setCause(e)
+                .log("Failed to cancel merges during close, continuing with close anyway");
+            // Continue with close even if cancelMerges fails
+          }
+        }
+
         this.luceneWriter.close();
       } catch (AlreadyClosedException e) {
         recordIndexingFailure(e, "close");
@@ -634,5 +659,75 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
         .log(
             "Indexing failure during %s operation for document with _id: %s",
             operation, documentIdString);
+  }
+
+  @Override
+  public void cancelMerges() throws IOException {
+    try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
+      ensureOpen("cancelMerges");
+      cancelMergesInternal();
+    }
+  }
+
+  /**
+   * Internal method to cancel merges without checking if the writer is open.
+   * This is used by close() to cancel merges during the close process.
+   */
+  private void cancelMergesInternal() throws IOException {
+    this.logger
+        .atInfo()
+        .log("Cancelling running merges and blocking new merge scheduling");
+
+    try {
+      // Get the per-index merge scheduler
+      var mergeScheduler = this.luceneWriter.getConfig().getMergeScheduler();
+
+      // The merge scheduler should be a PerIndexPartitionMergeScheduler
+      if (mergeScheduler
+          instanceof InstrumentedConcurrentMergeScheduler.PerIndexPartitionMergeScheduler) {
+        var perIndexScheduler =
+            (InstrumentedConcurrentMergeScheduler.PerIndexPartitionMergeScheduler) mergeScheduler;
+
+        // Cancel merges only for this index partition
+        // This will:
+        // 1. Block new merges from being scheduled for this index
+        // 2. Mark all running merges for this index as aborted
+        // 3. Wait for running merge threads to detect the abort signal and stop
+        // Note: Pending merges (queued in IndexWriter but not yet started) are not explicitly
+        // aborted; they will be discarded when the IndexWriter is closed.
+        boolean allMergesTerminated = perIndexScheduler.cancelMerges();
+        if (allMergesTerminated) {
+          this.logger
+              .atInfo()
+              .log("Successfully cancelled all merges");
+        } else {
+          this.logger
+              .atWarn()
+              .log(
+                  "Merge cancellation completed but some merge threads are still running after "
+                      + "timeout; index close may be slow");
+        }
+      } else {
+        // Fallback: close() waits for current merges but does NOT block future merge scheduling.
+        // This means the cancelMerges() contract is not fully upheld in this path - callers
+        // should not rely on cancellation guarantees when using an unexpected scheduler type.
+        // This fallback exists only for defensive coding; in practice, we always expect
+        // PerIndexPartitionMergeScheduler.
+        this.logger
+            .atWarn()
+            .addKeyValue("schedulerType", mergeScheduler.getClass().getName())
+            .log(
+                "Unexpected merge scheduler type, falling back to close() which waits for "
+                    + "current merges but does not block future merge scheduling");
+        mergeScheduler.close();
+      }
+    } catch (Exception e) {
+      this.logger
+          .atWarn()
+          .setCause(e)
+          .log("Error during merge cancellation");
+      recordIndexingFailure(e, "cancelMerges");
+      throw e;
+    }
   }
 }

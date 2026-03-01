@@ -79,7 +79,7 @@ public class LuceneIndexingFailuresTest {
     var writer = SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         10.0,
         Optional.empty(),
@@ -197,7 +197,7 @@ public class LuceneIndexingFailuresTest {
     var writer = SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         10.0,
         Optional.empty(),
@@ -263,7 +263,7 @@ public class LuceneIndexingFailuresTest {
     var writer = SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         10.0,
         Optional.empty(),
@@ -329,7 +329,7 @@ public class LuceneIndexingFailuresTest {
     var writer = SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         10.0,
         Optional.empty(),
@@ -395,7 +395,7 @@ public class LuceneIndexingFailuresTest {
     var writer = SingleLuceneIndexWriter.createForSearchIndex(
         directory,
         new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1),
+            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
         new TieredMergePolicy(),
         10.0,
         Optional.empty(),

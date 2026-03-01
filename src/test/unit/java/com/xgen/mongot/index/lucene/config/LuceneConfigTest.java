@@ -74,6 +74,8 @@ public class LuceneConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty()));
     }
 
@@ -90,6 +92,8 @@ public class LuceneConfigTest {
       LuceneConfig.create(
           Path.of("temp"),
           Optional.of(Duration.ofSeconds(1)),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
@@ -145,6 +149,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty()));
 
       assertThrowsIllegalArgumentException(
@@ -152,6 +158,8 @@ public class LuceneConfigTest {
               LuceneConfig.create(
                   Path.of("temp"),
                   Optional.of(Duration.ofSeconds(-1)),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
@@ -185,6 +193,8 @@ public class LuceneConfigTest {
           LuceneConfig.create(
               MockRuntimeBuilder.buildDefault(),
               Path.of("temp"),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
@@ -245,6 +255,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       assertThrowsIllegalArgumentException(
@@ -276,6 +288,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty()));
 
       assertThrowsIllegalArgumentException(
@@ -284,6 +298,8 @@ public class LuceneConfigTest {
                   Path.of("temp"),
                   Optional.empty(),
                   Optional.of(-1),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
@@ -351,6 +367,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       assertThrowsIllegalArgumentException(
@@ -382,6 +400,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty()));
 
       assertThrowsIllegalArgumentException(
@@ -391,6 +411,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.of(-1),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
@@ -465,6 +487,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       assertThrowsIllegalArgumentException(
@@ -478,6 +502,8 @@ public class LuceneConfigTest {
                   // default value.
                   Optional.of(5),
                   Optional.of(0),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
@@ -533,6 +559,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty()));
 
       // numMaxMerge must be >= numMaxMergeThreads
@@ -542,6 +570,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.of(5),
           Optional.of(5),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
@@ -573,6 +603,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.of(5),
                   Optional.of(4),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
@@ -659,6 +691,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       assertThrowsIllegalArgumentException(
@@ -670,6 +704,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.of(0D),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
@@ -721,6 +757,8 @@ public class LuceneConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty()));
     }
 
@@ -731,6 +769,8 @@ public class LuceneConfigTest {
           LuceneConfig.create(
               runtime,
               Path.of("temp"),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
@@ -797,6 +837,8 @@ public class LuceneConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       Assert.assertFalse(config.nrtCacheEnabled());
@@ -810,6 +852,8 @@ public class LuceneConfigTest {
           LuceneConfig.create(
               runtime,
               Path.of("temp"),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
@@ -872,6 +916,8 @@ public class LuceneConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       Assert.assertEquals(
@@ -887,6 +933,8 @@ public class LuceneConfigTest {
           LuceneConfig.create(
               runtime,
               Path.of("temp"),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
@@ -960,6 +1008,8 @@ public class LuceneConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
 
       assertExpectedDefault(c -> c.numMaxMergeThreads(), config, expected);
@@ -983,6 +1033,8 @@ public class LuceneConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.of(numMaxMergeThreads),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
@@ -1043,6 +1095,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       for (int limit : List.of(-1, 0, 1, 2)) {
@@ -1061,6 +1115,8 @@ public class LuceneConfigTest {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(limit),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
@@ -1113,6 +1169,8 @@ public class LuceneConfigTest {
           Optional.empty(),
           Optional.empty(),
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           Optional.empty());
 
       for (int limit : List.of(-1, 0, IndexWriter.MAX_DOCS, Integer.MAX_VALUE)) {
@@ -1147,6 +1205,8 @@ public class LuceneConfigTest {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()));
       }
     }
@@ -1163,6 +1223,8 @@ public class LuceneConfigTest {
           LuceneConfig.create(
               runtime,
               Path.of("temp"),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),

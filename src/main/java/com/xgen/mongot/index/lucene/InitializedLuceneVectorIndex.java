@@ -145,7 +145,8 @@ class InitializedLuceneVectorIndex implements InitializedVectorIndex {
                 SingleLuceneIndexWriter.createForVectorIndex(
                     directory,
                     vectorIndexProperties.mergeScheduler.createForIndexPartition(
-                        generationId, indexPartitionId, definition.getNumPartitions()),
+                        generationId, indexPartitionId, definition.getNumPartitions(),
+                        featureFlags.isEnabled(Feature.CANCEL_MERGE)),
                     vectorIndexProperties.mergePolicy,
                     vectorIndexProperties.ramBufferSizeMb,
                     vectorIndexProperties.fieldLimit,
@@ -154,7 +155,8 @@ class InitializedLuceneVectorIndex implements InitializedVectorIndex {
                     definition.getIndexCapabilities(vectorIndexProperties.indexFormatVersion),
                     indexMetricsUpdaterBuilder.getIndexingMetricsUpdater(),
                     luceneIndexSnapshotter.map(
-                        snapshotter -> snapshotter.getSnapshotDeletionPolicy(indexPartitionId))),
+                        snapshotter -> snapshotter.getSnapshotDeletionPolicy(indexPartitionId)),
+                    featureFlags),
             luceneIndexWriter ->
                 LuceneSearcherManager.create(
                     luceneIndexWriter.getLuceneWriter(),

@@ -154,7 +154,8 @@ class InitializedLuceneSearchIndex implements InitializedSearchIndex {
                 SingleLuceneIndexWriter.createForSearchIndex(
                     directory,
                     searchIndexProperties.mergeScheduler.createForIndexPartition(
-                        generationId, indexPartitionId, definition.getNumPartitions()),
+                        generationId, indexPartitionId, definition.getNumPartitions(),
+                        featureFlags.isEnabled(Feature.CANCEL_MERGE)),
                     searchIndexProperties.mergePolicy,
                     searchIndexProperties.ramBufferSizeMb,
                     searchIndexProperties.fieldLimit,
