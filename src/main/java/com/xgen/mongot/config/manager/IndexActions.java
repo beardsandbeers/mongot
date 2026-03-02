@@ -75,7 +75,7 @@ public class IndexActions {
             .isEmpty(),
         "trying to insert an index to the catalog clobbering existing indexId: %s",
         definitionGeneration.getGenerationId());
-    if (isMaterializedViewBasedIndex(definitionGeneration)
+    if (isMaterializedViewBasedIndex(definitionGeneration.getIndexDefinition())
         && this.configState.materializedViewIndexFactory.isEmpty()) {
       LOG.atWarn()
           .addKeyValue("indexId", generationId.indexId)
@@ -115,7 +115,7 @@ public class IndexActions {
             .isPresent(),
         "can not stage an index without corresponding index in catalog: %s",
         definitionGeneration.getGenerationId());
-    if (isMaterializedViewBasedIndex(definitionGeneration)
+    if (isMaterializedViewBasedIndex(definitionGeneration.getIndexDefinition())
         && this.configState.materializedViewIndexFactory.isEmpty()) {
       LOG.atWarn()
           .addKeyValue("indexId", generationId.indexId)
@@ -311,7 +311,7 @@ public class IndexActions {
   private IndexGeneration getIndexGenerationByDefinitionType(
       IndexDefinitionGeneration definitionGeneration)
       throws IOException, InvalidAnalyzerDefinitionException {
-    if (isMaterializedViewBasedIndex(definitionGeneration)) {
+    if (isMaterializedViewBasedIndex(definitionGeneration.getIndexDefinition())) {
       return AutoEmbeddingIndexGenerationFactory.getAutoEmbeddingIndexGeneration(
           this.configState.indexFactory,
           Check.isPresent(

@@ -68,13 +68,16 @@ public record MaterializedViewIndexDefinitionGeneration(
     return Type.AUTO_EMBEDDING;
   }
 
-  public static boolean isMaterializedViewBasedIndex(
-      IndexDefinitionGeneration definitionGeneration) {
-    return definitionGeneration.getIndexDefinition().isAutoEmbeddingIndex()
-        && definitionGeneration
-                .getIndexDefinition()
-                .asVectorDefinition()
-                .getParsedAutoEmbeddingFeatureVersion()
+  /**
+   * Checks if an index uses the materialized view based embedding strategy.
+   *
+   * <p>AUTO_EMBED fields (version >= 2) use the EMBEDDING_MATERIALIZED_VIEW strategy which supports
+   * partial updates. TEXT fields (version 1) use the old EMBEDDING strategy which writes directly
+   * to Lucene and does not support partial updates.
+   */
+  public static boolean isMaterializedViewBasedIndex(IndexDefinition indexDefinition) {
+    return indexDefinition.isAutoEmbeddingIndex()
+        && indexDefinition.asVectorDefinition().getParsedAutoEmbeddingFeatureVersion()
             >= MIN_VERSION_FOR_MATERIALIZED_VIEW_EMBEDDING;
   }
 }

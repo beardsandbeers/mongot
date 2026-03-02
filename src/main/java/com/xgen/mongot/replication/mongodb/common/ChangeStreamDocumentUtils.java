@@ -11,6 +11,7 @@ import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.DocumentMetadata;
 import com.xgen.mongot.index.definition.FieldDefinitionResolver;
 import com.xgen.mongot.index.definition.IndexDefinition;
+import com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration;
 import com.xgen.mongot.index.definition.VectorIndexFieldMapping;
 import com.xgen.mongot.util.BsonUtils;
 import com.xgen.mongot.util.Check;
@@ -299,9 +300,12 @@ public class ChangeStreamDocumentUtils {
           metrics.updateApplicable();
           incrementApplicableDocumentMetrics(metrics, event);
 
-          // For auto-embedding indexes, check if embedding is required.
-          // If not (only filter fields changed), we can skip embedding and use partial update.
-          if (indexDefinition.isAutoEmbeddingIndex()) {
+          // For materialized view based auto-embedding indexes (AUTO_EMBED fields, version >= 2),
+          // check if embedding generation is required. If not (only filter fields changed),
+          // we can skip embedding and use partial updates. Old EMBEDDING strategy (TEXT fields,
+          // version 1) does not support partial updates as it writes directly to Lucene.
+          if (MaterializedViewIndexDefinitionGeneration.isMaterializedViewBasedIndex(
+              indexDefinition)) {
             VectorIndexFieldMapping fieldMapping =
                 indexDefinition.asVectorDefinition().getMappings();
             if (!AutoEmbeddingDocumentUtils.requiresEmbeddingGeneration(

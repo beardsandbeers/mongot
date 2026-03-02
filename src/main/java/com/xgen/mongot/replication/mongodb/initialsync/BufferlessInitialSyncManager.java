@@ -105,7 +105,8 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
       boolean avoidNaturalOrderScanSyncSourceChangeResync) {
     BufferlessCollectionScannerFactory collectionScannerFactory =
         (context, lastId) -> {
-          if (isMaterializedViewBasedIndex(context.indexDefinitionGeneration)) {
+          if (isMaterializedViewBasedIndex(
+              context.indexDefinitionGeneration.getIndexDefinition())) {
             return new AutoEmbeddingSortedIdCollectionScanner(
                 Clock.systemUTC(), context, mongoClient, lastId, metricsFactory);
           } else {
@@ -267,7 +268,7 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
    * to accommodate slow external embedding API calls.
    */
   private Duration getShutdownTimeout() {
-    return isMaterializedViewBasedIndex(this.context.indexDefinitionGeneration)
+    return isMaterializedViewBasedIndex(this.context.indexDefinitionGeneration.getIndexDefinition())
         ? InitialSyncManager.AUTO_EMBEDDING_SHUTDOWN_TIMEOUT
         : InitialSyncManager.SHUTDOWN_TIMEOUT;
   }

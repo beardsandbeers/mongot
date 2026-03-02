@@ -3,9 +3,11 @@ load("//bazel/java:test.bzl", "java_test_suite")
 java_test_suite(
     name = "common",
     srcs = [
+        "AutoEmbeddingIndexingStrategyTest.java",
         "AutoEmbeddingMaterializedViewConfigTest.java",
         "ChangeStreamAggregateCommandFactoryTest.java",
         "ChangeStreamAggregateOperationFactoryTest.java",
+        "ChangeStreamDocumentUtilsFilterOnlyUpdateTest.java",
         "ChangeStreamDocumentUtilsTest.java",
         "ChangeStreamMongoCursorClientTest.java",
         "ChangeStreamResumeInfoTest.java",
