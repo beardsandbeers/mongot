@@ -666,7 +666,7 @@ public class MongoDbReplicationManagerTest {
       this.meterRegistry = new SimpleMeterRegistry();
       this.managerSupplier =
           () ->
-              new MongoDbReplicationManager(
+              MongoDbReplicationManager.create(
                   executorService,
                   indexingWorkSchedulerFactory,
                   cursorManager,

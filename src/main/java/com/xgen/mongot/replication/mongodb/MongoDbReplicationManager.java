@@ -145,8 +145,8 @@ public class MongoDbReplicationManager implements ReplicationManager {
   /** A flag indicating whether natural order scan is enabled for initial sync */
   private final boolean enableNaturalOrderScan;
 
-  @VisibleForTesting
-  MongoDbReplicationManager(
+  /** private constructor - Use static factory methods to construct instances. */
+  private MongoDbReplicationManager(
       NamedExecutorService lifecycleExecutor,
       IndexingWorkSchedulerFactory indexingWorkSchedulerFactory,
       MongotCursorManager cursorManager,
@@ -193,9 +193,63 @@ public class MongoDbReplicationManager implements ReplicationManager {
     this.enableNaturalOrderScan = enableNaturalOrderScan;
     this.shutdown = false;
     this.metricsFactory = new MetricsFactory("replication.mongodb", meterRegistry);
-    createStateGauges(this, this.metricsFactory);
     this.managerUp = this.metricsFactory.numGauge("manager", Tags.of("type", "normal"));
     this.managerUp.incrementAndGet();
+  }
+
+  @VisibleForTesting
+  static MongoDbReplicationManager create(
+      NamedExecutorService lifecycleExecutor,
+      IndexingWorkSchedulerFactory indexingWorkSchedulerFactory,
+      MongotCursorManager cursorManager,
+      Map<String, ClientSessionRecord> clientSessionRecordMap,
+      Optional<SyncSourceConfig> syncSourceConfig,
+      FeatureFlags featureFlags,
+      InitialSyncQueue initialSyncQueue,
+      SteadyStateManager steadyStateManager,
+      SynonymManager synonymManager,
+      BatchMongoClient syncBatchMongoClient,
+      DecodingWorkScheduler decodingWorkScheduler,
+      Optional<MongoClient> synonymsSyncClient,
+      Optional<? extends SessionRefresher> synonymsSessionRefresher,
+      ReplicationIndexManagerFactory replicationIndexManagerFactory,
+      MeterRegistry meterRegistry,
+      Map<GenerationId, ReplicationIndexManager> indexManagers,
+      NamedScheduledExecutorService commitExecutor,
+      ReplicationOptimeUpdater replicationOptimeUpdater,
+      InitializedIndexCatalog initializedIndexCatalog,
+      Duration commitInterval,
+      Duration requestRateLimitBackoffDuration,
+      boolean enableNaturalOrderScan) {
+    MongoDbReplicationManager manager =
+        new MongoDbReplicationManager(
+            lifecycleExecutor,
+            indexingWorkSchedulerFactory,
+            cursorManager,
+            clientSessionRecordMap,
+            syncSourceConfig,
+            featureFlags,
+            initialSyncQueue,
+            steadyStateManager,
+            synonymManager,
+            syncBatchMongoClient,
+            decodingWorkScheduler,
+            synonymsSyncClient,
+            synonymsSessionRefresher,
+            replicationIndexManagerFactory,
+            meterRegistry,
+            indexManagers,
+            commitExecutor,
+            replicationOptimeUpdater,
+            initializedIndexCatalog,
+            commitInterval,
+            requestRateLimitBackoffDuration,
+            enableNaturalOrderScan);
+
+    // Register gauges after construction is complete
+    createStateGauges(manager, manager.metricsFactory);
+
+    return manager;
   }
 
   /** Creates a new MongoDbReplicationManager. */
@@ -318,7 +372,7 @@ public class MongoDbReplicationManager implements ReplicationManager {
             replicationOptimeUpdaterInterval,
             meterRegistry);
 
-    return new MongoDbReplicationManager(
+    return MongoDbReplicationManager.create(
         lifecycleExecutor,
         indexingWorkSchedulerFactory,
         cursorManager,

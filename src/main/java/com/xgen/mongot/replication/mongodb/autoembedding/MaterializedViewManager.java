@@ -185,6 +185,11 @@ public class MaterializedViewManager implements ReplicationManager {
 
   private final ScheduledFuture<?> statusRefreshFuture;
 
+  /**
+   * Package-private constructor for testing - registers gauges and starts periodic tasks. This
+   * constructor maintains backward compatibility with existing tests. Production code should use
+   * {@link #create} static factory method which uses the private constructor to avoid this-escape.
+   */
   @VisibleForTesting
   MaterializedViewManager(
       NamedExecutorService lifecycleExecutor,
@@ -203,6 +208,48 @@ public class MaterializedViewManager implements ReplicationManager {
       MeterRegistry meterRegistry,
       LeaseManager leaseManager,
       MaterializedViewCollectionMetadataCatalog matViewMetadataCatalog) {
+    this(
+        lifecycleExecutor,
+        indexingWorkSchedulerFactory,
+        clientSessionRecordMap,
+        syncSourceConfig,
+        initialSyncQueue,
+        steadyStateManager,
+        syncBatchMongoClient,
+        decodingWorkScheduler,
+        matViewGeneratorFactory,
+        commitExecutor,
+        heartbeatExecutor,
+        statusRefreshExecutor,
+        optimeUpdaterExecutor,
+        meterRegistry,
+        leaseManager,
+        matViewMetadataCatalog,
+        true); // registerGauges = true for backward compatibility
+  }
+
+  /**
+   * Private constructor - optionally registers gauges based on the registerGauges parameter. Use
+   * static factory methods to construct instances.
+   */
+  private MaterializedViewManager(
+      NamedExecutorService lifecycleExecutor,
+      IndexingWorkSchedulerFactory indexingWorkSchedulerFactory,
+      Map<String, ClientSessionRecord> clientSessionRecordMap,
+      SyncSourceConfig syncSourceConfig,
+      InitialSyncQueue initialSyncQueue,
+      SteadyStateManager steadyStateManager,
+      BatchMongoClient syncBatchMongoClient,
+      DecodingWorkScheduler decodingWorkScheduler,
+      MaterializedViewGeneratorFactory matViewGeneratorFactory,
+      NamedScheduledExecutorService commitExecutor,
+      NamedScheduledExecutorService heartbeatExecutor,
+      NamedScheduledExecutorService statusRefreshExecutor,
+      NamedScheduledExecutorService optimeUpdaterExecutor,
+      MeterRegistry meterRegistry,
+      LeaseManager leaseManager,
+      MaterializedViewCollectionMetadataCatalog matViewMetadataCatalog,
+      boolean registerGauges) {
     this.lifecycleExecutor = lifecycleExecutor;
     this.indexingWorkSchedulerFactory = indexingWorkSchedulerFactory;
     this.clientSessionRecordMap = clientSessionRecordMap;
@@ -225,7 +272,7 @@ public class MaterializedViewManager implements ReplicationManager {
     this.leaseManager = leaseManager;
     this.matViewMetadataCatalog = matViewMetadataCatalog;
     this.optimeUpdaterErrorCounter = this.meterRegistry.counter(OPTIME_UPDATER_ERROR_COUNTER_NAME);
-    createStateGauges(this, this.metricsFactory);
+
     // Always start heartbeat - it emits heartbeat only for indexes where this instance is leader
     LOG.atInfo()
         .addKeyValue("interval", DEFAULT_HEARTBEAT_INTERVAL)
@@ -283,6 +330,10 @@ public class MaterializedViewManager implements ReplicationManager {
             0,
             DEFAULT_OPTIME_UPDATE_INTERVAL.toMillis(),
             TimeUnit.MILLISECONDS);
+
+    if (registerGauges) {
+      createStateGauges(this, this.metricsFactory);
+    }
   }
 
   // TODO(CLOUDP-360913): Investigate whether we need customized disk monitor
@@ -390,23 +441,30 @@ public class MaterializedViewManager implements ReplicationManager {
     var optimeUpdaterExecutor =
         Executors.singleThreadScheduledExecutor("mat-view-optime-updater", meterRegistry);
 
-    return new MaterializedViewManager(
-        lifecycleExecutor,
-        indexingWorkSchedulerFactory,
-        clientSessionRecords,
-        syncSourceConfig,
-        initialSyncQueue,
-        steadyStateManager,
-        syncBatchMongoClient,
-        decodingWorkScheduler,
-        materializedViewGeneratorFactory,
-        commitExecutor,
-        heartbeatExecutor,
-        statusRefreshExecutor,
-        optimeUpdaterExecutor,
-        meterRegistry,
-        leaseManager,
-        matViewMetadataCatalog);
+    MaterializedViewManager manager =
+        new MaterializedViewManager(
+            lifecycleExecutor,
+            indexingWorkSchedulerFactory,
+            clientSessionRecords,
+            syncSourceConfig,
+            initialSyncQueue,
+            steadyStateManager,
+            syncBatchMongoClient,
+            decodingWorkScheduler,
+            materializedViewGeneratorFactory,
+            commitExecutor,
+            heartbeatExecutor,
+            statusRefreshExecutor,
+            optimeUpdaterExecutor,
+            meterRegistry,
+            leaseManager,
+            matViewMetadataCatalog,
+            false); // Don't register gauges/tasks in constructor to avoid this-escape
+
+    // Register gauges after construction is complete
+    createStateGauges(manager, manager.metricsFactory);
+
+    return manager;
   }
 
   /** Creates gauges to track the number of view generators by state */

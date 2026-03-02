@@ -64,7 +64,8 @@ public interface QueryCacheProvider {
       int maxCachedQueries = 1000;
       // min of 32MB or 5% of the heap size
       long maxRamBytesUsed = Math.min(1L << 25, Runtime.getRuntime().maxMemory() / 20);
-      return new InstrumentingLruQueryCache(this.metricsFactory, maxCachedQueries, maxRamBytesUsed);
+      return InstrumentingLruQueryCache.create(
+          this.metricsFactory, maxCachedQueries, maxRamBytesUsed);
     }
 
     @Override
@@ -81,14 +82,31 @@ public interface QueryCacheProvider {
       private final Counter hitCountCounter;
       private final Counter missCountCounter;
 
-      public InstrumentingLruQueryCache(
+      /**
+       * Private constructor - does not register gauges. Use {@link #create} to construct instances.
+       */
+      private InstrumentingLruQueryCache(
           MetricsFactory metricsFactory, int maxSize, long maxRamBytesUsed) {
         super(maxSize, maxRamBytesUsed);
         this.hitCountCounter = metricsFactory.counter("hitCount");
         this.missCountCounter = metricsFactory.counter("missCount");
-        metricsFactory.objectValueGauge("cacheSize", this, LRUQueryCache::getCacheSize);
-        metricsFactory.objectValueGauge("evictionCount", this, LRUQueryCache::getEvictionCount);
-        metricsFactory.objectValueGauge("ramBytesUsed", this, LRUQueryCache::ramBytesUsed);
+      }
+
+      /**
+       * Creates a new InstrumentingLruQueryCache and registers gauges after construction to avoid
+       * this-escape.
+       */
+      public static InstrumentingLruQueryCache create(
+          MetricsFactory metricsFactory, int maxSize, long maxRamBytesUsed) {
+        InstrumentingLruQueryCache cache =
+            new InstrumentingLruQueryCache(metricsFactory, maxSize, maxRamBytesUsed);
+
+        // Register gauges after construction is complete to avoid this-escape
+        metricsFactory.objectValueGauge("cacheSize", cache, LRUQueryCache::getCacheSize);
+        metricsFactory.objectValueGauge("evictionCount", cache, LRUQueryCache::getEvictionCount);
+        metricsFactory.objectValueGauge("ramBytesUsed", cache, LRUQueryCache::ramBytesUsed);
+
+        return cache;
       }
 
       @Override

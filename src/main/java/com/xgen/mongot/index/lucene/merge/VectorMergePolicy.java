@@ -45,14 +45,12 @@ import org.apache.lucene.util.RamUsageEstimator;
  * data field adjust for document deletion, the reason being that if multiple vector fields are
  * present they are merged serially rather than in parallel.
  */
-
 public class VectorMergePolicy extends FilterMergePolicy {
   /**
    * These are extensions used by Lucene9xVectorsFormat and Lucene9xScalarQuantizedVectorsFormat to
    * store raw and quantized vector data (as opposed to hnsw indices or metadata). These members are
    * not public in the codecs, so we reproduce values.
    */
-
   private static final String VECTOR_DATA_EXTENSION = "vec";
 
   private static final String QUANTIZED_VECTOR_DATA_EXTENSION = "veq";
@@ -68,6 +66,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
 
   @GuardedBy("this")
   private long budgetBytesUsed;
+
   @GuardedBy("this")
   private long budgetBytesHeapUsed;
 
@@ -152,8 +151,8 @@ public class VectorMergePolicy extends FilterMergePolicy {
     /**
      * Maximum number of heap bytes allowed for HNSW graph data for a single field in one merge.
      *
-     * <p>Merging HNSW graphs requires keeping all input segment graphs in memory at once.
-     * This value constrains the maximum per-merge heap usage across segments for a *single* field.
+     * <p>Merging HNSW graphs requires keeping all input segment graphs in memory at once. This
+     * value constrains the maximum per-merge heap usage across segments for a *single* field.
      *
      * <p>Each field is merged sequentially, so the budget applies to the field with the highest
      * heap requirement in the merge. This limit should reflect the available native heap on the
@@ -195,8 +194,8 @@ public class VectorMergePolicy extends FilterMergePolicy {
     /**
      * Maximum number of neighbors (M) to store for each node in HNSW during memory estimation.
      *
-     * <p>This value is used to estimate how much RAM is needed for the HNSW graph during a merge.
-     * A higher value assumes denser graphs and increases the estimated heap usage. Lower values
+     * <p>This value is used to estimate how much RAM is needed for the HNSW graph during a merge. A
+     * higher value assumes denser graphs and increases the estimated heap usage. Lower values
      * reduce the estimate, which may result in more merges being allowed under tight memory
      * budgets.
      *
@@ -211,7 +210,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
     }
 
     public VectorMergePolicy build(MergePolicy parent, MeterRegistry meterRegistry) {
-      return new VectorMergePolicy(
+      return VectorMergePolicy.create(
           parent,
           this.maxCompoundDataBytes,
           this.maxVectorInputBytes,
@@ -227,7 +226,10 @@ public class VectorMergePolicy extends FilterMergePolicy {
     return new Builder();
   }
 
-  private VectorMergePolicy(
+  /**
+   * Creates a new VectorMergePolicy and registers gauges after construction to avoid this-escape.
+   */
+  private static VectorMergePolicy create(
       MergePolicy parent,
       long maxCompoundDataSize,
       long maxVectorInputBytes,
@@ -236,6 +238,40 @@ public class VectorMergePolicy extends FilterMergePolicy {
       long globalHeapBytesBudget,
       int maxConn,
       MeterRegistry meterRegistry) {
+    var metricsFactory =
+        new MetricsFactory(
+            "vectorMergePolicy", meterRegistry, ServerStatusDataExtractor.Scope.LUCENE.getTag());
+
+    VectorMergePolicy policy =
+        new VectorMergePolicy(
+            parent,
+            maxCompoundDataSize,
+            maxVectorInputBytes,
+            mergeBudgetBytes,
+            segmentHeapBytesBudget,
+            globalHeapBytesBudget,
+            maxConn,
+            metricsFactory);
+
+    // Register gauges after construction is complete to avoid this-escape
+    metricsFactory.objectValueGauge(
+        "budgetBytesUsed", policy, VectorMergePolicy::getBudgetBytesUsed);
+    metricsFactory.objectValueGauge(
+        "budgetBytesTotal", policy, VectorMergePolicy::getBudgetBytesTotal);
+
+    return policy;
+  }
+
+  /** Private constructor - does not register gauges. Use {@link #create} to construct instances. */
+  private VectorMergePolicy(
+      MergePolicy parent,
+      long maxCompoundDataSize,
+      long maxVectorInputBytes,
+      long mergeBudgetBytes,
+      long segmentHeapBytesBudget,
+      long globalHeapBytesBudget,
+      int maxConn,
+      MetricsFactory metricsFactory) {
     super(parent);
 
     this.maxCompoundDataSize = maxCompoundDataSize;
@@ -245,17 +281,11 @@ public class VectorMergePolicy extends FilterMergePolicy {
     this.globalHeapBytesBudget = globalHeapBytesBudget;
     this.maxConn = maxConn;
 
-    var metricsFactory =
-        new MetricsFactory(
-            "vectorMergePolicy", meterRegistry, ServerStatusDataExtractor.Scope.LUCENE.getTag());
     this.skippedCompoundFile = metricsFactory.counter("skippedCompoundFile");
     this.discardedMerge = metricsFactory.counter("discardedMerge");
     this.prunedSegment = metricsFactory.counter("prunedSegment");
     this.segmentMaxSizeExceeded = metricsFactory.counter("segmentMaxSizeExceeded");
     this.segmentHeapSizeExceeded = metricsFactory.counter("segmentHeapSizeExceeded");
-    metricsFactory.objectValueGauge("budgetBytesUsed", this, VectorMergePolicy::getBudgetBytesUsed);
-    metricsFactory.objectValueGauge(
-        "budgetBytesTotal", this, VectorMergePolicy::getBudgetBytesTotal);
   }
 
   @Override
@@ -342,8 +372,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
 
   private synchronized boolean acquireBudget(VectorMerge merge) {
     if ((this.budgetBytesUsed + merge.vectorByteSize <= this.budgetBytesTotal)
-            && (this.budgetBytesHeapUsed + merge.segmentHeapByteSize
-              <= this.globalHeapBytesBudget)) {
+        && (this.budgetBytesHeapUsed + merge.segmentHeapByteSize <= this.globalHeapBytesBudget)) {
       this.budgetBytesUsed += merge.vectorByteSize;
       this.budgetBytesHeapUsed += merge.segmentHeapByteSize;
       return true;
@@ -360,10 +389,11 @@ public class VectorMergePolicy extends FilterMergePolicy {
         this.budgetBytesUsed,
         this.budgetBytesTotal);
     this.budgetBytesHeapUsed -= merge.segmentHeapByteSize;
-    checkState(this.budgetBytesHeapUsed >= 0,
-            "Releasing heap bytes after merge yields more bytes than in the budget (%d vs %d)",
-            this.budgetBytesHeapUsed,
-            this.globalHeapBytesBudget);
+    checkState(
+        this.budgetBytesHeapUsed >= 0,
+        "Releasing heap bytes after merge yields more bytes than in the budget (%d vs %d)",
+        this.budgetBytesHeapUsed,
+        this.globalHeapBytesBudget);
   }
 
   synchronized long getBudgetBytesUsed() {
@@ -425,18 +455,16 @@ public class VectorMergePolicy extends FilterMergePolicy {
    * information, object overheads, and other HNSW-specific data structures.
    *
    * <p>Note that this is an upper bound estimation and does not account for optimizations that
-   * could reduce memory overhead, such as sharing structures or reusing allocated memory.
-   * The upper bound estimation is useful for understanding the potential memory usage and
-   * ensuring that enough memory is allocated for the HNSW graph during its creation or maintenance.
+   * could reduce memory overhead, such as sharing structures or reusing allocated memory. The upper
+   * bound estimation is useful for understanding the potential memory usage and ensuring that
+   * enough memory is allocated for the HNSW graph during its creation or maintenance.
    *
-   * <p>Breakdown:
-   * - Level 0 neighbor lists: each node has a list of up to 2 * M neighbors,
-   *   stored as two parallel arrays (int[] and float[]), each with an array header.
-   * - Higher-level neighbor lists: for nodes above level 0, each level has up to M neighbors.
-   *   As the levels increase, each becomes increasingly sparse — we account for this by applying
-   *   a sparsity scaling factor to reduce overestimation.
-   * - Other overhead includes AtomicInteger fields, object references, array headers,
-   *   and per-node metadata for non-zero levels.
+   * <p>Breakdown: - Level 0 neighbor lists: each node has a list of up to 2 * M neighbors, stored
+   * as two parallel arrays (int[] and float[]), each with an array header. - Higher-level neighbor
+   * lists: for nodes above level 0, each level has up to M neighbors. As the levels increase, each
+   * becomes increasingly sparse — we account for this by applying a sparsity scaling factor to
+   * reduce overestimation. - Other overhead includes AtomicInteger fields, object references, array
+   * headers, and per-node metadata for non-zero levels.
    */
   private long ramHnswBytesNeeded(SegmentCommitInfo info) {
     long totalVectors = info.info.maxDoc();
@@ -446,15 +474,15 @@ public class VectorMergePolicy extends FilterMergePolicy {
 
     // RAM usage for level 0 neighbors: 2 * M neighbors, each with int[] and float[].
     long neighborArrayBytesLevel0 =
-            2L * this.maxConn * bytesPerNeighbor
-                    + neighborArrayHeaderBytes
-                    + neighborListObjectOverhead;
+        2L * this.maxConn * bytesPerNeighbor
+            + neighborArrayHeaderBytes
+            + neighborListObjectOverhead;
 
     // RAM usage for higher level neighbors: M neighbors per level, each with int[] and float[].
     long neighborArrayBytesUpperLevels =
-            (long) this.maxConn * bytesPerNeighbor
-                    + neighborArrayHeaderBytes
-                    + neighborListObjectOverhead;
+        (long) this.maxConn * bytesPerNeighbor
+            + neighborArrayHeaderBytes
+            + neighborListObjectOverhead;
 
     @Var long total = 0;
 
@@ -468,8 +496,8 @@ public class VectorMergePolicy extends FilterMergePolicy {
     // Higher levels are increasingly sparse, so scale the memory estimate down.
     // Geometric series sum (1 + 1/2 + 1/4 + ...) ≈ 2
     double sparsityFactor = 2.0;
-    total += (long) (totalVectors * expectedLevels * neighborArrayBytesUpperLevels
-            / sparsityFactor);
+    total +=
+        (long) (totalVectors * expectedLevels * neighborArrayBytesUpperLevels / sparsityFactor);
 
     // Primitive and object overheads.
     // All int fields (e.g., size, level count).
@@ -477,8 +505,10 @@ public class VectorMergePolicy extends FilterMergePolicy {
     // Field: noGrowth (overhead for this field).
     total += 1;
     // Field: entryNode (reference and integers).
-    total += RamUsageEstimator.NUM_BYTES_OBJECT_REF
-          + RamUsageEstimator.NUM_BYTES_OBJECT_HEADER + 2 * Integer.BYTES;
+    total +=
+        RamUsageEstimator.NUM_BYTES_OBJECT_REF
+            + RamUsageEstimator.NUM_BYTES_OBJECT_HEADER
+            + 2 * Integer.BYTES;
     // 3 AtomicIntegers (reference + integer per AtomicInteger)
     total += 3L * (RamUsageEstimator.NUM_BYTES_OBJECT_HEADER + Integer.BYTES);
     // Field: cur (reference)
@@ -490,13 +520,15 @@ public class VectorMergePolicy extends FilterMergePolicy {
       // Object reference overhead for nodes in each level.
       total += (totalVectors - 1) * RamUsageEstimator.NUM_BYTES_OBJECT_REF;
       // Extra space for each node in the graph.
-      total += totalVectors * (RamUsageEstimator.NUM_BYTES_OBJECT_HEADER
-            + RamUsageEstimator.NUM_BYTES_OBJECT_HEADER + Integer.BYTES);
+      total +=
+          totalVectors
+              * (RamUsageEstimator.NUM_BYTES_OBJECT_HEADER
+                  + RamUsageEstimator.NUM_BYTES_OBJECT_HEADER
+                  + Integer.BYTES);
     }
 
     return total;
   }
-
 
   private static class VectorMerge extends OneMerge {
     public final long vectorByteSize;
@@ -530,7 +562,7 @@ public class VectorMergePolicy extends FilterMergePolicy {
     public final long segmentHeapByteSize;
 
     public SegmentVectorSize(SegmentCommitInfo info, long vectorByteSize, long segmentHeapByteSize)
-            throws IOException {
+        throws IOException {
       this.info = info;
       this.vectorByteSize = vectorByteSize;
       this.segmentHeapByteSize = segmentHeapByteSize;
@@ -560,15 +592,13 @@ public class VectorMergePolicy extends FilterMergePolicy {
    */
   private Optional<VectorMerge> wrapMerge(OneMerge merge, MergeContext context) throws IOException {
     List<SegmentVectorSize> sizedSegments = computeSizedSegments(merge, context);
-    long totalVectorBytes = sizedSegments.stream().mapToLong(
-            s -> s.vectorByteSize).sum();
-    long totalSegmentHeapBytes = sizedSegments.stream().mapToLong(
-            s -> s.segmentHeapByteSize).sum();
+    long totalVectorBytes = sizedSegments.stream().mapToLong(s -> s.vectorByteSize).sum();
+    long totalSegmentHeapBytes = sizedSegments.stream().mapToLong(s -> s.segmentHeapByteSize).sum();
     // If the total vector size of the merge is less than maxVectorInputBytes and the total
     // needed heap size of the merge is less than segmentHeapBytesBudget, exit early.
     if (isWithinBudget(totalVectorBytes, totalSegmentHeapBytes)) {
-      return Optional.of(createVectorMerge(
-              merge.segments, totalVectorBytes, totalSegmentHeapBytes, 0));
+      return Optional.of(
+          createVectorMerge(merge.segments, totalVectorBytes, totalSegmentHeapBytes, 0));
     }
 
     // Special handling for segments whose vectorByteSize exceeds maxVectorInputBytes.
@@ -590,11 +620,12 @@ public class VectorMergePolicy extends FilterMergePolicy {
   }
 
   private List<SegmentVectorSize> computeSizedSegments(OneMerge merge, MergeContext context)
-          throws IOException {
+      throws IOException {
     List<SegmentVectorSize> sizedSegments = new ArrayList<>(merge.segments.size());
     for (var segment : merge.segments) {
-      sizedSegments.add(new SegmentVectorSize(segment, vectorSizeInBytes(segment, context),
-              ramHnswBytesNeeded(segment)));
+      sizedSegments.add(
+          new SegmentVectorSize(
+              segment, vectorSizeInBytes(segment, context), ramHnswBytesNeeded(segment)));
     }
     return sizedSegments;
   }
@@ -603,26 +634,29 @@ public class VectorMergePolicy extends FilterMergePolicy {
     return vectorBytes <= this.maxVectorInputBytes && heapBytes <= this.segmentHeapBytesBudget;
   }
 
-  private VectorMerge createVectorMerge(List<SegmentCommitInfo> segments, long vectorBytes,
-                                        long heapBytes, int droppedCount) {
-    return new VectorMerge(segments, vectorBytes, heapBytes, droppedCount,
-            VectorMergePolicy.this::releaseBudget);
+  private VectorMerge createVectorMerge(
+      List<SegmentCommitInfo> segments, long vectorBytes, long heapBytes, int droppedCount) {
+    return new VectorMerge(
+        segments, vectorBytes, heapBytes, droppedCount, VectorMergePolicy.this::releaseBudget);
   }
 
-  private Optional<VectorMerge> tryOversizeVectorSegmentMerge(List<SegmentVectorSize> sizedSegments,
-                                                              OneMerge merge) {
-    var oversize = sizedSegments.stream()
+  private Optional<VectorMerge> tryOversizeVectorSegmentMerge(
+      List<SegmentVectorSize> sizedSegments, OneMerge merge) {
+    var oversize =
+        sizedSegments.stream()
             .filter(s -> s.vectorByteSize >= this.maxVectorInputBytes)
-            .sorted(Comparator.comparingLong((SegmentVectorSize s) -> -s.vectorByteSize)
+            .sorted(
+                Comparator.comparingLong((SegmentVectorSize s) -> -s.vectorByteSize)
                     .thenComparing(s -> s.info.info.name))
             .toList();
 
-    Optional<SegmentVectorSize> candidate = oversize.stream()
-            .filter(s -> s.info.getDelCount() > 0).findFirst();
+    Optional<SegmentVectorSize> candidate =
+        oversize.stream().filter(s -> s.info.getDelCount() > 0).findFirst();
 
     if (candidate.isPresent()) {
       this.segmentMaxSizeExceeded.increment();
-      return Optional.of(createVectorMerge(
+      return Optional.of(
+          createVectorMerge(
               List.of(candidate.get().info),
               candidate.get().vectorByteSize,
               candidate.get().segmentHeapByteSize,
@@ -632,20 +666,23 @@ public class VectorMergePolicy extends FilterMergePolicy {
     return Optional.empty();
   }
 
-  private Optional<VectorMerge> tryOversizeHeapSegmentMerge(List<SegmentVectorSize> sizedSegments,
-                                                            OneMerge merge) {
-    var oversize = sizedSegments.stream()
+  private Optional<VectorMerge> tryOversizeHeapSegmentMerge(
+      List<SegmentVectorSize> sizedSegments, OneMerge merge) {
+    var oversize =
+        sizedSegments.stream()
             .filter(s -> s.segmentHeapByteSize >= this.segmentHeapBytesBudget)
-            .sorted(Comparator.comparingLong((SegmentVectorSize s) -> -s.segmentHeapByteSize)
+            .sorted(
+                Comparator.comparingLong((SegmentVectorSize s) -> -s.segmentHeapByteSize)
                     .thenComparing(s -> s.info.info.name))
             .toList();
 
-    Optional<SegmentVectorSize> candidate = oversize.stream()
-            .filter(s -> s.info.getDelCount() > 0).findFirst();
+    Optional<SegmentVectorSize> candidate =
+        oversize.stream().filter(s -> s.info.getDelCount() > 0).findFirst();
 
     if (candidate.isPresent()) {
       this.segmentHeapSizeExceeded.increment();
-      return Optional.of(createVectorMerge(
+      return Optional.of(
+          createVectorMerge(
               List.of(candidate.get().info),
               candidate.get().vectorByteSize,
               candidate.get().segmentHeapByteSize,
@@ -656,19 +693,19 @@ public class VectorMergePolicy extends FilterMergePolicy {
   }
 
   private Optional<VectorMerge> tryGreedyMerge(
-          List<SegmentVectorSize> sizedSegments, OneMerge merge) {
+      List<SegmentVectorSize> sizedSegments, OneMerge merge) {
     List<SegmentCommitInfo> segments = new ArrayList<>();
     @Var long totalVectorBytes = 0;
     @Var long totalSegmentHeapBytes = 0;
 
     for (SegmentVectorSize segment : sizedSegments) {
       if (segment.vectorByteSize < this.maxVectorInputBytes
-              && segment.segmentHeapByteSize < this.segmentHeapBytesBudget) {
+          && segment.segmentHeapByteSize < this.segmentHeapBytesBudget) {
         long newVectorBytes = totalVectorBytes + segment.vectorByteSize;
         long newHeapBytes = totalSegmentHeapBytes + segment.segmentHeapByteSize;
 
         if (newVectorBytes <= this.maxVectorInputBytes
-                && newHeapBytes <= this.segmentHeapBytesBudget) {
+            && newHeapBytes <= this.segmentHeapBytesBudget) {
           totalVectorBytes = newVectorBytes;
           totalSegmentHeapBytes = newHeapBytes;
           segments.add(segment.info);
@@ -680,9 +717,11 @@ public class VectorMergePolicy extends FilterMergePolicy {
       return Optional.empty();
     }
 
-    return Optional.of(createVectorMerge(
-            segments, totalVectorBytes, totalSegmentHeapBytes,
+    return Optional.of(
+        createVectorMerge(
+            segments,
+            totalVectorBytes,
+            totalSegmentHeapBytes,
             merge.segments.size() - segments.size()));
   }
-
 }
