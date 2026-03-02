@@ -360,7 +360,7 @@ public class IndexMetricsUpdater implements Closeable {
           getSteadyStateExceptionCounter(),
           getReplicationOpTimeInfo().snapshot(),
           getTotalBytesProcessedCounter(),
-          indexMetricValuesSupplier.computeIndexSize(),
+          indexMetricValuesSupplier.getCachedIndexSize(),
           // deprecated vectorFieldSize is set to 0
           0L,
           indexMetricValuesSupplier.getNumFields(),

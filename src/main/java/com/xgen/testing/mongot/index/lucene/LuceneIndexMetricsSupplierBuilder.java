@@ -1,6 +1,7 @@
 package com.xgen.testing.mongot.index.lucene;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.IndexReader;
@@ -14,6 +15,7 @@ import com.xgen.mongot.index.definition.VectorIndexCapabilities;
 import com.xgen.mongot.index.lucene.LuceneIndexMetricValuesSupplier;
 import com.xgen.mongot.index.lucene.LuceneSearchIndexMetricValuesSupplier;
 import com.xgen.mongot.index.lucene.LuceneVectorIndexMetricValuesSupplier;
+import com.xgen.mongot.index.lucene.backing.DiskStats;
 import com.xgen.mongot.index.lucene.backing.IndexBackingStrategy;
 import com.xgen.mongot.index.lucene.writer.LuceneIndexWriter;
 import com.xgen.mongot.index.status.IndexStatus;
@@ -46,6 +48,10 @@ public class LuceneIndexMetricsSupplierBuilder {
       new DynamicFeatureFlagRegistry(
           Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
 
+  private LuceneIndexMetricsSupplierBuilder() {
+    when(this.indexBackingStrategy.getDiskStats()).thenReturn(DiskStats.EMPTY);
+  }
+  
   public static LuceneIndexMetricsSupplierBuilder builder() {
     return new LuceneIndexMetricsSupplierBuilder();
   }

@@ -16,6 +16,7 @@ import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.WriterClosedException;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
+import com.xgen.mongot.index.lucene.backing.DiskStats;
 import com.xgen.mongot.index.lucene.backing.IndexBackingStrategy;
 import com.xgen.mongot.index.lucene.field.FieldName;
 import com.xgen.mongot.index.lucene.writer.MultiLuceneIndexWriter;
@@ -116,8 +117,7 @@ public class LuceneIndexMetricValuesSupplierTest {
     Assert.assertEquals(3.0, result.get(FieldName.TypeField.TOKEN), 0.001);
 
     // Verify no unexpected types are present (only AUTOCOMPLETE, STRING, TOKEN should have counts)
-    Assert.assertEquals(
-        "Expected exactly 3 field types with non-zero counts", 3, result.size());
+    Assert.assertEquals("Expected exactly 3 field types with non-zero counts", 3, result.size());
   }
 
   @Test
@@ -483,9 +483,8 @@ public class LuceneIndexMetricValuesSupplierTest {
     Mockito.doReturn(1000).when(indexWriter).getNumFields();
     Mockito.doReturn(1).when(indexWriter).getNumWriters();
     IndexBackingStrategy indexBackingStrategy = mock(IndexBackingStrategy.class);
-    when(indexBackingStrategy.getIndexSize()).thenReturn(1234L);
-    when(indexBackingStrategy.getLargestIndexFileSize()).thenReturn(1111L);
-    when(indexBackingStrategy.getNumFilesInIndex()).thenReturn(1112L);
+    when(indexBackingStrategy.getDiskStats())
+        .thenReturn(new DiskStats(1234L, 1111L, 1112));
 
     for (IndexDefinition.Type type : IndexDefinition.Type.values()) {
       @Var IndexReader indexReader = Mockito.mock(LuceneVectorIndexReader.class);
@@ -527,7 +526,7 @@ public class LuceneIndexMetricValuesSupplierTest {
       Assert.assertEquals(23, docCounts.numDocs);
       Assert.assertEquals(24, luceneIndexMetricsSupplier.getRequiredMemoryForVectorData());
       Assert.assertEquals(1000, luceneIndexMetricsSupplier.getNumFields());
-      Assert.assertEquals(1234L, luceneIndexMetricsSupplier.computeIndexSize());
+      Assert.assertEquals(1234L, luceneIndexMetricsSupplier.getCachedIndexSize());
       Assert.assertEquals(statusContainer, luceneIndexMetricsSupplier.getIndexStatus());
       Assert.assertEquals(
           1,
@@ -626,7 +625,8 @@ public class LuceneIndexMetricValuesSupplierTest {
     Mockito.doReturn(2).when(indexWriter).getNumWriters();
     Mockito.doReturn(24L).when(indexWriter).getNumLuceneMaxDocs();
     IndexBackingStrategy indexBackingStrategy = mock(IndexBackingStrategy.class);
-    when(indexBackingStrategy.getIndexSize()).thenReturn(1234L);
+    when(indexBackingStrategy.getDiskStats())
+        .thenReturn(new DiskStats(1234, 1, 1));
     when(indexBackingStrategy.getIndexSizeForIndexPartition(0)).thenReturn(610L);
     when(indexBackingStrategy.getIndexSizeForIndexPartition(1)).thenReturn(611L);
     MeterRegistry meterRegistry = new SimpleMeterRegistry();

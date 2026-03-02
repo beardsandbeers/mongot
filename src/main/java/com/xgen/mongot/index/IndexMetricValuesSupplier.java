@@ -27,29 +27,15 @@ public interface IndexMetricValuesSupplier {
   }
 
   /**
-   * Computes and returns the index size in bytes.
-   *
-   * <p><b>Warning:</b> This method is expensive as it may trigger directory walks or other I/O
-   * operations. For hot paths like query execution, use {@link #getCachedIndexSize()} instead.
-   *
-   * @return the computed index size in bytes
-   */
-  long computeIndexSize();
-
-  /**
    * Returns the cached index size in bytes.
    *
    * <p>This method returns a pre-computed value that is updated during async metrics collection,
-   * making it safe to call on hot paths like query execution. Unlike {@link #computeIndexSize()},
-   * this method never triggers expensive operations like directory walks.
+   * making it safe to call on hot paths like query execution. This method never triggers expensive
+   * operations like directory walks.
    *
    * @return the cached index size in bytes, or 0 if not yet computed
    */
   long getCachedIndexSize();
-
-  long getLargestIndexFileSize();
-
-  long getNumFilesInIndex();
 
   int getNumFields();
 

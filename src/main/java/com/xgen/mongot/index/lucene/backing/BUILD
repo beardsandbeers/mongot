@@ -3,6 +3,7 @@ load("//bazel/java:package.bzl", "java_library")
 java_library(
     name = "backing",
     srcs = [
+        "DiskStats.java",
         "IndexBackingStrategy.java",
     ],
     visibility = ["//visibility:public"],

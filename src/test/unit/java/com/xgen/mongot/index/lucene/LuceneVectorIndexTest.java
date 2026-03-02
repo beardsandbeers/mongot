@@ -88,13 +88,14 @@ public class LuceneVectorIndexTest {
             new AtomicDirectoryRemover(TestUtils.getTempFolder().getRoot().toPath()),
             path,
             path.resolve("indexMapping"),
-            VectorIndex.mockMetricsFactory());
+            VectorIndex.mockMetricsFactory(),
+            1);
 
     backingStrategy.releaseResources();
     Assert.assertEquals(
         "should handle calling getIndexSize() after releaseResources() gracefully",
         0,
-        backingStrategy.getIndexSize());
+        backingStrategy.getDiskStats().totalFileByteSize());
   }
 
   @Test
@@ -122,13 +123,14 @@ public class LuceneVectorIndexTest {
             directoryRemover,
             path,
             path.resolve("indexMapping"),
-            VectorIndex.mockMetricsFactory());
+            VectorIndex.mockMetricsFactory(),
+            1);
 
     ConcurrencyTestUtils.assertCannotBeInvokedConcurrently(
         backingStrategy::releaseResources,
         firstReadyToStart,
         firstShouldStart,
-        backingStrategy::getIndexSize);
+        backingStrategy::getDiskStats);
   }
 
   @Test

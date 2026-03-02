@@ -125,14 +125,15 @@ public class IndexMetricsUpdaterTest {
         Mockito.doAnswer((ignored) -> IndexStatus.steady())
             .when(mockedIndexMetricsSupplier)
             .getIndexStatus();
-        Mockito.doReturn(1000L).when(mockedIndexMetricsSupplier).computeIndexSize();
         Mockito.doReturn(500L).when(mockedIndexMetricsSupplier).getRequiredMemoryForVectorData();
+        Mockito.doReturn(1000L).when(mockedIndexMetricsSupplier).getCachedIndexSize();
 
         var indexingMetricsUpdater =
             IndexMetricsUpdaterBuilder.IndexingMetricsUpdaterBuilder.builder()
                 .metricsFactory(mockMetricsFactory(IndexingMetricsUpdater.NAMESPACE))
                 .build();
         var mockedIndexingMetricsUpdater = spy(indexingMetricsUpdater);
+        Mockito.doReturn(1000L).when(mockedIndexMetricsSupplier).getCachedIndexSize();
         Mockito.doReturn(new ReplicationOpTimeInfo(10L, 20L, 10L))
             .when(mockedIndexingMetricsUpdater)
             .getReplicationOpTimeInfo();

@@ -4,7 +4,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
-import com.xgen.mongot.index.DocCounts;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.IndexMetricValuesSupplier;
 import com.xgen.mongot.index.IndexMetrics;
@@ -138,20 +137,8 @@ public class VectorIndex {
             MeterAndFtdcRegistry.createWithSimpleRegistries(),
             generationId);
 
-    IndexMetricValuesSupplier indexMetricValuesSupplier = mock(IndexMetricValuesSupplier.class);
-    Mockito.lenient().when(indexMetricValuesSupplier.computeIndexSize()).thenReturn(0L);
-    Mockito.lenient().when(indexMetricValuesSupplier.getCachedIndexSize()).thenReturn(0L);
-
-    Mockito.lenient()
-        .doAnswer(ignored -> index.getStatus())
-        .when(indexMetricValuesSupplier)
-        .getIndexStatus();
-
-    Mockito.lenient().when(indexMetricValuesSupplier.getNumFields()).thenReturn(0);
-    Mockito.lenient()
-        .when(indexMetricValuesSupplier.getDocCounts())
-        .thenReturn(new DocCounts(0, 0, 0, 0L));
-
+    IndexMetricValuesSupplier indexMetricValuesSupplier =
+        IndexMetricsSupplier.ofEmptyIndex(index.getStatus());
     IndexMetricsUpdater indexMetricsUpdater =
         spy(
             new IndexMetricsUpdater(

@@ -5,6 +5,7 @@ java_library(
     srcs = [
         "AbstractLuceneSearchManager.java",
         "Comparators.java",
+        "DiskIndexBackingStrategy.java",
         "EmptySearchBatchProducer.java",
         "FacetMergingBatchProducer.java",
         "GenericDrillSidewaysFactory.java",
@@ -141,6 +142,7 @@ java_library(
         "@maven//:org_apache_lucene_lucene_facet",
         "@maven//:org_apache_lucene_lucene_highlighter",
         "@maven//:org_apache_lucene_lucene_sandbox",
+        "@maven//:org_jetbrains_annotations",
         "@maven//:org_mongodb_bson",
         "@maven//:org_mongodb_mongodb_driver_core",
         "@maven//:org_slf4j_slf4j_api",

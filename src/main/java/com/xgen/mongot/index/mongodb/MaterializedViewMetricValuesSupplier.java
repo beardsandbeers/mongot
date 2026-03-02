@@ -9,7 +9,6 @@ import com.xgen.mongot.index.lucene.field.FieldName;
 import com.xgen.mongot.index.status.IndexStatus;
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.bson.Document;
 import org.slf4j.Logger;
@@ -48,36 +47,16 @@ public class MaterializedViewMetricValuesSupplier implements IndexMetricValuesSu
     this.mongoClient = mongoClient;
     this.namespace = namespace;
     this.cachedStatsSupplier =
-        Suppliers.memoizeWithExpiration(
-            this::fetchCollectionStats, CACHE_DURATION.toMillis(), TimeUnit.MILLISECONDS);
-  }
-
-  @Override
-  public long computeIndexSize() {
-    return this.cachedStatsSupplier.get().storageSize;
+        Suppliers.memoizeWithExpiration(this::fetchCollectionStats, CACHE_DURATION);
   }
 
   @Override
   public long getCachedIndexSize() {
-    // For materialized views, computeIndexSize() is already cached via
-    // Suppliers.memoizeWithExpiration, so it's safe to call on hot paths.
-    return computeIndexSize();
-  }
-
-  @Override
-  public long getLargestIndexFileSize() {
-    // Not applicable for MongoDB collections - this is a Lucene-specific metric
-    return 0;
+    return this.lastKnownGoodStats.storageSize();
   }
 
   @Override
   public int getNumFields() {
-    // Not applicable for MongoDB collections - this is a Lucene-specific metric
-    return 0;
-  }
-
-  @Override
-  public long getNumFilesInIndex() {
     // Not applicable for MongoDB collections - this is a Lucene-specific metric
     return 0;
   }

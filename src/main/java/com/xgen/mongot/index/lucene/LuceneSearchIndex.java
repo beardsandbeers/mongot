@@ -203,7 +203,8 @@ public class LuceneSearchIndex implements SearchIndex {
             directoryRemover,
             indexPath,
             metadataPath,
-            metricsFactory),
+            metricsFactory,
+            indexDefinition.getNumPartitions()),
         concurrentSearchExecutor,
         concurrentVectorRescoringExecutor,
         featureFlags.isEnabled(Feature.INITIAL_INDEX_STATUS_UNKNOWN)

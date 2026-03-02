@@ -257,7 +257,6 @@ public class SearchIndex {
             generationId);
 
     IndexMetricValuesSupplier indexMetricValuesSupplier = mock(IndexMetricValuesSupplier.class);
-    Mockito.lenient().when(indexMetricValuesSupplier.computeIndexSize()).thenReturn(0L);
     Mockito.lenient().when(indexMetricValuesSupplier.getCachedIndexSize()).thenReturn(0L);
     Mockito.lenient()
         .doAnswer(ignored -> index.getStatus())

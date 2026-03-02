@@ -249,8 +249,8 @@ public class AllPresentIndexesTest {
     this.mocks.addIndex(definitionGeneration, ConfigStateMocks.State.PHASE_OUT);
     var phaseOut = this.mocks.waitAndGetInitializedIndex(definitionGeneration.getGenerationId());
 
-    when(phaseOut.getMetricsUpdater().getIndexMetricValuesSupplier().computeIndexSize())
-        .thenAnswer(ignored -> 3L);
+    when(phaseOut.getMetricsUpdater().getIndexMetricValuesSupplier().getCachedIndexSize())
+        .thenReturn(3L);
     // only phase out present, take its stats
     @Var AggregatedIndexMetrics stats = getIndexInfo(id).getAggregatedMetrics();
     Assert.assertEquals(
@@ -267,8 +267,8 @@ public class AllPresentIndexesTest {
                     definitionGeneration.definition(),
                     definitionGeneration.generation().incrementUser()),
                 ConfigStateMocks.State.LIVE));
-    when(live.getMetricsUpdater().getIndexMetricValuesSupplier().computeIndexSize())
-        .thenAnswer(ignored -> 2L);
+    when(live.getMetricsUpdater().getIndexMetricValuesSupplier().getCachedIndexSize())
+        .thenReturn(2L);
 
     stats = getIndexInfo(id).getAggregatedMetrics();
     Assert.assertEquals(5, stats.dataSize());
@@ -294,8 +294,8 @@ public class AllPresentIndexesTest {
     var staged =
         this.mocks.waitAndGetInitializedIndex(
             this.mocks.staged.getIndex(id).orElseThrow().getGenerationId());
-    when(staged.getMetricsUpdater().getIndexMetricValuesSupplier().computeIndexSize())
-        .thenAnswer(ignored -> 3L);
+    when(staged.getMetricsUpdater().getIndexMetricValuesSupplier().getCachedIndexSize())
+        .thenReturn(3L);
     when(staged.getMetricsUpdater().getIndexMetricValuesSupplier().getDocCounts())
         .thenAnswer(ignored -> new DocCounts(6, 5, 3, 6));
     when(staged.getMetricsUpdater().getIndexingMetricsUpdater().getReplicationOpTimeInfo())
@@ -341,8 +341,8 @@ public class AllPresentIndexesTest {
 
     // Expect the "numDocs" value reported in AggregatedIndexMetrics to be 11, because it should
     // originate from getNumEmbeddedRootDocs (and not getNumDocs).
-    when(index.getMetricsUpdater().getIndexMetricValuesSupplier().computeIndexSize())
-        .thenAnswer(ignored -> 3L);
+    when(index.getMetricsUpdater().getIndexMetricValuesSupplier().getCachedIndexSize())
+        .thenReturn(3L);
     when(index.getMetricsUpdater().getIndexMetricValuesSupplier().getDocCounts())
         .thenAnswer(ignored -> new DocCounts(12345, 12345, 5555, 11L));
     when(index.getMetricsUpdater().getIndexingMetricsUpdater().getReplicationOpTimeInfo())

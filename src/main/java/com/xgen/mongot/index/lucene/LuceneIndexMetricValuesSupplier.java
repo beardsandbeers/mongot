@@ -39,7 +39,7 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
    * Cached index size in bytes, updated during async metrics collection. This allows the query hot
    * path to read the index size without triggering expensive directory walks.
    */
-  private final AtomicLong cachedIndexSize = new AtomicLong(0);
+  private final AtomicLong cachedIndexSize;
 
   /**
    * Private constructor - does not register gauges. Subclasses should use static factory methods to
@@ -55,6 +55,7 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
     this.indexReader = indexReader;
     this.indexWriter = luceneIndexWriter;
     this.metricsFactories = new ArrayList<>();
+    this.cachedIndexSize = new AtomicLong(indexBackingStrategy.getDiskStats().totalFileByteSize());
   }
 
   /**
@@ -77,14 +78,12 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
     // This allows the query hot path to read index size in O(1) time.
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.INDEX_SIZE_BYTES,
-        this,
-        CachedGauge.of(
-            supplier -> {
-              long size = supplier.computeIndexSize();
-              supplier.cachedIndexSize.set(size);
-              return size;
-            },
-            Duration.ofMinutes(1)),
+        this.indexBackingStrategy,
+        strategy -> {
+          long size = strategy.getDiskStats().totalFileByteSize();
+          this.cachedIndexSize.set(size);
+          return size;
+        },
         getNumPartitionTag().and(indexFeatureVersionTag));
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.REQUIRED_MEMORY,
@@ -93,14 +92,13 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
         getNumPartitionTag().and(indexFeatureVersionTag));
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.LARGEST_INDEX_FILE_SIZE_BYTES,
-        this,
-        CachedGauge.of(
-            LuceneIndexMetricValuesSupplier::getLargestIndexFileSize, Duration.ofMinutes(1)),
+        this.indexBackingStrategy,
+        strategy -> strategy.getDiskStats().largestFileByteSize(),
         getNumPartitionTag().and(indexFeatureVersionTag));
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.NUMBER_OF_FILES_IN_INDEX,
-        this,
-        CachedGauge.of(LuceneIndexMetricValuesSupplier::getNumFilesInIndex, Duration.ofMinutes(1)),
+        this.indexBackingStrategy,
+        strategy -> strategy.getDiskStats().numFiles(),
         getNumPartitionTag().and(indexFeatureVersionTag));
     metricsFactory.perIndexObjectValueGauge(
         MetricNames.NUM_LUCENE_FIELDS,
@@ -139,18 +137,14 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.INDEX_SIZE_BYTES,
             this.indexBackingStrategy,
-            CachedGauge.of(
-                strategy -> strategy.getIndexSizeForIndexPartition(indexPartitionId),
-                Duration.ofMinutes(1)),
+            strategy -> strategy.getIndexSizeForIndexPartition(indexPartitionId),
             getIndexPartitionTags(indexPartitionId).and(indexFeatureVersionTag));
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.NUM_LUCENE_FIELDS,
             indexPartitionWriter,
-            CachedGauge.of(
                 indexWriter ->
                     FunctionalUtils.getOrDefaultIfThrows(
                         indexWriter::getNumFields, WriterClosedException.class, 0),
-                Duration.ofMinutes(1)),
             getIndexPartitionTags(indexPartitionId).and(indexFeatureVersionTag));
         indexPartitionMetricsFactory.perIndexObjectValueGauge(
             MetricNames.NUM_LUCENE_DOCS,
@@ -190,23 +184,8 @@ public abstract class LuceneIndexMetricValuesSupplier implements IndexMetricValu
   }
 
   @Override
-  public long computeIndexSize() {
-    return this.indexBackingStrategy.getIndexSize();
-  }
-
-  @Override
   public long getCachedIndexSize() {
     return this.cachedIndexSize.get();
-  }
-
-  @Override
-  public long getLargestIndexFileSize() {
-    return this.indexBackingStrategy.getLargestIndexFileSize();
-  }
-
-  @Override
-  public long getNumFilesInIndex() {
-    return this.indexBackingStrategy.getNumFilesInIndex();
   }
 
   @Override
