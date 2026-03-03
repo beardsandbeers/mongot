@@ -64,6 +64,7 @@ import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -336,6 +337,7 @@ public class VectorSearchCommand implements Command {
     // Record nested vector search query counter at command receipt, consistent with other counters.
     if (isNestedVectorSearch(vectorSearchQuery, optionalIndex.get().getDefinition())) {
       this.metrics.nestedVectorSearchQueries.increment();
+      recordNestedVectorSearchTags(vectorSearchQuery);
     }
 
     if (isEnvoyMetadataPresent()) {
@@ -708,6 +710,30 @@ public class VectorSearchCommand implements Command {
           .orElse(false);
     }
     return false;
+  }
+
+  /**
+   * Records tagged counters for nested vector search queries to track filter, parentFilter,
+   * and scoreMode usage independently.
+   *
+   * @param vectorSearchQuery The vector search query
+   */
+  private void recordNestedVectorSearchTags(VectorSearchQuery vectorSearchQuery) {
+    VectorSearchCriteria criteria = vectorSearchQuery.criteria();
+
+    String hasFilter = criteria.filter().isPresent() ? "true" : "false";
+    String hasParentFilter = criteria.parentFilter().isPresent() ? "true" : "false";
+    String scoreMode = criteria.embeddedOptions()
+        .map(opts -> opts.scoreMode().name().toLowerCase(Locale.ROOT))
+        .orElse("none");
+
+    Tags tags = Tags.of(
+        Tag.of("hasFilter", hasFilter),
+        Tag.of("hasParentFilter", hasParentFilter),
+        Tag.of("scoreMode", scoreMode)
+    );
+
+    this.metrics.metricsFactory.counter("nestedVectorSearchQueries", tags).increment();
   }
 
   /**

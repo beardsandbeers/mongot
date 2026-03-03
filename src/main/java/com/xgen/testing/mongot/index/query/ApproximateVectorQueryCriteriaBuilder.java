@@ -1,6 +1,7 @@
 package com.xgen.testing.mongot.index.query;
 
 import com.xgen.mongot.index.query.operators.ApproximateVectorSearchCriteria;
+import com.xgen.mongot.index.query.operators.VectorEmbeddedOptions;
 import com.xgen.mongot.index.query.operators.VectorSearchCriteria;
 import com.xgen.mongot.index.query.operators.VectorSearchFilter;
 import com.xgen.mongot.index.query.operators.VectorSearchQueryInput;
@@ -19,6 +20,7 @@ public class ApproximateVectorQueryCriteriaBuilder {
   private Optional<Integer> limit = Optional.empty();
   private final Optional<VectorSearchCriteria.ExplainOptions> explainOptions = Optional.empty();
   private Optional<Boolean> returnStoredSource = Optional.empty();
+  private Optional<VectorEmbeddedOptions> embeddedOptions = Optional.empty();
 
   public static ApproximateVectorQueryCriteriaBuilder builder() {
     return new ApproximateVectorQueryCriteriaBuilder();
@@ -38,6 +40,7 @@ public class ApproximateVectorQueryCriteriaBuilder {
     criteria.filter().ifPresent(builder::filter);
     criteria.query().ifPresent(builder::query);
     criteria.parentFilter().ifPresent(builder::parentFilter);
+    criteria.embeddedOptions().ifPresent(builder::embeddedOptions);
     return builder;
   }
 
@@ -85,6 +88,12 @@ public class ApproximateVectorQueryCriteriaBuilder {
     return this;
   }
 
+  public ApproximateVectorQueryCriteriaBuilder embeddedOptions(
+      VectorEmbeddedOptions embeddedOptions) {
+    this.embeddedOptions = Optional.of(embeddedOptions);
+    return this;
+  }
+
   public ApproximateVectorSearchCriteria build() {
     Check.isPresent(this.path, "path");
     Check.checkArg(
@@ -104,6 +113,6 @@ public class ApproximateVectorQueryCriteriaBuilder {
         this.numCandidates.get(),
         this.explainOptions,
         this.returnStoredSource.orElse(false),
-        Optional.empty());
+        this.embeddedOptions);
   }
 }

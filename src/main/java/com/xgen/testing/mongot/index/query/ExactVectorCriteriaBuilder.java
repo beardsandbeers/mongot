@@ -1,6 +1,7 @@
 package com.xgen.testing.mongot.index.query;
 
 import com.xgen.mongot.index.query.operators.ExactVectorSearchCriteria;
+import com.xgen.mongot.index.query.operators.VectorEmbeddedOptions;
 import com.xgen.mongot.index.query.operators.VectorSearchFilter;
 import com.xgen.mongot.index.query.operators.VectorSearchQueryInput;
 import com.xgen.mongot.util.Check;
@@ -16,6 +17,7 @@ public class ExactVectorCriteriaBuilder {
   private Optional<VectorSearchFilter> parentFilter = Optional.empty();
   private Optional<Integer> limit = Optional.empty();
   private Optional<Boolean> returnStoredSource = Optional.empty();
+  private Optional<VectorEmbeddedOptions> embeddedOptions = Optional.empty();
 
   public static ExactVectorCriteriaBuilder builder() {
     return new ExactVectorCriteriaBuilder();
@@ -31,6 +33,7 @@ public class ExactVectorCriteriaBuilder {
     criteria.filter().ifPresent(builder::filter);
     criteria.query().ifPresent(builder::query);
     criteria.parentFilter().ifPresent(builder::parentFilter);
+    criteria.embeddedOptions().ifPresent(builder::embeddedOptions);
     return builder;
   }
 
@@ -78,6 +81,11 @@ public class ExactVectorCriteriaBuilder {
     return this;
   }
 
+  public ExactVectorCriteriaBuilder embeddedOptions(VectorEmbeddedOptions embeddedOptions) {
+    this.embeddedOptions = Optional.of(embeddedOptions);
+    return this;
+  }
+
   public ExactVectorSearchCriteria build() {
     Check.isPresent(this.path, "path");
     Check.checkArg(
@@ -94,6 +102,6 @@ public class ExactVectorCriteriaBuilder {
         this.parentFilter,
         this.limit.get(),
         this.returnStoredSource.orElse(false),
-        Optional.empty());
+        this.embeddedOptions);
   }
 }

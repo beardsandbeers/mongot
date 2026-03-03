@@ -31,9 +31,14 @@ import com.xgen.mongot.index.lucene.LuceneVectorIndex;
 import com.xgen.mongot.index.lucene.LuceneVectorIndexReader;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.VectorSearchQuery;
+import com.xgen.mongot.index.query.operators.VectorEmbeddedOptions;
+import com.xgen.mongot.index.query.operators.VectorSearchFilter;
+import com.xgen.mongot.index.query.operators.mql.Clause;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.Vector;
+import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
+import com.xgen.mongot.util.bson.parser.BsonParseException;
 import com.xgen.mongot.util.mongodb.MongoDbServerInfo;
 import com.xgen.testing.mongot.index.IndexMetricsUpdaterBuilder;
 import com.xgen.testing.mongot.index.definition.VectorIndexDefinitionBuilder;
@@ -42,11 +47,13 @@ import com.xgen.testing.mongot.index.query.VectorQueryBuilder;
 import com.xgen.testing.mongot.mock.index.SearchIndex;
 import com.xgen.testing.mongot.mock.index.VectorSearchResultBatch;
 import com.xgen.testing.mongot.server.command.search.definition.request.VectorSearchCommandDefinitionBuilder;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;
 import org.bson.BsonArray;
+import org.bson.BsonDocument;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -312,6 +319,278 @@ public class VectorSearchCommandIndexSizeMetricsTest {
     assertThat(counter.count()).isEqualTo(0);
   }
 
+  @Test
+  public void testNestedVectorSearchTagsWithFilterOnly() throws Exception {
+    var mocks = new Mocks();
+    var metricsFactory = createSimpleMetricsFactory();
+    var metrics = new VectorSearchCommand.Metrics(metricsFactory);
+
+    FieldPath nestedPath = FieldPath.parse("sections.embedding");
+    VectorIndexDefinition nestedIndexDef =
+        VectorIndexDefinitionBuilder.builder()
+            .withVectorField(
+                nestedPath.toString(),
+                3,
+                VectorSimilarity.DOT_PRODUCT,
+                VectorQuantization.NONE,
+                new VectorIndexingAlgorithm.HnswIndexingAlgorithm())
+            .nestedRoot("sections")
+            .build();
+    lenient().when(mocks.indexGeneration.getDefinition()).thenReturn(nestedIndexDef);
+    lenient().when(mocks.initializedIndex.getDefinition()).thenReturn(nestedIndexDef);
+
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+
+    VectorSearchFilter filter = createMockClauseFilter();
+
+    VectorSearchQuery vectorSearchQuery =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(nestedPath)
+                    .filter(filter)
+                    .embeddedOptions(
+                        new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.MAX))
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(vectorSearchQuery)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            metadata,
+            MOCK_EMBEDDING_SERVICE,
+            metrics);
+
+    command.run();
+
+    // Verify the untagged counter is incremented
+    var counter = metricsFactory.get("nestedVectorSearchQueries").counter();
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(1);
+
+    // Verify the tagged counter
+    var taggedCounter =
+        metricsFactory
+            .get(
+                "nestedVectorSearchQueries",
+                Tags.of("hasFilter", "true", "hasParentFilter", "false", "scoreMode", "max"))
+            .counter();
+    assertThat(taggedCounter).isNotNull();
+    assertThat(taggedCounter.count()).isEqualTo(1);
+  }
+
+  @Test
+  public void testNestedVectorSearchTagsWithParentFilterOnly() throws Exception {
+    var mocks = new Mocks();
+    var metricsFactory = createSimpleMetricsFactory();
+    var metrics = new VectorSearchCommand.Metrics(metricsFactory);
+
+    FieldPath nestedPath = FieldPath.parse("sections.embedding");
+    VectorIndexDefinition nestedIndexDef =
+        VectorIndexDefinitionBuilder.builder()
+            .withVectorField(
+                nestedPath.toString(),
+                3,
+                VectorSimilarity.DOT_PRODUCT,
+                VectorQuantization.NONE,
+                new VectorIndexingAlgorithm.HnswIndexingAlgorithm())
+            .nestedRoot("sections")
+            .build();
+    lenient().when(mocks.indexGeneration.getDefinition()).thenReturn(nestedIndexDef);
+    lenient().when(mocks.initializedIndex.getDefinition()).thenReturn(nestedIndexDef);
+
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+
+    VectorSearchFilter parentFilter = createMockClauseFilter();
+
+    VectorSearchQuery vectorSearchQuery =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(nestedPath)
+                    .parentFilter(parentFilter)
+                    .embeddedOptions(
+                        new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.AVG))
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(vectorSearchQuery)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            metadata,
+            MOCK_EMBEDDING_SERVICE,
+            metrics);
+
+    command.run();
+
+    var taggedCounter =
+        metricsFactory
+            .get(
+                "nestedVectorSearchQueries",
+                Tags.of("hasFilter", "false", "hasParentFilter", "true", "scoreMode", "avg"))
+            .counter();
+    assertThat(taggedCounter).isNotNull();
+    assertThat(taggedCounter.count()).isEqualTo(1);
+  }
+
+  @Test
+  public void testNestedVectorSearchTagsWithBothFilters() throws Exception {
+    var mocks = new Mocks();
+    var metricsFactory = createSimpleMetricsFactory();
+    var metrics = new VectorSearchCommand.Metrics(metricsFactory);
+
+    FieldPath nestedPath = FieldPath.parse("sections.embedding");
+    VectorIndexDefinition nestedIndexDef =
+        VectorIndexDefinitionBuilder.builder()
+            .withVectorField(
+                nestedPath.toString(),
+                3,
+                VectorSimilarity.DOT_PRODUCT,
+                VectorQuantization.NONE,
+                new VectorIndexingAlgorithm.HnswIndexingAlgorithm())
+            .nestedRoot("sections")
+            .build();
+    lenient().when(mocks.indexGeneration.getDefinition()).thenReturn(nestedIndexDef);
+    lenient().when(mocks.initializedIndex.getDefinition()).thenReturn(nestedIndexDef);
+
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+
+    VectorSearchFilter filter = createMockClauseFilter();
+    VectorSearchFilter parentFilter = createMockClauseFilter();
+
+    VectorSearchQuery vectorSearchQuery =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(nestedPath)
+                    .filter(filter)
+                    .parentFilter(parentFilter)
+                    .embeddedOptions(
+                        new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.MAX))
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(vectorSearchQuery)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            metadata,
+            MOCK_EMBEDDING_SERVICE,
+            metrics);
+
+    command.run();
+
+    var taggedCounter =
+        metricsFactory
+            .get(
+                "nestedVectorSearchQueries",
+                Tags.of("hasFilter", "true", "hasParentFilter", "true", "scoreMode", "max"))
+            .counter();
+    assertThat(taggedCounter).isNotNull();
+    assertThat(taggedCounter.count()).isEqualTo(1);
+  }
+
+  @Test
+  public void testNestedVectorSearchTagsWithNoFilterAndNoEmbeddedOptions() throws Exception {
+    var mocks = new Mocks();
+    var metricsFactory = createSimpleMetricsFactory();
+    var metrics = new VectorSearchCommand.Metrics(metricsFactory);
+
+    // Nested via nestedRoot path matching (no embeddedOptions)
+    FieldPath nestedPath = FieldPath.parse("sections.embedding");
+    VectorIndexDefinition nestedIndexDef =
+        VectorIndexDefinitionBuilder.builder()
+            .withVectorField(
+                nestedPath.toString(),
+                3,
+                VectorSimilarity.DOT_PRODUCT,
+                VectorQuantization.NONE,
+                new VectorIndexingAlgorithm.HnswIndexingAlgorithm())
+            .nestedRoot("sections")
+            .build();
+    lenient().when(mocks.indexGeneration.getDefinition()).thenReturn(nestedIndexDef);
+    lenient().when(mocks.initializedIndex.getDefinition()).thenReturn(nestedIndexDef);
+
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+
+    VectorSearchQuery vectorSearchQuery =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(nestedPath)
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(vectorSearchQuery)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            metadata,
+            MOCK_EMBEDDING_SERVICE,
+            metrics);
+
+    command.run();
+
+    var taggedCounter =
+        metricsFactory
+            .get(
+                "nestedVectorSearchQueries",
+                Tags.of("hasFilter", "false", "hasParentFilter", "false", "scoreMode", "none"))
+            .counter();
+    assertThat(taggedCounter).isNotNull();
+    assertThat(taggedCounter.count()).isEqualTo(1);
+  }
+
   private static VectorSearchCommand buildVectorSearchCommandWithFeatureFlags(
       Mocks mocks,
       VectorSearchCommand.Metrics metrics,
@@ -359,6 +638,15 @@ public class VectorSearchCommandIndexSizeMetricsTest {
         metadata,
         MOCK_EMBEDDING_SERVICE,
         metrics);
+  }
+
+  private static VectorSearchFilter createMockClauseFilter() throws BsonParseException {
+    BsonDocument filterDoc = BsonDocument.parse("{\"status\": \"active\"}");
+    try (var parser =
+        BsonDocumentParser.fromRoot(filterDoc).allowUnknownFields(true).build()) {
+      Clause clause = Clause.fromBson(parser.getContext(), filterDoc);
+      return new VectorSearchFilter.ClauseFilter(clause);
+    }
   }
 
   private static Supplier<EmbeddingServiceManager> mockEmbeddingServiceManager() {
