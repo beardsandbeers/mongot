@@ -9,6 +9,8 @@ import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.metrics.ServerStatusDataExtractor;
 import com.xgen.mongot.metrics.ServerStatusDataExtractor.LuceneMeterData;
 import com.xgen.mongot.metrics.Timed;
+import com.xgen.mongot.monitor.Gate;
+import com.xgen.mongot.monitor.ToggleGate;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -188,8 +190,9 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
 
     @Override
     public Directory wrapForMerge(MergePolicy.OneMerge merge, Directory in) {
-      // Delegate to the parent scheduler's wrapForMerge which handles AbortableDirectory wrapping
-      // when cancelMergeEnabled is true. We don't wrap again here to avoid double-wrapping.
+      // Delegate to the parent scheduler which handles all wrapping:
+      // 1. PausableDirectory for disk-based pause/resume
+      // 2. AbortableDirectory for IO-level interruption (if cancelMergeEnabled)
       return this.in.wrapForMerge(merge, in, this.cancelMergeEnabled);
     }
 
@@ -224,6 +227,16 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
      */
     public boolean cancelMerges() throws IOException {
       return this.in.cancelMerges(this.indexPartitionIdentifier);
+    }
+
+    /**
+     * Returns whether merges are currently paused due to high disk usage.
+     *
+     * @return true if merges are paused, false otherwise
+     * @see InstrumentedConcurrentMergeScheduler#isMergePaused()
+     */
+    public boolean isMergePaused() {
+      return this.in.isMergePaused();
     }
 
     // We created this method because we cannot easily override the initialize() method
@@ -282,6 +295,9 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
   // Once set to true, no new merges will be started for any index.
   private final AtomicBoolean allMergesCancelled = new AtomicBoolean(false);
 
+  // Gate for pausing merges when disk usage is high. Default is always open (no blocking).
+  private Gate mergeGate = ToggleGate.opened();
+
   // Creates a per index-partition merge scheduler where input 'idx' tags the merge threads that
   // belong to a particular index-partition. The output PerIndexMergeScheduler wraps the running
   // instance of InstrumentedConcurrentMergeScheduler, and only one of its type exists per
@@ -294,6 +310,32 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
         this,
         new IndexPartitionIdentifier(generationId, optionalIndexPartitionId),
         cancelMergeEnabled);
+  }
+
+  /**
+   * Sets the gate used to pause merges when disk usage is high.
+   *
+   * <p>When the gate is closed (disk usage is high), ongoing merge operations will block on
+   * {@link Gate#awaitOpen()} during I/O operations. When the gate opens (disk usage drops),
+   * the blocked merges will automatically resume from where they paused.
+   *
+   * @param mergeGate the gate that controls whether merges should be paused
+   */
+  public void setMergeGate(Gate mergeGate) {
+    this.mergeGate = mergeGate;
+  }
+
+  /**
+   * Returns whether merges are currently paused due to high disk usage.
+   *
+   * <p>When paused, ongoing merge I/O operations block in {@link PausableDirectory} until disk
+   * usage drops and the gate reopens. New merges are also rejected by {@link
+   * DiskUtilizationAwareMergePolicy}.
+   *
+   * @return true if merges are paused (gate is closed), false otherwise
+   */
+  public boolean isMergePaused() {
+    return this.mergeGate.isClosed();
   }
 
   /**
@@ -480,9 +522,14 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
           InstrumentedMergeThread imt = (InstrumentedMergeThread) t;
           if (threadPredicate.test(imt)) {
             imt.merge.setAborted();
+            // Interrupt the thread to wake it up if it's blocked (e.g., in
+            // PausableDirectory.awaitOpen() waiting for disk space). Without this,
+            // a merge thread paused on a closed gate would hang indefinitely since
+            // setAborted() only sets a flag but doesn't unblock waiting threads.
+            t.interrupt();
             numMergesAborted++;
             LOG.info(
-                "Marked merge as aborted for index: {}, segments: {}",
+                "Marked merge as aborted and interrupted for index: {}, segments: {}",
                 imt.getIndexPartitionIdentifier(),
                 imt.merge.segments);
             // Collect thread for waiting, but skip if it's the current thread to avoid deadlock
@@ -496,6 +543,8 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
 
     // Step 2: Wait for all threads to complete.
     // The merge threads will detect the abort signal and stop at the next checkpoint.
+    // Threads blocked on Gate.awaitOpen() (in PausableDirectory) will be woken up by
+    // the interrupt sent in Step 1.
     // Note: joins are sequential, so worst-case total wait time is
     // threadsToWait.size() * perThreadTimeoutMs. However, threads that
     // terminate quickly will return from join() immediately, and all threads are
@@ -694,23 +743,35 @@ public class InstrumentedConcurrentMergeScheduler extends ConcurrentMergeSchedul
   }
 
   /**
-   * Wraps the directory for merge operations, optionally with AbortableDirectory for IO-level
-   * interruption support.
+   * Wraps the directory for merge operations when cancel merge is enabled.
+   *
+   * <p>When {@code cancelMergeEnabled} is true, the directory is wrapped with:
+   * <ol>
+   *   <li>PausableDirectory - blocks writes when disk usage is high, resumes when it drops</li>
+   *   <li>AbortableDirectory - throws IOException when merge is aborted</li>
+   * </ol>
+   *
+   * <p>When {@code cancelMergeEnabled} is false, the directory is returned unwrapped.
    *
    * @param merge the merge operation
    * @param in the directory to wrap
-   * @param cancelMergeEnabled whether to wrap with AbortableDirectory for cancellation support
-   * @return the wrapped directory
+   * @param cancelMergeEnabled whether to wrap with PausableDirectory and AbortableDirectory
+   * @return the wrapped directory, or the original directory if cancel merge is disabled
    */
   public Directory wrapForMerge(
       MergePolicy.OneMerge merge, Directory in, boolean cancelMergeEnabled) {
-    if (cancelMergeEnabled) {
-      // Wrap the directory with AbortableDirectory to enable IO-level interruption
-      // This allows merges to be aborted quickly even during long-running operations
-      // like HNSW graph building, which may not have frequent checkpoints
-      return new AbortableDirectory(in, merge);
+    if (!cancelMergeEnabled) {
+      return in;
     }
-    return in;
+    // Wrap with PausableDirectory for disk-based pause/resume support
+    // This allows merges to block when disk usage is high and resume when it drops
+    @Var Directory wrapped = new PausableDirectory(in, this.mergeGate);
+
+    // Then wrap with AbortableDirectory to enable IO-level interruption
+    // This allows merges to be aborted quickly even during long-running operations
+    // like HNSW graph building, which may not have frequent checkpoints
+    wrapped = new AbortableDirectory(wrapped, merge);
+    return wrapped;
   }
 
   @Override

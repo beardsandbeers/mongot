@@ -145,6 +145,10 @@ public class LuceneIndexFactory implements IndexFactory {
     mergeScheduler.setMaxMergesAndThreads(config.numMaxMerges(), config.numMaxMergeThreads());
 
     Gate mergeGate = DiskUtilizationAwareMergePolicy.createMergeGate(config, diskMonitor);
+    // Pass the merge gate to the scheduler for disk-based pause/resume support
+    if (featureFlags.isEnabled(Feature.CANCEL_MERGE)) {
+      mergeScheduler.setMergeGate(mergeGate);
+    }
     MergePolicy mergePolicy =
         MergePolicyFactory.createMergePolicy(config, mergeGate, meterRegistry);
     QueryCacheProvider queryCacheProvider =

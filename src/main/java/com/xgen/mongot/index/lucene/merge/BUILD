@@ -6,6 +6,7 @@ java_library(
         "DiskUtilizationAwareMergePolicy.java",
         "InstrumentedConcurrentMergeScheduler.java",
         "MergePolicyFactory.java",
+        "PausableDirectory.java",
         "VectorMergePolicy.java",
     ],
     visibility = ["//visibility:public"],

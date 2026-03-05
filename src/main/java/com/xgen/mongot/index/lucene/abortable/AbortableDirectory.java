@@ -149,9 +149,6 @@ public class AbortableDirectory extends FilterDirectory {
     /**
      * Records bytes written and checks for abortion if threshold is reached.
      *
-     * <p>Uses modulo to preserve the remainder when crossing the threshold, ensuring consistent
-     * abort-check intervals even when large writes push the counter well past the threshold.
-     *
      * @param numBytes number of bytes written in this operation
      * @throws IOException if the merge has been aborted
      */
