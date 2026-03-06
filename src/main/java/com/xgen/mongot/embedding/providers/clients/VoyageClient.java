@@ -53,6 +53,7 @@ public class VoyageClient implements ClientInterface {
   private boolean isDedicatedCluster;
   private final boolean attachBillingMetadata;
   private final EmbeddingServiceConfig.ServiceTier serviceTier;
+  private final Optional<String> serviceTierApiValue;
   private @Nullable String credentialToken; // Dedicated cluster credentials, can be null for MTM
   private final Map<String, String> tenantCredentials = new HashMap<>(); // MTM Cluster credentials
   private final boolean truncation;
@@ -65,6 +66,8 @@ public class VoyageClient implements ClientInterface {
 
   private static final int MAX_INDEX_NAME_LENGTH = 256;
 
+  @VisibleForTesting public static final String VOYAGE_API_FLEX_TIER = "flex";
+
   VoyageClient(
       EmbeddingModelConfig embeddingModelConfig,
       EmbeddingServiceConfig.ServiceTier tier,
@@ -76,6 +79,10 @@ public class VoyageClient implements ClientInterface {
     // TODO(CLOUDP-370950): Support truncation parameter from configs or query time.
     // Enable truncation in indexing time only.
     this.truncation = tier != EmbeddingServiceConfig.ServiceTier.QUERY;
+    this.serviceTierApiValue =
+        tier == EmbeddingServiceConfig.ServiceTier.COLLECTION_SCAN
+            ? Optional.of(VOYAGE_API_FLEX_TIER)
+            : Optional.empty();
     this.modelId = embeddingModelConfig.name();
     this.serviceTier = tier;
     this.endpoint = URI.create(workloadParams.providerEndpoint().orElse(DEFAULT_ENDPOINT));
@@ -282,24 +289,30 @@ public class VoyageClient implements ClientInterface {
             .orElse("mongot/UNKNOWN (UNKNOWN)");
 
     requestBuilder.header("User-Agent", userAgent);
-    BsonDocument body = new VoyageApiSchema.EmbedRequest(
-        this.modelId, this.inputType, inputs, this.truncation,
-        this.attachBillingMetadata ? Optional.of(buildBillingMetadata(context)) : Optional.empty())
-        .toBson();
+    BsonDocument body =
+        new VoyageApiSchema.EmbedRequest(
+                this.modelId,
+                this.inputType,
+                inputs,
+                this.truncation,
+                this.attachBillingMetadata
+                    ? Optional.of(buildBillingMetadata(context))
+                    : Optional.empty(),
+                this.serviceTierApiValue)
+            .toBson();
 
-    return requestBuilder
-        .POST(HttpRequest.BodyPublishers.ofString(body.toJson()))
-        .build();
+    return requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body.toJson())).build();
   }
 
   /**
-   * Builds billing metadata for downstream cost attribution. The key ordering must remain
-   * stable since downstream pipelines hash on the serialized JSON.
+   * Builds billing metadata for downstream cost attribution. The key ordering must remain stable
+   * since downstream pipelines hash on the serialized JSON.
    */
   private static BsonDocument buildBillingMetadata(EmbeddingRequestContext context) {
-    String indexName = context.indexName().length() > MAX_INDEX_NAME_LENGTH
-        ? context.indexName().substring(0, MAX_INDEX_NAME_LENGTH)
-        : context.indexName();
+    String indexName =
+        context.indexName().length() > MAX_INDEX_NAME_LENGTH
+            ? context.indexName().substring(0, MAX_INDEX_NAME_LENGTH)
+            : context.indexName();
 
     // BsonDocument preserves insertion order. Do not reorder these keys.
     BsonDocument metadata = new BsonDocument();

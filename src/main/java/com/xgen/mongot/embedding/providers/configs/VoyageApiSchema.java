@@ -38,7 +38,9 @@ public class VoyageApiSchema {
               .stringField()
               .optional()
               .withDefault(DEFAULT_ENCODING_FORMAT);
-      static final Field.Optional<BsonDocument> METADATA = 
+      static final Field.Optional<String> SERVICE_TIER =
+          Field.builder("service_tier").stringField().optional().noDefault();
+      static final Field.Optional<BsonDocument> METADATA =
           Field.builder("metadata").documentField().optional().noDefault();
     }
 
@@ -49,7 +51,8 @@ public class VoyageApiSchema {
           parser.getField(Fields.INPUT).unwrap(),
           parser.getField(Fields.ENCODING_FORMAT).unwrap(),
           parser.getField(Fields.TRUNCATION).unwrap(),
-          parser.getField(Fields.METADATA).unwrap());
+          parser.getField(Fields.METADATA).unwrap(),
+          parser.getField(Fields.SERVICE_TIER).unwrap());
     }
 
     public final String modelId;
@@ -57,15 +60,17 @@ public class VoyageApiSchema {
     public final List<String> input;
     public final String encodingFormat;
     public final boolean truncation;
+    public final Optional<String> serviceTier;
     public final Optional<BsonDocument> metadata;
 
     public EmbedRequest(
-        String modelId, 
-        String inputType, 
-        List<String> input, 
-        boolean truncation, 
-        Optional<BsonDocument> metadata) {
-      this(modelId, inputType, input, DEFAULT_ENCODING_FORMAT, truncation, metadata);
+        String modelId,
+        String inputType,
+        List<String> input,
+        boolean truncation,
+        Optional<BsonDocument> metadata,
+        Optional<String> serviceTier) {
+      this(modelId, inputType, input, DEFAULT_ENCODING_FORMAT, truncation, metadata, serviceTier);
     }
 
     public EmbedRequest(
@@ -74,26 +79,28 @@ public class VoyageApiSchema {
         List<String> input,
         String encodingFormat,
         boolean truncation,
-        Optional<BsonDocument> metadata) {
+        Optional<BsonDocument> metadata,
+        Optional<String> serviceTier) {
       this.modelId = modelId;
       this.inputType = inputType;
       this.input = input;
       this.encodingFormat = encodingFormat;
       this.truncation = truncation;
       this.metadata = metadata;
+      this.serviceTier = serviceTier;
     }
 
     @Override
     public BsonDocument toBson() {
-      BsonDocument doc = BsonDocumentBuilder.builder()
+      return BsonDocumentBuilder.builder()
           .field(Fields.INPUT_TYPE, this.inputType)
           .field(Fields.MODEL_ID, this.modelId)
           .field(Fields.INPUT, this.input)
           .field(Fields.ENCODING_FORMAT, this.encodingFormat)
           .field(Fields.TRUNCATION, this.truncation)
+          .field(Fields.SERVICE_TIER, this.serviceTier)
           .field(Fields.METADATA, this.metadata)
           .build();
-      return doc;
     }
   }
 

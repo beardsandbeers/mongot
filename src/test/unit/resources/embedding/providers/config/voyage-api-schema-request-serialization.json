@@ -51,6 +51,31 @@
       }
     },
     {
+      "description": "voyage-3-large collection scan request with service_tier",
+      "json": {
+        "input": [
+          "one",
+          "two"
+        ],
+        "model": "voyage-3-large",
+        "input_type": "document",
+        "encoding_format": "base64",
+        "truncation": true,
+        "service_tier": "flex"
+      },
+      "bson": {
+        "input": [
+          "one",
+          "two"
+        ],
+        "model": "voyage-3-large",
+        "input_type": "document",
+        "encoding_format": "base64",
+        "truncation": true,
+        "service_tier": "flex"
+      }
+    },
+    {
       "description": "voyage-4-large query request with metadata",
       "json": {
         "input": [

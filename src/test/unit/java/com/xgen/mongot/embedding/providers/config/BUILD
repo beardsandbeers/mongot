@@ -12,6 +12,7 @@ java_test_suite(
     ],
     tags = ["unit"],
     deps = [
+        "//src/main/java/com/xgen/mongot/embedding/providers/clients",
         "//src/main/java/com/xgen/mongot/embedding/providers/configs",
         "//src/main/java/com/xgen/mongot/util/bson",
         "//src/main/java/com/xgen/mongot/util/bson/parser",

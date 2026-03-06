@@ -1,5 +1,6 @@
 package com.xgen.mongot.embedding.providers.clients;
 
+import static com.xgen.mongot.embedding.providers.clients.VoyageClient.VOYAGE_API_FLEX_TIER;
 import static com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.ErrorHandlingConfig;
 import static com.xgen.mongot.util.bson.FloatVector.OriginalType.NATIVE;
 import static org.junit.Assert.assertEquals;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.embedding.EmbeddingRequestContext;
 import com.xgen.mongot.embedding.VectorOrError;
 import com.xgen.mongot.embedding.exceptions.EmbeddingProviderTransientException;
@@ -115,7 +117,8 @@ public class VoyageClientTest {
   }
 
   private static VoyageClient createMockedVoyageClient(
-      EmbeddingServiceConfig.EmbeddingConfig config, HttpClient mockClient,
+      EmbeddingServiceConfig.EmbeddingConfig config,
+      HttpClient mockClient,
       boolean attachBillingMetadata) {
     EmbeddingModelConfig modelConfig =
         EmbeddingModelConfig.create(
@@ -587,6 +590,105 @@ public class VoyageClientTest {
         ex.getMessage());
   }
 
+  @Test
+  public void collectionScanTier_includesServiceTierFlex() throws Exception {
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpResponse<String> mockResponse = mock(HttpResponse.class);
+    doReturn(200).when(mockResponse).statusCode();
+    doReturn(
+            "{\"object\":\"list\",\"data\":[{\"object\":\"embedding\","
+                + "\"embedding\":\"AKBEPACgSbw=\",\"index\":0}],\"model\":\"voyage-3-large\","
+                + "\"usage\":{\"total_tokens\":1}}")
+        .when(mockResponse)
+        .body();
+    doReturn(mockResponse)
+        .when(mockClient)
+        .send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+    VoyageClient voyageClient =
+        new VoyageClient(
+            VOYAGE_3_LARGE,
+            EmbeddingServiceConfig.ServiceTier.COLLECTION_SCAN,
+            VOYAGE_3_LARGE.collectionScan(),
+            METRICS_FACTORY,
+            Optional.empty(),
+            false);
+    VoyageClient.injectVoyageClient(voyageClient, mockClient);
+
+    voyageClient.embed(List.of("test"), dummyContext());
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockClient).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+
+    String requestBody = extractRequestBody(requestCaptor.getValue());
+    assertTrue(
+        "Request body should contain service_tier for COLLECTION_SCAN tier",
+        requestBody.contains("\"service_tier\""));
+    assertTrue(
+        "service_tier should be 'flex' for COLLECTION_SCAN tier",
+        requestBody.contains("\"" + VOYAGE_API_FLEX_TIER + "\""));
+  }
+
+  @Test
+  public void queryAndChangeStreamTiers_doNotIncludeServiceTier() throws Exception {
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpResponse<String> mockResponse = mock(HttpResponse.class);
+    doReturn(200).when(mockResponse).statusCode();
+    doReturn(
+            "{\"object\":\"list\",\"data\":[{\"object\":\"embedding\","
+                + "\"embedding\":\"AKBEPACgSbw=\",\"index\":0}],\"model\":\"voyage-3-large\","
+                + "\"usage\":{\"total_tokens\":1}}")
+        .when(mockResponse)
+        .body();
+    doReturn(mockResponse)
+        .when(mockClient)
+        .send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+    // Test QUERY tier
+    VoyageClient queryClient =
+        new VoyageClient(
+            VOYAGE_3_LARGE,
+            EmbeddingServiceConfig.ServiceTier.QUERY,
+            VOYAGE_3_LARGE.query(),
+            METRICS_FACTORY,
+            Optional.empty(),
+            false);
+    VoyageClient.injectVoyageClient(queryClient, mockClient);
+
+    queryClient.embed(List.of("test"), dummyContext());
+
+    @Var ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockClient).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+
+    @Var String requestBody = extractRequestBody(requestCaptor.getValue());
+    assertFalse(
+        "Request body should NOT contain service_tier for QUERY tier",
+        requestBody.contains("service_tier"));
+
+    // Test CHANGE_STREAM tier
+    VoyageClient changeStreamClient =
+        new VoyageClient(
+            VOYAGE_3_LARGE,
+            EmbeddingServiceConfig.ServiceTier.CHANGE_STREAM,
+            VOYAGE_3_LARGE.changeStream(),
+            METRICS_FACTORY,
+            Optional.empty(),
+            false);
+    VoyageClient.injectVoyageClient(changeStreamClient, mockClient);
+
+    changeStreamClient.embed(List.of("test"), dummyContext());
+
+    requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockClient, org.mockito.Mockito.times(2))
+        .send(requestCaptor.capture(), any());
+
+    requestBody = extractRequestBody(requestCaptor.getValue());
+    assertFalse(
+        "Request body should NOT contain service_tier for CHANGE_STREAM tier",
+        requestBody.contains("service_tier"));
+  }
+
+
   private static String extractRequestBody(HttpRequest request) {
     return request
         .bodyPublisher()
@@ -631,8 +733,7 @@ public class VoyageClientTest {
 
   @Test
   public void testEmbed_includesBillingMetadata() throws Exception {
-    EmbeddingServiceConfig.EmbeddingConfig config =
-        createDedicatedClusterConfig("test-token");
+    EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
     HttpClient mockClient = createMockHttpClient();
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, true);
 
@@ -654,8 +755,7 @@ public class VoyageClientTest {
 
   @Test
   public void testEmbed_noBillingMetadataWhenDisabled() throws Exception {
-    EmbeddingServiceConfig.EmbeddingConfig config =
-        createDedicatedClusterConfig("test-token");
+    EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
     HttpClient mockClient = createMockHttpClient();
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, false);
 
@@ -673,8 +773,7 @@ public class VoyageClientTest {
 
   @Test
   public void testEmbed_billingMetadataHasDeterministicKeyOrdering() throws Exception {
-    EmbeddingServiceConfig.EmbeddingConfig config =
-        createDedicatedClusterConfig("test-token");
+    EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
     HttpClient mockClient = createMockHttpClient();
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, true);
 
@@ -694,14 +793,12 @@ public class VoyageClientTest {
 
   @Test
   public void testEmbed_billingMetadataTruncatesLongIndexName() throws Exception {
-    EmbeddingServiceConfig.EmbeddingConfig config =
-        createDedicatedClusterConfig("test-token");
+    EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
     HttpClient mockClient = createMockHttpClient();
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, true);
 
     String longName = "a".repeat(257);
-    EmbeddingRequestContext context =
-        new EmbeddingRequestContext("db", longName, "coll");
+    EmbeddingRequestContext context = new EmbeddingRequestContext("db", longName, "coll");
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);

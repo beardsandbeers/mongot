@@ -1,5 +1,6 @@
 package com.xgen.mongot.embedding.providers.config;
 
+import static com.xgen.mongot.embedding.providers.clients.VoyageClient.VOYAGE_API_FLEX_TIER;
 import static com.xgen.mongot.embedding.providers.configs.VoyageApiSchema.EmbedResponse;
 import static com.xgen.testing.BsonDeserializationTestSuite.fromRootDocument;
 import static com.xgen.testing.BsonSerializationTestSuite.fromEncodable;
@@ -167,7 +168,9 @@ public class VoyageApiSchemaTest {
     @Parameterized.Parameters(name = "{0}")
     public static Iterable<BsonSerializationTestSuite.TestSpec<EmbedRequest>> data() {
       return List.of(
-          v3LargeQueryRequest(), v3LiteDocumentRequest(),
+          v3LargeQueryRequest(),
+          v3LiteDocumentRequest(),
+          v3LargeCollectionScanRequest(),
           v4LargeQueryRequestWithMetadata());
     }
 
@@ -180,16 +183,24 @@ public class VoyageApiSchemaTest {
       return BsonSerializationTestSuite.TestSpec.create(
           "voyage-3-large query request",
           new EmbedRequest(
-              "voyage-3-large", "query", List.of("one", "two", "three"),
-              false, Optional.empty()));
+              "voyage-3-large",
+              "query",
+              List.of("one", "two", "three"),
+              false,
+              Optional.empty(),
+              Optional.empty()));
     }
 
     private static BsonSerializationTestSuite.TestSpec<EmbedRequest> v3LiteDocumentRequest() {
       return BsonSerializationTestSuite.TestSpec.create(
           "voyage-3-lite index request",
           new EmbedRequest(
-              "voyage-3-lite", "document", List.of("four", "five", "six"),
-              true, Optional.empty()));
+              "voyage-3-lite",
+              "document",
+              List.of("four", "five", "six"),
+              true,
+              Optional.empty(),
+              Optional.empty()));
     }
 
     private static BsonSerializationTestSuite.TestSpec<EmbedRequest>
@@ -201,8 +212,26 @@ public class VoyageApiSchemaTest {
       return BsonSerializationTestSuite.TestSpec.create(
           "voyage-4-large query request with metadata",
           new EmbedRequest(
-              "voyage-4-large", "query", List.of("one", "two", "three"),
-              false, Optional.of(metadata)));
+              "voyage-4-large",
+              "query",
+              List.of("one", "two", "three"),
+              false,
+              Optional.of(metadata),
+              Optional.empty()));
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<EmbedRequest>
+        v3LargeCollectionScanRequest() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "voyage-3-large collection scan request with service_tier",
+          new EmbedRequest(
+              "voyage-3-large",
+              "document",
+              List.of("one", "two"),
+              "base64",
+              true,
+              Optional.empty(),
+              Optional.of(VOYAGE_API_FLEX_TIER)));
     }
   }
 }

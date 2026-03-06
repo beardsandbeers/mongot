@@ -13,6 +13,7 @@ java_test_suite(
         "//src/main/java/com/xgen/mongot/embedding/providers/configs",
         "//src/main/java/com/xgen/mongot/metrics",
         "//src/main/java/com/xgen/mongot/util/bson",
+        "@maven//:com_google_errorprone_error_prone_annotations",
         "@maven//:io_micrometer_micrometer_core",
         "@maven//:junit_junit",
         "@maven//:org_mockito_mockito_core",
