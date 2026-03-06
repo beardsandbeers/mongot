@@ -146,9 +146,13 @@ public class MetadataClient<T extends DocumentEncodable> {
    * Returns all documents in the metadata collection matching the given filter.
    *
    * @param filter filter to apply to the list command
+   * @throws MetadataServiceException if there was an error reading from mongod
    */
-  public synchronized List<BsonDocument> list(BsonDocument filter) {
-    return StreamSupport.stream(this.getCollection().find(filter).spliterator(), false).toList();
+  public synchronized List<BsonDocument> list(BsonDocument filter) throws MetadataServiceException {
+
+    return MetadataServiceException.wrapIfThrows(
+        () ->
+            StreamSupport.stream(this.getCollection().find(filter).spliterator(), false).toList());
   }
 
   /**

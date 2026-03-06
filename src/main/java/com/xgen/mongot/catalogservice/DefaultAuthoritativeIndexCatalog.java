@@ -47,12 +47,12 @@ public class DefaultAuthoritativeIndexCatalog implements AuthoritativeIndexCatal
   }
 
   @Override
-  public List<IndexDefinition> listIndexes() {
+  public List<IndexDefinition> listIndexes() throws MetadataServiceException {
     return listIndexes(new BsonDocument());
   }
 
   @Override
-  public List<IndexDefinition> listIndexes(UUID collectionUuid) {
+  public List<IndexDefinition> listIndexes(UUID collectionUuid) throws MetadataServiceException {
     String dottedFieldName =
         String.join(
             ".",
@@ -62,7 +62,7 @@ public class DefaultAuthoritativeIndexCatalog implements AuthoritativeIndexCatal
     return listIndexes(new BsonDocument(dottedFieldName, new BsonBinary(collectionUuid)));
   }
 
-  private List<IndexDefinition> listIndexes(BsonDocument filter) {
+  private List<IndexDefinition> listIndexes(BsonDocument filter) throws MetadataServiceException {
     return this.aicMongoClient.list(filter).stream()
         .flatMap(DefaultAuthoritativeIndexCatalog::parseToStream)
         .toList();

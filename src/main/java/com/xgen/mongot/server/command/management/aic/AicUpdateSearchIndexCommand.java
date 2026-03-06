@@ -80,29 +80,29 @@ public class AicUpdateSearchIndexCommand implements Command {
         .addKeyValue("indexId", this.definition.id())
         .log("Received command");
 
-    Optional<String> viewName = this.view.map(UserViewDefinition::name);
-    Optional<ObjectId> indexId = this.definition.id();
-    Optional<String> indexName = this.definition.name();
-    Optional<IndexDefinition> matchingIndex =
-        this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
-            .filter(
-                index ->
-                    indexName.map(index.getName()::equals).orElse(true)
-                        && indexId.map(index.getIndexId()::equals).orElse(true))
-            .findAny();
-
-    if (matchingIndex.isEmpty()) {
-      String idType = this.definition.name().isPresent() ? "name" : "id";
-      Object idValue =
-          this.definition.name().map(Object.class::cast).or(this.definition::id).orElseThrow();
-      return MessageUtils.createError(
-          Errors.INDEX_NOT_FOUND,
-          String.format(
-              "No index with %s %s exists in namespace %s.%s",
-              idType, idValue, this.db, viewName.orElse(this.collectionName)));
-    }
-
     try {
+      Optional<String> viewName = this.view.map(UserViewDefinition::name);
+      Optional<ObjectId> indexId = this.definition.id();
+      Optional<String> indexName = this.definition.name();
+      Optional<IndexDefinition> matchingIndex =
+          this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
+              .filter(
+                  index ->
+                      indexName.map(index.getName()::equals).orElse(true)
+                          && indexId.map(index.getIndexId()::equals).orElse(true))
+              .findAny();
+
+      if (matchingIndex.isEmpty()) {
+        String idType = this.definition.name().isPresent() ? "name" : "id";
+        Object idValue =
+            this.definition.name().map(Object.class::cast).or(this.definition::id).orElseThrow();
+        return MessageUtils.createError(
+            Errors.INDEX_NOT_FOUND,
+            String.format(
+                "No index with %s %s exists in namespace %s.%s",
+                idType, idValue, this.db, viewName.orElse(this.collectionName)));
+      }
+
       IndexDefinition oldIndex = matchingIndex.get();
       IndexDefinition newIndex =
           IndexMapper.toInternal(

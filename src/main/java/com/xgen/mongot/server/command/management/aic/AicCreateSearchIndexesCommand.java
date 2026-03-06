@@ -84,77 +84,77 @@ public class AicCreateSearchIndexesCommand implements Command {
         .addKeyValue("db", this.db)
         .addKeyValue("collectionName", this.collectionName)
         .log("Received command");
+    try {
+      Optional<ViewDefinition> view =
+          this.view.map(
+              definition ->
+                  ViewDefinition.existing(
+                      definition.name(), definition.effectivePipeline().orElseThrow()));
 
-    Optional<ViewDefinition> view =
-        this.view.map(
-            definition ->
-                ViewDefinition.existing(
-                    definition.name(), definition.effectivePipeline().orElseThrow()));
-
-    if (view.isPresent()) {
-      try {
-        ViewValidator.validate(view.get());
-      } catch (InvalidViewDefinitionException e) {
-        return MessageUtils.createError(Errors.BAD_VALUE, e.getMessage());
-      }
-    }
-
-    List<IndexDefinition> newIndexes =
-        this.definition.indexes().stream()
-            .map(external -> this.toInternal(external, view))
-            .toList();
-
-    // Validate auto-embedding indexes
-    for (IndexDefinition newIndex : newIndexes) {
-      if (newIndex instanceof VectorIndexDefinition vectorIndex
-          && vectorIndex.isAutoEmbeddingIndex()) {
+      if (view.isPresent()) {
         try {
-          AutoEmbeddingIndexValidator.validate(vectorIndex);
-        } catch (InvalidIndexDefinitionException e) {
+          ViewValidator.validate(view.get());
+        } catch (InvalidViewDefinitionException e) {
           return MessageUtils.createError(Errors.BAD_VALUE, e.getMessage());
         }
       }
-    }
 
-    // If a requested index conflicts with an existing index (same name but different definition)
-    // we return an error and don't create any of the indexes.
-    List<IndexDefinition> deduplicatedIndexes = new ArrayList<>();
-    Map<String, IndexDefinition> existingIndexDefinitionsByName =
-        this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
-            .collect(CollectionUtils.toMapUnsafe(IndexDefinition::getName, Function.identity()));
-    for (IndexDefinition newIndex : newIndexes) {
-      Optional<IndexDefinition> existingIndex =
-          Optional.ofNullable(existingIndexDefinitionsByName.get(newIndex.getName()));
-      if (existingIndex.isPresent() && !IndexMapper.areEquivalent(existingIndex.get(), newIndex)) {
-        return indexExistsWithDifferentDefinitionError(newIndex);
+      List<IndexDefinition> newIndexes =
+          this.definition.indexes().stream()
+              .map(external -> this.toInternal(external, view))
+              .toList();
+
+      // Validate auto-embedding indexes
+      for (IndexDefinition newIndex : newIndexes) {
+        if (newIndex instanceof VectorIndexDefinition vectorIndex
+            && vectorIndex.isAutoEmbeddingIndex()) {
+          try {
+            AutoEmbeddingIndexValidator.validate(vectorIndex);
+          } catch (InvalidIndexDefinitionException e) {
+            return MessageUtils.createError(Errors.BAD_VALUE, e.getMessage());
+          }
+        }
       }
 
-      // Per spec, do not fail indexes with same name and same definition.
-      // However, do not attempt to create an index if it already exists.
-      // See http://go/search-index-mgmt-create-index for more detail.
-      if (existingIndex.isEmpty()) {
-        deduplicatedIndexes.add(newIndex);
+      // If a requested index conflicts with an existing index (same name but different definition)
+      // we return an error and don't create any of the indexes.
+      List<IndexDefinition> deduplicatedIndexes = new ArrayList<>();
+      Map<String, IndexDefinition> existingIndexDefinitionsByName =
+          this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
+              .collect(CollectionUtils.toMapUnsafe(IndexDefinition::getName, Function.identity()));
+      for (IndexDefinition newIndex : newIndexes) {
+        Optional<IndexDefinition> existingIndex =
+            Optional.ofNullable(existingIndexDefinitionsByName.get(newIndex.getName()));
+        if (existingIndex.isPresent()
+            && !IndexMapper.areEquivalent(existingIndex.get(), newIndex)) {
+          return indexExistsWithDifferentDefinitionError(newIndex);
+        }
+
+        // Per spec, do not fail indexes with same name and same definition.
+        // However, do not attempt to create an index if it already exists.
+        // See http://go/search-index-mgmt-create-index for more detail.
+        if (existingIndex.isEmpty()) {
+          deduplicatedIndexes.add(newIndex);
+        }
       }
-    }
 
-    // Indexes are free of known conflicts, so proceed with adding them
-    var searchList = new ArrayList<SearchIndexDefinition>();
-    var vectorList = new ArrayList<VectorIndexDefinition>();
-    var existingIndexesFromCatalog = this.authoritativeIndexCatalog.listIndexes();
-    Stream.concat(existingIndexesFromCatalog.stream(), deduplicatedIndexes.stream())
-        .forEach(
-            definition -> {
-              switch (definition) {
-                case SearchIndexDefinition search -> searchList.add(search);
-                case VectorIndexDefinition vector -> vectorList.add(vector);
-              }
-            });
+      // Indexes are free of known conflicts, so proceed with adding them
+      var searchList = new ArrayList<SearchIndexDefinition>();
+      var vectorList = new ArrayList<VectorIndexDefinition>();
+      var existingIndexesFromCatalog = this.authoritativeIndexCatalog.listIndexes();
+      Stream.concat(existingIndexesFromCatalog.stream(), deduplicatedIndexes.stream())
+          .forEach(
+              definition -> {
+                switch (definition) {
+                  case SearchIndexDefinition search -> searchList.add(search);
+                  case VectorIndexDefinition vector -> vectorList.add(vector);
+                }
+              });
 
-    try {
       // Validate catalog invariants over the new final state of the authoritative catalog.
-      // These invariants will also be validated when each mongot fetches the authoritative catalog
-      // and applies the changes to its local index catalog, so it is OK to not check intermediate
-      // states here.
+      // These invariants will also be validated when each mongot fetches the authoritative
+      // catalog and applies the changes to its local index catalog, so it is OK to not check
+      // intermediate states here.
       Invariants.validateInvariants(List.of(), searchList, vectorList, existingIndexesFromCatalog);
       AnalyzerInvariants.validate(searchList, List.of());
       for (SearchIndexDefinition searchIndex : searchList) {
@@ -166,13 +166,14 @@ public class AicCreateSearchIndexesCommand implements Command {
           this.authoritativeIndexCatalog.createIndex(
               new AuthoritativeIndexKey(this.collectionUuid, indexToCreate.getName()),
               indexToCreate);
-        } catch (MetadataServiceException e) {
-          if (e.getCause() instanceof MongoWriteException mwe
+        } catch (Exception e) {
+          if (e instanceof MetadataServiceException mse
+              && mse.getCause() instanceof MongoWriteException mwe
               && mwe.getError().getCategory() == ErrorCategory.DUPLICATE_KEY) {
             // If the write failed due to duplicate key, meaning the index didn't exist when we
             // initially checked and was added to deduplicatedIndexes, but now does exist,
-            // revalidate
-            // the index definition for equivalency and throw an error iff they are not equivalent.
+            // revalidate the index definition for equivalency and throw an error iff they are not
+            // equivalent.
             Optional<IndexDefinition> existingIndex =
                 this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
                     .filter(idx -> idx.getName().equals(indexToCreate.getName()))
@@ -181,8 +182,12 @@ public class AicCreateSearchIndexesCommand implements Command {
                 && !IndexMapper.areEquivalent(existingIndex.get(), indexToCreate)) {
               return indexExistsWithDifferentDefinitionError(indexToCreate);
             }
+            // If index exists with equivalent definition, continue to next index
+            if (existingIndex.isPresent()) {
+              continue;
+            }
+            // If index not found, fall through to raise the error
           }
-        } catch (Exception e) {
           String message =
               String.format(
                   "Error creating index '%s': %s",
@@ -191,17 +196,17 @@ public class AicCreateSearchIndexesCommand implements Command {
           return MessageUtils.createError(Errors.COMMAND_FAILED, message);
         }
       }
-    } catch (InvariantException | InvalidIndexDefinitionException e) {
+
+      List<NamedSearchIndexId> responseData =
+          newIndexes.stream()
+              .map(id -> new NamedSearchIndexId(id.getName(), id.getIndexId().toString()))
+              .collect(Collectors.toList());
+
+      return new CreateSearchIndexesResponse(responseData).toBson();
+    } catch (InvariantException | InvalidIndexDefinitionException | MetadataServiceException e) {
       String message = Objects.requireNonNullElse(e.getMessage(), "unknown error");
       return MessageUtils.createError(Errors.COMMAND_FAILED, message);
     }
-
-    List<NamedSearchIndexId> responseData =
-        newIndexes.stream()
-            .map(id -> new NamedSearchIndexId(id.getName(), id.getIndexId().toString()))
-            .collect(Collectors.toList());
-
-    return new CreateSearchIndexesResponse(responseData).toBson();
   }
 
   private static BsonDocument indexExistsWithDifferentDefinitionError(IndexDefinition newIndex) {

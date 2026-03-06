@@ -74,26 +74,26 @@ public class AicDropSearchIndexCommand implements Command {
         .addKeyValue("indexId", this.definition.id())
         .log("Received command");
 
-    List<IndexDefinition> indexesToDrop =
-        this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
-            .filter(
-                index ->
-                    this.definition.name().map(index.getName()::equals).orElse(true)
-                        && this.definition.id().map(index.getIndexId()::equals).orElse(true))
-            .toList();
-
-    if (indexesToDrop.isEmpty()) {
-      return MessageUtils.createError(
-          Errors.INDEX_NOT_FOUND,
-          String.format(
-              "No index with %s %s exists in namespace %s.%s",
-              idType,
-              idValue,
-              this.db,
-              this.view.map(UserViewDefinition::name).orElse(this.collectionName)));
-    }
-
     try {
+      List<IndexDefinition> indexesToDrop =
+          this.authoritativeIndexCatalog.listIndexes(this.collectionUuid).stream()
+              .filter(
+                  index ->
+                      this.definition.name().map(index.getName()::equals).orElse(true)
+                          && this.definition.id().map(index.getIndexId()::equals).orElse(true))
+              .toList();
+
+      if (indexesToDrop.isEmpty()) {
+        return MessageUtils.createError(
+            Errors.INDEX_NOT_FOUND,
+            String.format(
+                "No index with %s %s exists in namespace %s.%s",
+                idType,
+                idValue,
+                this.db,
+                this.view.map(UserViewDefinition::name).orElse(this.collectionName)));
+      }
+
       CheckedStream.from(indexesToDrop)
           .forEachChecked(
               idx ->

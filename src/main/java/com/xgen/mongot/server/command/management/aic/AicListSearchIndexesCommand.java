@@ -160,8 +160,7 @@ public class AicListSearchIndexesCommand implements Command {
    * <p>If {@link #commandShouldReturnAllIndexes} is set then ignores the query filter and returns
    * all indexes across all collections.
    */
-  List<IndexDefinition> findMatchingIndexes() {
-
+  List<IndexDefinition> findMatchingIndexes() throws MetadataServiceException {
     if (this.commandShouldReturnAllIndexes) {
       // Return all indexes without filtering
       return this.metadataService.getAuthoritativeIndexCatalog().listIndexes();

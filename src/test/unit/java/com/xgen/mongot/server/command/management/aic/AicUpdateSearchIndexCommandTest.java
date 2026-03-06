@@ -207,7 +207,7 @@ public class AicUpdateSearchIndexCommandTest {
   }
 
   @Test
-  public void testUpdatingIndexTypeFails() {
+  public void testUpdatingIndexTypeFails() throws MetadataServiceException {
     var mockAic = mock(AuthoritativeIndexCatalog.class);
 
     // Return an existing vector index.
@@ -254,7 +254,7 @@ public class AicUpdateSearchIndexCommandTest {
   }
 
   @Test
-  public void testUpdatingIndexWrongType() {
+  public void testUpdatingIndexWrongType() throws MetadataServiceException {
     var mockAic = mock(AuthoritativeIndexCatalog.class);
 
     // Return some existing index.
@@ -299,7 +299,7 @@ public class AicUpdateSearchIndexCommandTest {
   }
 
   @Test
-  public void missingAnalyzerFailsToUpdate() throws BsonParseException {
+  public void missingAnalyzerFailsToUpdate() throws BsonParseException, MetadataServiceException {
     this.failsWithCommandFailed(
         "references non-existent analyzers: non-standard",
         bson(
@@ -316,7 +316,7 @@ public class AicUpdateSearchIndexCommandTest {
   }
 
   private void failsWithCommandFailed(String expectedMessage, BsonDocument indexDefinition)
-      throws BsonParseException {
+      throws BsonParseException, MetadataServiceException {
     NamedSearchIndex index;
     try (var parser = BsonDocumentParser.fromRoot(indexDefinition).build()) {
       index = NamedSearchIndex.fromBson(parser);

@@ -74,7 +74,20 @@ public class CommunityConfigUpdater implements ConfigUpdater {
 
     // Regardless of whether applying view updates succeeded, query the AIC for the updated list of
     // desired index definitions.
-    List<IndexDefinition> desiredDefinitions = this.authoritativeIndexCatalog.listIndexes();
+    List<IndexDefinition> desiredDefinitions;
+    try {
+      desiredDefinitions = this.authoritativeIndexCatalog.listIndexes();
+    } catch (MetadataServiceException e) {
+      // CommunityConfigUpdater may have started before mongod is available or we received a
+      // transient error because mongod is unavailable.
+      // Instead of raising the error, causing the host to crash we simply catch and log the error.
+      // On the next run we'll update the config with any potential config changes.
+      LOG.warn(
+          "Failed calling authoritative index catalog to get latest index definitions, "
+              + "will retry on next run.",
+          e);
+      return;
+    }
     IndexesByType indexesByType = IndexesByType.fromIndexDefinitions(desiredDefinitions);
 
     Set<UUID> directMongodCollectionSet =

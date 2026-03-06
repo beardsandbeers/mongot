@@ -20,8 +20,8 @@ public interface AuthoritativeIndexCatalog {
   void deleteIndex(AuthoritativeIndexKey indexKey) throws MetadataServiceException;
 
   /** Lists all indexes defined in the Authoritative Index Catalog. */
-  List<IndexDefinition> listIndexes();
+  List<IndexDefinition> listIndexes() throws MetadataServiceException;
 
   /** Lists all indexes defined on the specified collection in the Authoritative Index Catalog. */
-  List<IndexDefinition> listIndexes(UUID collectionUuid);
+  List<IndexDefinition> listIndexes(UUID collectionUuid) throws MetadataServiceException;
 }
