@@ -69,12 +69,7 @@ class VectorSearchQueryFactory {
     // Check if this is an embedded vector field
     Optional<FieldPath> embeddedRoot = determineEmbeddedRoot(path, queryContext);
 
-    // Validate embedded options
-    if (embeddedRoot.isPresent() && criteria.embeddedOptions().isEmpty()) {
-      throw new InvalidQueryException(
-          String.format(
-              "nestedOptions is required when querying embedded vector field '%s'", path));
-    }
+    // nestedOptions is optional for embedded vector fields; defaults to scoreMode=max
     if (embeddedRoot.isEmpty() && criteria.embeddedOptions().isPresent()) {
       throw new InvalidQueryException(
           String.format(
@@ -184,7 +179,9 @@ class VectorSearchQueryFactory {
     // - Child documents have $meta/embeddedPath: "<path>" (via addEmbeddedPathField)
     // - Documents are written as Lucene blocks with children preceding the parent
     if (embeddedRoot.isPresent()) {
-      ScoreMode scoreMode = getScoreMode(criteria.embeddedOptions().get());
+      ScoreMode scoreMode = criteria.embeddedOptions()
+          .map(this::getScoreMode)
+          .orElse(ScoreMode.Max);
       BitSetProducer parentFilterBitSet = new QueryBitSetProducer(parentFilter());
 
       Query blockJoinQuery =

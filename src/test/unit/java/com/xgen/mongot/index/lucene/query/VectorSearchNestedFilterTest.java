@@ -265,6 +265,164 @@ public class VectorSearchNestedFilterTest {
   }
 
   @Test
+  public void testNestedVectorQueryWithoutNestedOptionsDefaultsToMax() throws Exception {
+    VectorIndexDefinition definition = createNestedDefinition();
+
+    // Query without embeddedOptions (nestedOptions) — should default to ScoreMode.Max
+    VectorSearchQuery query =
+        VectorQueryBuilder.builder()
+            .index("test")
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .path(FieldPath.parse("sections.section_vector"))
+                    .numCandidates(NUM_CANDIDATES)
+                    .limit(LIMIT)
+                    .queryVector(Vector.fromFloats(QUERY_VECTOR, NATIVE))
+                    .build())
+            .build();
+
+    Query result = translate(definition, query);
+
+    MongotKnnFloatQuery expectedKnn =
+        new MongotKnnFloatQuery(METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES);
+
+    Query expected =
+        new WrappedToParentBlockJoinQuery(
+            expectedKnn,
+            new QueryBitSetProducer(EmbeddedDocumentQueryFactory.ROOT_DOCUMENTS_QUERY),
+            ScoreMode.Max);
+
+    Assert.assertEquals(
+        "Without nestedOptions, query should default to ScoreMode.Max:", expected, result);
+  }
+
+  @Test
+  public void testNestedVectorQueryWithoutNestedOptionsAndWithParentFilter() throws Exception {
+    VectorIndexDefinition definition = createNestedDefinition();
+
+    // Query without embeddedOptions but with parentFilter
+    VectorSearchQuery query =
+        VectorQueryBuilder.builder()
+            .index("test")
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .path(FieldPath.parse("sections.section_vector"))
+                    .numCandidates(NUM_CANDIDATES)
+                    .limit(LIMIT)
+                    .queryVector(Vector.fromFloats(QUERY_VECTOR, NATIVE))
+                    .parentFilter(eqClauseFilter("name", "value1"))
+                    .build())
+            .build();
+
+    Query result = translate(definition, query);
+
+    MongotKnnFloatQuery expectedKnn =
+        new MongotKnnFloatQuery(METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES);
+
+    Query expectedBlockJoin =
+        new WrappedToParentBlockJoinQuery(
+            expectedKnn,
+            new QueryBitSetProducer(EmbeddedDocumentQueryFactory.ROOT_DOCUMENTS_QUERY),
+            ScoreMode.Max);
+
+    Query expected =
+        new BooleanQuery.Builder()
+            .add(expectedBlockJoin, BooleanClause.Occur.MUST)
+            .add(
+                scopedParentFilter(eqQuery(ROOT_TOKEN_FIELD, "value1")),
+                BooleanClause.Occur.FILTER)
+            .build();
+
+    Assert.assertEquals(
+        "Without nestedOptions + parentFilter, should default to ScoreMode.Max:", expected, result);
+  }
+
+  @Test
+  public void testNestedVectorQueryWithoutNestedOptionsAndWithFilter() throws Exception {
+    VectorIndexDefinition definition = createNestedDefinition();
+
+    // Query without embeddedOptions but with child filter
+    VectorSearchQuery query =
+        VectorQueryBuilder.builder()
+            .index("test")
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .path(FieldPath.parse("sections.section_vector"))
+                    .numCandidates(NUM_CANDIDATES)
+                    .limit(LIMIT)
+                    .queryVector(Vector.fromFloats(QUERY_VECTOR, NATIVE))
+                    .filter(eqClauseFilter("sections.section_name", "value3"))
+                    .build())
+            .build();
+
+    Query result = translate(definition, query);
+
+    Query childFilter = wrapInMustClause(eqQuery(EMBEDDED_TOKEN_FIELD, "value3"));
+
+    MongotKnnFloatQuery expectedKnn =
+        new MongotKnnFloatQuery(
+            METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
+
+    Query expected =
+        new WrappedToParentBlockJoinQuery(
+            expectedKnn,
+            new QueryBitSetProducer(EmbeddedDocumentQueryFactory.ROOT_DOCUMENTS_QUERY),
+            ScoreMode.Max);
+
+    Assert.assertEquals(
+        "Without nestedOptions + filter, should default to ScoreMode.Max:", expected, result);
+  }
+
+  @Test
+  public void testNestedVectorQueryWithoutNestedOptionsAndWithFilterAndParentFilter()
+      throws Exception {
+    VectorIndexDefinition definition = createNestedDefinition();
+
+    // Query without embeddedOptions but with both filter and parentFilter
+    VectorSearchQuery query =
+        VectorQueryBuilder.builder()
+            .index("test")
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .path(FieldPath.parse("sections.section_vector"))
+                    .numCandidates(NUM_CANDIDATES)
+                    .limit(LIMIT)
+                    .queryVector(Vector.fromFloats(QUERY_VECTOR, NATIVE))
+                    .filter(eqClauseFilter("sections.section_name", "value3"))
+                    .parentFilter(eqClauseFilter("name", "value1"))
+                    .build())
+            .build();
+
+    Query result = translate(definition, query);
+
+    Query childFilter = wrapInMustClause(eqQuery(EMBEDDED_TOKEN_FIELD, "value3"));
+
+    MongotKnnFloatQuery expectedKnn =
+        new MongotKnnFloatQuery(
+            METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
+
+    Query expectedBlockJoin =
+        new WrappedToParentBlockJoinQuery(
+            expectedKnn,
+            new QueryBitSetProducer(EmbeddedDocumentQueryFactory.ROOT_DOCUMENTS_QUERY),
+            ScoreMode.Max);
+
+    Query expected =
+        new BooleanQuery.Builder()
+            .add(expectedBlockJoin, BooleanClause.Occur.MUST)
+            .add(
+                scopedParentFilter(eqQuery(ROOT_TOKEN_FIELD, "value1")),
+                BooleanClause.Occur.FILTER)
+            .build();
+
+    Assert.assertEquals(
+        "Without nestedOptions + filter + parentFilter, should default to ScoreMode.Max:",
+        expected,
+        result);
+  }
+
+
+  @Test
   public void testIsIndexWithEmbeddedFieldsForNestedVectorIndex() {
     VectorIndexDefinition definition = createNestedDefinition();
     var context =

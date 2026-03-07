@@ -595,7 +595,7 @@ public class VectorSearchCommandIndexSizeMetricsTest {
         metricsFactory
             .get(
                 "nestedVectorSearchQueries",
-                Tags.of("hasFilter", "false", "hasParentFilter", "false", "scoreMode", "none"))
+                Tags.of("hasFilter", "false", "hasParentFilter", "false", "scoreMode", "max"))
             .counter();
     assertThat(taggedCounter).isNotNull();
     assertThat(taggedCounter.count()).isEqualTo(1);

@@ -762,7 +762,7 @@ public class VectorSearchCommand implements Command {
     String hasParentFilter = criteria.parentFilter().isPresent() ? "true" : "false";
     String scoreMode = criteria.embeddedOptions()
         .map(opts -> opts.scoreMode().name().toLowerCase(Locale.ROOT))
-        .orElse("none");
+        .orElse("max");
 
     Tags tags = Tags.of(
         Tag.of("hasFilter", hasFilter),
