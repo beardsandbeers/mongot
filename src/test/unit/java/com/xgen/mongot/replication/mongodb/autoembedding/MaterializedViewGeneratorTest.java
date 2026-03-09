@@ -5,10 +5,11 @@ import static com.xgen.testing.mongot.mock.index.MaterializedViewIndex.mockMatVi
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
-import com.xgen.mongot.index.InitializedIndex;
+import com.xgen.mongot.index.autoembedding.InitializedMaterializedViewIndex;
 import com.xgen.mongot.index.autoembedding.MaterializedViewIndexGeneration;
 import com.xgen.mongot.replication.mongodb.common.DocumentIndexer;
 import com.xgen.mongot.replication.mongodb.common.PeriodicIndexCommitter;
@@ -78,24 +79,58 @@ public class MaterializedViewGeneratorTest {
     assertTrue(generator.isLeader());
   }
 
+  @Test
+  public void becomeLeader_callsSetLeaderModeTrue() {
+    InitializedMaterializedViewIndex matViewIndex = mock(InitializedMaterializedViewIndex.class);
+    MaterializedViewGenerator generator = createGeneratorWithIndex(matViewIndex);
+
+    generator.becomeLeader();
+
+    assertTrue(generator.isLeader());
+    verify(matViewIndex).setLeaderMode(true);
+  }
+
+  @Test
+  public void shutdown_callsSetLeaderModeFalse() throws Exception {
+    InitializedMaterializedViewIndex matViewIndex = mock(InitializedMaterializedViewIndex.class);
+    MaterializedViewGenerator generator = createGeneratorWithIndex(matViewIndex);
+    generator.becomeLeader();
+
+    generator.shutdown().get();
+
+    verify(matViewIndex).setLeaderMode(false);
+  }
+
+  @Test
+  public void becomeLeader_andShutdown_lifecycle() throws Exception {
+    MaterializedViewGenerator generator = createGenerator();
+    generator.becomeLeader();
+    assertTrue(generator.isLeader());
+    generator.shutdown().get();
+  }
+
   private MaterializedViewGenerator createGenerator() {
+    return createGeneratorWithIndex(mock(InitializedMaterializedViewIndex.class));
+  }
+
+  private MaterializedViewGenerator createGeneratorWithIndex(
+      InitializedMaterializedViewIndex matViewIndex) {
+    SimpleMetricsFactory metricsFactory = new SimpleMetricsFactory();
     MaterializedViewIndexGeneration indexGeneration =
         mockMatViewIndexGeneration(mockMatViewDefinitionGeneration(new ObjectId()));
 
-    return new MaterializedViewGenerator(
+    return MaterializedViewGenerator.create(
         this.executorService,
         mock(MongotCursorManager.class),
         mock(InitialSyncQueue.class),
         mock(SteadyStateManager.class),
         indexGeneration,
-        mock(InitializedIndex.class),
+        matViewIndex,
         mock(DocumentIndexer.class),
         mock(PeriodicIndexCommitter.class),
-        new SimpleMetricsFactory(),
+        Duration.ofSeconds(1),
+        metricsFactory.meterRegistry,
         mock(FeatureFlags.class),
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(1),
         false);
   }
 }

@@ -1,11 +1,10 @@
 package com.xgen.mongot.replication.mongodb.autoembedding;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexGeneration;
-import com.xgen.mongot.index.InitializedIndex;
+import com.xgen.mongot.index.autoembedding.InitializedMaterializedViewIndex;
 import com.xgen.mongot.index.autoembedding.MaterializedViewIndexGeneration;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.metrics.MetricsFactory;
@@ -41,7 +40,17 @@ import java.util.concurrent.Executor;
  * <p>Note: Generators follow a one-way lifecycle from follower to leader. To transition back to
  * follower mode (e.g., when leadership is lost), the generator must be shut down and replaced with
  * a new generator. This respects the {@link ReplicationIndexManager} design that generators are not
- * restarted once stopped. See {@link MaterializedViewManager#transitionToFollower}.
+ * restarted once stopped.
+ *
+ * <p>Leader-status metrics are emitted in MaterializedViewGenerator rather than in {@link
+ * com.xgen.mongot.embedding.mongodb.leasing.LeaseManager} because the generator is the component
+ * that actually controls the replication workflow. Owning a lease only means this process has been
+ * granted leadership in the lease store; it does not by itself determine whether this generator is
+ * currently acting as the replication leader. The generator transitions to leader only when {@link
+ * #becomeLeader()} runs and starts the replication loop, and it clears the leader status when it
+ * shuts down. Emitting in the generator therefore reflects the real replication role (who is
+ * running initial sync and steady state), which is what we want to alert on (split-brain = multiple
+ * generators running replication; orphaned = no generator running replication).
  */
 public class MaterializedViewGenerator extends ReplicationIndexManager {
 
@@ -57,13 +66,19 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
   /** Executor for scheduling lifecycle tasks. Stored here since parent's field is private. */
   private final Executor lifecycleExecutor;
 
+  /**
+   * The materialized view index this generator is managing. Used to update the leader-status gauge
+   * via {@link InitializedMaterializedViewIndex#setLeaderMode(boolean)}.
+   */
+  private final InitializedMaterializedViewIndex matViewIndex;
+
   MaterializedViewGenerator(
       Executor lifecycleExecutor,
       MongotCursorManager cursorManager,
       InitialSyncQueue initialSyncQueue,
       SteadyStateManager steadyStateManager,
       IndexGeneration indexGeneration,
-      InitializedIndex initializedIndex,
+      InitializedMaterializedViewIndex matViewIndex,
       DocumentIndexer documentIndexer,
       PeriodicIndexCommitter periodicCommitter,
       MetricsFactory metricsFactory,
@@ -79,7 +94,7 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
         steadyStateManager,
         Collections.emptyList(),
         indexGeneration,
-        initializedIndex,
+        matViewIndex,
         documentIndexer,
         periodicCommitter,
         metricsFactory,
@@ -90,6 +105,7 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
         enableNaturalOrderScan);
     this.lifecycleExecutor = lifecycleExecutor;
     this.isLeader = false; // All generators start as followers
+    this.matViewIndex = matViewIndex;
   }
 
   /** Returns whether this generator is currently acting as the leader. */
@@ -113,6 +129,7 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
     }
     this.logger.info("Transitioning to leader mode, starting replication loop");
     this.isLeader = true;
+    this.matViewIndex.setLeaderMode(true);
 
     // Schedule replication initialization on the lifecycle executor.
     // Note: For dynamic leader election, when a generator loses leadership, it is shut down and
@@ -138,10 +155,19 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
     super.init();
   }
 
+  @Override
+  public synchronized CompletableFuture<Void> shutdown() {
+    this.matViewIndex.setLeaderMode(false);
+    return super.shutdown();
+  }
+
   /**
    * Creates a MaterializedViewGenerator for the supplied materialized view generation. The
    * generator is created in follower mode. Call {@link #becomeLeader()} to activate leader mode and
    * start the replication loop.
+   *
+   * @param matViewIndex the materialized view index to manage. The generator will call {@link
+   *     InitializedMaterializedViewIndex#setLeaderMode(boolean)} to update the leader-status gauge.
    */
   public static MaterializedViewGenerator create(
       Executor lifecycleExecutor,
@@ -149,62 +175,28 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
       InitialSyncQueue initialSyncQueue,
       SteadyStateManager steadyStateManager,
       IndexGeneration indexGeneration,
-      InitializedIndex initializedIndex,
+      InitializedMaterializedViewIndex matViewIndex,
       DocumentIndexer documentIndexer,
       PeriodicIndexCommitter periodicCommitter,
       Duration requestRateLimitBackoffMs,
       MeterRegistry meterRegistry,
       FeatureFlags featureFlags,
       boolean enableNaturalOrderScan) {
-    return create(
-        lifecycleExecutor,
-        cursorManager,
-        initialSyncQueue,
-        steadyStateManager,
-        indexGeneration,
-        initializedIndex,
-        documentIndexer,
-        periodicCommitter,
-        meterRegistry,
-        featureFlags,
-        DEFAULT_RESYNC_BACKOFF,
-        DEFAULT_TRANSIENT_BACKOFF,
-        requestRateLimitBackoffMs,
-        enableNaturalOrderScan);
-  }
-
-  @VisibleForTesting
-  static MaterializedViewGenerator create(
-      Executor lifecycleExecutor,
-      MongotCursorManager cursorManager,
-      InitialSyncQueue initialSyncQueue,
-      SteadyStateManager steadyStateManager,
-      IndexGeneration indexGeneration,
-      InitializedIndex initializedIndex,
-      DocumentIndexer documentIndexer,
-      PeriodicIndexCommitter periodicCommitter,
-      MeterRegistry meterRegistry,
-      FeatureFlags featureFlags,
-      Duration resyncBackoff,
-      Duration transientBackoff,
-      Duration requestRateLimitBackoffMs,
-      boolean enableNaturalScan) {
-
     return new MaterializedViewGenerator(
         lifecycleExecutor,
         cursorManager,
         initialSyncQueue,
         steadyStateManager,
         indexGeneration,
-        initializedIndex,
+        matViewIndex,
         documentIndexer,
         periodicCommitter,
         new MetricsFactory("materializedViewGenerator", meterRegistry),
         featureFlags,
-        resyncBackoff,
-        transientBackoff,
+        DEFAULT_RESYNC_BACKOFF,
+        DEFAULT_TRANSIENT_BACKOFF,
         requestRateLimitBackoffMs,
-        enableNaturalScan);
+        enableNaturalOrderScan);
   }
 
   public MaterializedViewIndexGeneration getIndexGeneration() {

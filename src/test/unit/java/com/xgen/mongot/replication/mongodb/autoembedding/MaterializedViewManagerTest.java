@@ -32,6 +32,7 @@ import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.InitializedIndex;
 import com.xgen.mongot.index.autoembedding.AutoEmbeddingIndexGeneration;
+import com.xgen.mongot.index.autoembedding.InitializedMaterializedViewIndex;
 import com.xgen.mongot.index.autoembedding.MaterializedViewIndexGeneration;
 import com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration;
 import com.xgen.mongot.index.status.IndexStatus;
@@ -993,7 +994,7 @@ public class MaterializedViewManagerTest {
                   this.initialSyncQueue,
                   this.steadyStateManager,
                   materializedViewIndexGeneration,
-                  mock(InitializedIndex.class),
+                  mock(InitializedMaterializedViewIndex.class),
                   mock(DocumentIndexer.class),
                   mock(PeriodicIndexCommitter.class),
                   new SimpleMetricsFactory(),

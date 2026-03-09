@@ -28,6 +28,7 @@ import com.xgen.mongot.index.version.MaterializedViewGenerationId;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonArray;
 import org.bson.BsonTimestamp;
@@ -41,6 +42,7 @@ public class InitializedMaterializedViewIndex implements InitializedVectorIndex 
   private final AtomicReference<IndexStatus> statusRef;
   private final LeaseManager leaseManager;
   private final MaterializedViewSchemaMetadata schemaMetadata;
+  private final AtomicLong leaderStatusGauge;
 
   public InitializedMaterializedViewIndex(
       MaterializedViewIndexDefinitionGeneration matViewDefinitionGeneration,
@@ -56,6 +58,8 @@ public class InitializedMaterializedViewIndex implements InitializedVectorIndex 
     this.statusRef = statusRef;
     this.leaseManager = leaseManager;
     this.schemaMetadata = schemaMetadata;
+    this.leaderStatusGauge =
+        indexMetricsUpdater.getMetricsFactory().perIndexNumGauge("leaderStatus");
   }
 
   @Override
@@ -71,6 +75,16 @@ public class InitializedMaterializedViewIndex implements InitializedVectorIndex 
   @Override
   public IndexMetricsUpdater getMetricsUpdater() {
     return this.indexMetricsUpdater;
+  }
+
+  /**
+   * Updates the leader-status gauge for this index.
+   *
+   * @param isLeader true if this index is currently being replicated by a leader generator, false
+   *     otherwise
+   */
+  public void setLeaderMode(boolean isLeader) {
+    this.leaderStatusGauge.set(isLeader ? 1 : 0);
   }
 
   @Override

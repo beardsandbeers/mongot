@@ -90,13 +90,16 @@ public class MaterializedViewIndexFactory implements IndexFactory {
             statusRef::get, writer.getMongoClient(), writer.getNamespace());
 
     // Avoid metrics collision with Lucene index by setting different NAMESPACE.
+    // Use the collection name (lease key, indexIdHex-hash-version) as indexId_logString so that 
+    // metrics align with lease id and the tag is easier to use when debugging.
     var indexMetricsUpdaterBuilder =
         new IndexMetricsUpdater.Builder(
             matViewIndexDefinitionGeneration.getIndexDefinition(),
             new PerIndexMetricsFactory(
                 NAMESPACE,
                 this.meterAndFtdcRegistry,
-                matViewIndexDefinitionGeneration.getGenerationId()),
+                matViewIndexDefinitionGeneration.getGenerationId().uniqueString(),
+                collectionMetadata.collectionName()),
             this.featureFlags.isEnabled(Feature.INDEX_FEATURE_VERSION_FOUR));
 
     return new InitializedMaterializedViewIndex(
