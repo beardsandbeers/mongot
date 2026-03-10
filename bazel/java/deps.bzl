@@ -17,7 +17,7 @@ GUAVA_ARTIFACTS = append_version(
     ],
 )
 
-JACKSON_VERSION = "2.19.2"
+JACKSON_VERSION = "2.18.6"
 JACKSON_ARTIFACTS = (
     append_version(
         JACKSON_VERSION,
