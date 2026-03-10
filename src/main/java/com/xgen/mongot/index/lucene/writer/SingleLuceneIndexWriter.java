@@ -27,6 +27,7 @@ import com.xgen.mongot.index.lucene.document.context.IndexingPolicyBuilderContex
 import com.xgen.mongot.index.lucene.field.FieldName;
 import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.similarity.LuceneSimilarity;
+import com.xgen.mongot.index.lucene.sort.LuceneIndexSortCompatibilityValidator;
 import com.xgen.mongot.index.lucene.sort.LuceneIndexSortFactory;
 import com.xgen.mongot.index.lucene.util.LuceneCodecUtils;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
@@ -252,9 +253,13 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
 
     if (resolver.indexDefinition.getSort().isPresent()
         && featureFlags.isEnabled(Feature.SORTED_INDEX)) {
-      indexWriterConfig.setIndexSort(
+      org.apache.lucene.search.Sort newIndexSort =
           new LuceneIndexSortFactory(resolver)
-              .createIndexSort(resolver.indexDefinition.getSort().get()));
+              .createIndexSort(resolver.indexDefinition.getSort().get());
+
+      LuceneIndexSortCompatibilityValidator.validate(directory, newIndexSort);
+
+      indexWriterConfig.setIndexSort(newIndexSort);
       // Parent field is set to sort parent-child documents as a unit.
       indexWriterConfig.setParentField(FieldName.MetaField.PARENT_FIELD.getLuceneFieldName());
     }

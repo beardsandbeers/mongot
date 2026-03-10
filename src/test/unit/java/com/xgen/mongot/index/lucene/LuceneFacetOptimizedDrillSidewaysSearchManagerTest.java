@@ -132,7 +132,11 @@ public class LuceneFacetOptimizedDrillSidewaysSearchManagerTest {
 
     LuceneFacetOptimizedDrillSidewaysSearchManager searchManager =
         new LuceneFacetOptimizedDrillSidewaysSearchManager(
-            this.testQuery, this.facetQueries.get(FACET_1), Optional.empty(), Optional.empty());
+            this.testQuery,
+            this.facetQueries.get(FACET_1),
+            Optional.empty(),
+            Optional.empty(),
+            false);
 
     // Act
     LuceneFacetOptimizedDrillSidewaysSearchManager.OptimizedDrillSidewaysFacetCollectorQueryInfo
@@ -155,7 +159,8 @@ public class LuceneFacetOptimizedDrillSidewaysSearchManagerTest {
             this.testQuery,
             this.mockLuceneDrillSideways,
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
 
     // Act
     LuceneFacetOptimizedDrillSidewaysSearchManager.OptimizedDrillSidewaysFacetCollectorQueryInfo
@@ -179,7 +184,8 @@ public class LuceneFacetOptimizedDrillSidewaysSearchManagerTest {
             this.testQuery,
             this.facetQueries.get(FACET_1),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
 
     // Act
     LuceneFacetOptimizedDrillSidewaysSearchManager.OptimizedDrillSidewaysFacetCollectorQueryInfo
@@ -203,7 +209,8 @@ public class LuceneFacetOptimizedDrillSidewaysSearchManagerTest {
             this.testQuery,
             this.facetQueries.get(FACET_1),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
 
     // Act
     LuceneFacetOptimizedDrillSidewaysSearchManager.OptimizedDrillSidewaysFacetCollectorQueryInfo
@@ -226,7 +233,11 @@ public class LuceneFacetOptimizedDrillSidewaysSearchManagerTest {
 
     LuceneFacetOptimizedDrillSidewaysSearchManager searchManager =
         new LuceneFacetOptimizedDrillSidewaysSearchManager(
-            this.testQuery, this.facetQueries.get(FACET_1), Optional.of(sort), Optional.empty());
+            this.testQuery,
+            this.facetQueries.get(FACET_1),
+            Optional.of(sort),
+            Optional.empty(),
+            false);
 
     // Act
     LuceneFacetOptimizedDrillSidewaysSearchManager.OptimizedDrillSidewaysFacetCollectorQueryInfo
@@ -274,7 +285,8 @@ public class LuceneFacetOptimizedDrillSidewaysSearchManagerTest {
             this.testQuery,
             this.facetQueries.get(FACET_1),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
 
     ScoreDoc lastScoreDoc = new ScoreDoc(0, 1.0f);
 

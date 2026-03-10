@@ -136,7 +136,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.empty(),
             Optional.empty(),
-            concurrentFacetExecutor);
+            concurrentFacetExecutor,
+            false);
 
     // Act
     LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo
@@ -166,7 +167,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.empty(),
             Optional.empty(),
-            concurrentFacetExecutor);
+            concurrentFacetExecutor,
+            false);
 
     // Act
     LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo
@@ -193,7 +195,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.empty(),
             Optional.empty(),
-            concurrentFacetExecutor);
+            concurrentFacetExecutor,
+            false);
 
     // Act
     LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo
@@ -220,7 +223,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.empty(),
             Optional.empty(),
-            concurrentFacetExecutor);
+            concurrentFacetExecutor,
+            false);
 
     // Act
     LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo
@@ -247,7 +251,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.empty(),
             Optional.empty(),
-            concurrentFacetExecutor);
+            concurrentFacetExecutor,
+            false);
 
     // Act
     LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo
@@ -276,7 +281,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.of(sort),
             Optional.empty(),
-            concurrentFacetExecutor);
+            concurrentFacetExecutor,
+            false);
 
     // Act
     LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo
@@ -300,7 +306,8 @@ public class LuceneFacetGenericDrillSidewaysSearchManagerTest {
             this.facetQueries,
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
 
     ScoreDoc lastScoreDoc = new ScoreDoc(0, 1.0f);
 

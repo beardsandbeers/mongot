@@ -7,6 +7,7 @@ import com.xgen.mongot.index.definition.FieldDefinition;
 import com.xgen.mongot.index.definition.GeoFieldDefinition;
 import com.xgen.mongot.index.definition.NumberFacetFieldDefinition;
 import com.xgen.mongot.index.definition.NumberFieldDefinition;
+import com.xgen.mongot.index.definition.NumericFieldOptions;
 import com.xgen.mongot.index.definition.SortableNumberBetaV1FieldDefinition;
 import com.xgen.mongot.index.definition.StringFieldDefinition;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
@@ -116,6 +117,7 @@ public class LuceneSearchIndexFieldValueHandler implements FieldValueHandler {
     if (this.documentWrapper.isNumberAndDateSortable
         && this.fieldDefinition.dateFieldDefinition().isPresent()) {
       IndexableFieldFactory.addSortableDateV2Field(this.documentWrapper, this.path, supplier.get());
+      addNullnessFieldIfNeeded(Optional.empty());
     }
   }
 
@@ -193,6 +195,7 @@ public class LuceneSearchIndexFieldValueHandler implements FieldValueHandler {
           this.path,
           supplier.get(),
           numberFieldDefinition.options().representation());
+      addNullnessFieldIfNeeded(Optional.of(numberFieldDefinition.options().representation()));
     }
   }
 
@@ -305,6 +308,7 @@ public class LuceneSearchIndexFieldValueHandler implements FieldValueHandler {
           this.path,
           supplier.get(),
           numberFieldDefinition.options().representation());
+      addNullnessFieldIfNeeded(Optional.of(numberFieldDefinition.options().representation()));
     }
   }
 
@@ -456,5 +460,17 @@ public class LuceneSearchIndexFieldValueHandler implements FieldValueHandler {
             documentFieldDefinition ->
                 LuceneDocumentHandler.create(
                     this.documentWrapper, documentFieldDefinition, this.path, this.isMultiValued));
+  }
+
+  private void addNullnessFieldIfNeeded(
+      Optional<NumericFieldOptions.Representation> representation) {
+    if (representation.isPresent()
+        && representation.get() != NumericFieldOptions.Representation.INT64) {
+      return;
+    }
+
+    if (this.documentWrapper.getIndexSortNullnessFields().contains(this.path)) {
+      IndexableFieldFactory.addNullnessField(this.documentWrapper, this.path);
+    }
   }
 }

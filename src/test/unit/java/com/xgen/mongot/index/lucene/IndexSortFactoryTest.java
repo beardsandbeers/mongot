@@ -36,8 +36,6 @@ import com.xgen.mongot.index.lucene.field.FieldValue;
 import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
 import com.xgen.mongot.index.lucene.query.LuceneSearchQueryFactoryDistributor;
 import com.xgen.mongot.index.lucene.query.sort.LuceneSortFactory;
-import com.xgen.mongot.index.lucene.query.sort.MqlDateSort;
-import com.xgen.mongot.index.lucene.query.sort.MqlLongSort;
 import com.xgen.mongot.index.lucene.searcher.LuceneSearcherManager;
 import com.xgen.mongot.index.lucene.sort.LuceneIndexSortFactory;
 import com.xgen.mongot.index.lucene.util.LuceneDoubleConversionUtils;
@@ -249,21 +247,23 @@ public class IndexSortFactoryTest {
                               this.mockResolver.getIndexCapabilities())
                           .get())
               .toList();
-      org.apache.lucene.search.Sort expectedSort =
-          new org.apache.lucene.search.Sort(expectedSortFields.toArray(new SortField[0]));
+      // For INT64_V2 and DATE_V2, createIndexSort prepends a nullness sort field.
+      SortField[] actualSortFields = actualSort.getSort();
+      @Var int nullnessOffset = 0;
+      if (this.testSpec.typeField == TypeField.NUMBER_INT64_V2
+          || this.testSpec.typeField == TypeField.DATE_V2) {
+        nullnessOffset = 1;
+        Assert.assertTrue(
+            actualSortFields[0].getField().startsWith(
+                FieldName.MetaField.NULLNESS.getLuceneFieldName()));
+      }
 
-      // Since LuceneSortFactory.createOptimizedSortField doesn't set missing values for
-      // MqlLongSort and MqlDateSort, we need to set it here.
-      Assert.assertEquals(expectedSortFields.size(), actualSort.getSort().length);
+      Assert.assertEquals(expectedSortFields.size() + nullnessOffset, actualSortFields.length);
       for (int i = 0; i < expectedSortFields.size(); i++) {
         var expected = expectedSortFields.get(i);
-        var actual = actualSort.getSort()[i];
-        if (expected.getMissingValue() == null) {
-          Assert.assertTrue(expected instanceof MqlLongSort || expected instanceof MqlDateSort);
-          actual.setMissingValue(expected.getMissingValue());
-        }
+        var actual = actualSortFields[i + nullnessOffset];
+        Assert.assertEquals(expected, actual);
       }
-      Assert.assertEquals(expectedSort, actualSort);
     }
   }
 
@@ -346,14 +346,22 @@ public class IndexSortFactoryTest {
 
     @Test
     public void runTest() throws IOException {
-      // Run through the document processor to build a lucene document as in production.
       DocumentFieldDefinition mappings =
           DocumentFieldDefinitionBuilder.builder()
               .field("f", this.testSpec.filedDefinition)
               .build();
 
+      Sort sortSpec =
+          new Sort(
+              ImmutableList.of(
+                  new MongotSortField(FieldPath.newRoot("f"), UserFieldSortOptions.DEFAULT_DESC)));
+
       SearchIndexDefinition indexDefinition =
-          SearchIndexDefinitionBuilder.builder().defaultMetadata().mappings(mappings).build();
+          SearchIndexDefinitionBuilder.builder()
+              .defaultMetadata()
+              .mappings(mappings)
+              .sort(sortSpec)
+              .build();
 
       BsonDocument bson =
           new BsonDocument()
@@ -371,15 +379,9 @@ public class IndexSortFactoryTest {
       BsonDocumentProcessor.process(BsonUtils.documentToRaw(bson), builder);
       Document document = builder.build();
 
-      // Run through the sort factory to build a lucene sort as in production.
       LuceneIndexSortFactory sortFactory = new LuceneIndexSortFactory(resolver);
-      Sort sortSpec =
-          new Sort(
-              ImmutableList.of(
-                  new MongotSortField(FieldPath.newRoot("f"), UserFieldSortOptions.DEFAULT_DESC)));
       org.apache.lucene.search.Sort luceneSort = sortFactory.createIndexSort(sortSpec);
 
-      // Validate that the lucene sort fields are actually existent in the document.
       for (SortField sortField : luceneSort.getSort()) {
         Assert.assertNotNull(document.getField(sortField.getField()));
       }
@@ -580,15 +582,13 @@ public class IndexSortFactoryTest {
       // Check if we need parent-aware comparison for embedded documents
       NumericDocValues parentDocValues =
           leafReader.getNumericDocValues(FieldName.MetaField.PARENT_FIELD.getLuceneFieldName());
+      BitSet parents =
+          parentDocValues != null ? BitSet.of(parentDocValues, leafReader.maxDoc()) : null;
 
       for (SortField sortField : luceneSort.getSort()) {
         var indexSorter = sortField.getIndexSorter();
         var baseComparator = indexSorter.getDocComparator(leafReader, leafReader.maxDoc());
-        if (parentDocValues != null) {
-          // Build parent BitSet
-          BitSet parents = BitSet.of(parentDocValues, leafReader.maxDoc());
-
-          // Wrap comparator to compare parent documents
+        if (parents != null) {
           docComparators.add(
               (int docId1, int docId2) -> {
                 int parentDoc1 = parents.nextSetBit(docId1);

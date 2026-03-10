@@ -236,7 +236,8 @@ public class LuceneSearchIndexReaderTest {
             new LuceneSearchManagerFactory(
                 fieldDefinitionResolver,
                 new BinaryQuantizedVectorRescorer(Optional.of(this.concurrentRescoringExecutor)),
-                indexMetricsUpdater.getQueryingMetricsUpdater()),
+                indexMetricsUpdater.getQueryingMetricsUpdater(),
+                false),
             Optional.of(this.concurrentSearchExecutor),
             0,
             featureFlags,
@@ -254,7 +255,8 @@ public class LuceneSearchIndexReaderTest {
             new LuceneSearchManagerFactory(
                 fieldDefinitionResolver,
                 new BinaryQuantizedVectorRescorer(Optional.of(this.concurrentRescoringExecutor)),
-                indexMetricsUpdater.getQueryingMetricsUpdater()),
+                indexMetricsUpdater.getQueryingMetricsUpdater(),
+                false),
             Optional.of(this.concurrentSearchExecutor),
             0,
             featureFlags,
@@ -874,7 +876,8 @@ public class LuceneSearchIndexReaderTest {
                 .createFieldDefinitionResolver(
                     indexDefinitionGeneration.generation().indexFormatVersion),
             new BinaryQuantizedVectorRescorer(Optional.of(this.concurrentRescoringExecutor)),
-            indexMetricsUpdater.getQueryingMetricsUpdater()),
+            indexMetricsUpdater.getQueryingMetricsUpdater(),
+            indexDefinitionGeneration.getIndexDefinition().getSort().isPresent()),
         Optional.of(this.concurrentSearchExecutor),
         0,
         featureFlags,

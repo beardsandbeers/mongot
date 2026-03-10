@@ -59,8 +59,9 @@ class LuceneFacetGenericDrillSidewaysSearchManager
       Map<String, LuceneDrillSideways> facetToDrillSidewaysFacetQueries,
       Optional<Sort> luceneSort,
       Optional<SequenceToken> searchAfter,
-      Optional<NamedExecutorService> drillSidewaysConcurrentFacetExecutor) {
-    super(luceneQuery, luceneSort, searchAfter);
+      Optional<NamedExecutorService> drillSidewaysConcurrentFacetExecutor,
+      boolean hasIndexSort) {
+    super(luceneQuery, luceneSort, searchAfter, hasIndexSort);
     this.facetToDrillSidewaysFacetQueries = facetToDrillSidewaysFacetQueries;
     this.drillSidewaysConcurrentFacetExecutor = drillSidewaysConcurrentFacetExecutor;
   }

@@ -1,7 +1,10 @@
 package com.xgen.mongot.index.lucene.document.single;
 
+import com.google.common.collect.ImmutableSet;
 import com.xgen.mongot.index.IndexMetricsUpdater.IndexingMetricsUpdater;
+import com.xgen.mongot.index.definition.NumericFieldOptions;
 import com.xgen.mongot.index.definition.SearchFieldDefinitionResolver;
+import com.xgen.mongot.index.query.sort.MongotSortField;
 import com.xgen.mongot.util.FieldPath;
 import java.util.Optional;
 import org.apache.lucene.analysis.Analyzer;
@@ -36,6 +39,8 @@ public class DocumentWrapper extends AbstractDocumentWrapper {
 
   private final Optional<FieldPath> embeddedRoot;
 
+  private final ImmutableSet<FieldPath> indexSortNullnessFields;
+
   DocumentWrapper(
       Document luceneDocument,
       Optional<FieldPath> embeddedRoot,
@@ -47,6 +52,7 @@ public class DocumentWrapper extends AbstractDocumentWrapper {
     this.isNumberAndDateSortable =
         embeddedRoot.isEmpty() || resolver.indexCapabilities.supportsEmbeddedNumericAndDateV2();
     this.indexAnalyzer = indexAnalyzer;
+    this.indexSortNullnessFields = computeIndexSortNullnessFields(resolver);
     this.resolver = resolver;
   }
 
@@ -127,8 +133,33 @@ public class DocumentWrapper extends AbstractDocumentWrapper {
     return wrapper;
   }
 
+  private static ImmutableSet<FieldPath> computeIndexSortNullnessFields(
+      SearchFieldDefinitionResolver resolver) {
+    var sort = resolver.indexDefinition.getSort();
+    if (sort.isEmpty()) {
+      return ImmutableSet.of();
+    }
+    ImmutableSet.Builder<FieldPath> builder = ImmutableSet.builder();
+    for (MongotSortField field : sort.get().getSortFields()) {
+      resolver.getFieldDefinition(field.field(), Optional.empty()).ifPresent(def -> {
+        boolean isDate = def.dateFieldDefinition().isPresent();
+        boolean isInt64 = def.numberFieldDefinition().isPresent()
+            && def.numberFieldDefinition().get().options().representation()
+                == NumericFieldOptions.Representation.INT64;
+        if (isDate || isInt64) {
+          builder.add(field.field());
+        }
+      });
+    }
+    return builder.build();
+  }
+
   SearchFieldDefinitionResolver getResolver() {
     return this.resolver;
+  }
+
+  ImmutableSet<FieldPath> getIndexSortNullnessFields() {
+    return this.indexSortNullnessFields;
   }
 
   @Override

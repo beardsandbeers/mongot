@@ -46,4 +46,16 @@ public enum NullEmptySortPosition {
   public BsonValue getNullMissingSortValue() {
     return this.sortValue;
   }
+
+  /**
+   * Returns the Lucene missing value for the $nullness sort field. Present documents have
+   * nullness=0. For LOWEST: missing value < 0 so nulls sort before present docs. For HIGHEST:
+   * missing value > 0 so nulls sort after present docs.
+   */
+  public long getNullnessMissingValue() {
+    return switch (this) {
+      case LOWEST -> Long.MIN_VALUE;
+      case HIGHEST -> Long.MAX_VALUE;
+    };
+  }
 }

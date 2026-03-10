@@ -40,8 +40,9 @@ class LuceneFacetOptimizedDrillSidewaysSearchManager
       Query luceneQuery,
       LuceneDrillSideways luceneDrillSideways,
       Optional<Sort> luceneSort,
-      Optional<SequenceToken> searchAfter) {
-    super(luceneQuery, luceneSort, searchAfter);
+      Optional<SequenceToken> searchAfter,
+      boolean hasIndexSort) {
+    super(luceneQuery, luceneSort, searchAfter, hasIndexSort);
     this.luceneDrillSideways = luceneDrillSideways;
   }
 

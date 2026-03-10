@@ -1,30 +1,40 @@
 package com.xgen.mongot.index.lucene;
 
+import com.xgen.mongot.index.lucene.field.FieldName;
 import com.xgen.mongot.index.lucene.searcher.LuceneIndexSearcher;
 import com.xgen.mongot.index.query.sort.SequenceToken;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.stream.IntStream;
 import org.apache.lucene.search.CollectorManager;
+import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopFieldCollectorManager;
 import org.apache.lucene.search.TopScoreDocCollectorManager;
+import org.bson.BsonInt64;
 
 abstract class AbstractLuceneSearchManager<T> implements LuceneSearchManager<T> {
-  
+
   private final Query luceneQuery;
   private final Optional<Sort> luceneSort;
   private final Optional<SequenceToken> searchAfter;
+  private final boolean hasIndexSort;
 
   AbstractLuceneSearchManager(
-      Query luceneQuery, Optional<Sort> luceneSort, Optional<SequenceToken> searchAfter) {
+      Query luceneQuery,
+      Optional<Sort> luceneSort,
+      Optional<SequenceToken> searchAfter,
+      boolean hasIndexSort) {
     this.luceneQuery = luceneQuery;
     this.luceneSort = luceneSort;
     this.searchAfter = searchAfter;
+    this.hasIndexSort = hasIndexSort;
   }
 
   @Override
@@ -54,11 +64,53 @@ abstract class AbstractLuceneSearchManager<T> implements LuceneSearchManager<T> 
    */
   protected CollectorManager<? extends TopDocsCollector<?>, ? extends TopDocs>
       createCollectorManager(int batchSize, int hitsThreshold) {
-    var searchAfterFieldDoc = this.searchAfter.map(SequenceToken::fieldDoc).orElse(null);
+    Optional<FieldDoc> searchAfterFieldDoc =
+        this.searchAfter
+            .map(SequenceToken::fieldDoc)
+            .map(
+                fd ->
+                    this.hasIndexSort && this.luceneSort.isPresent()
+                        ? coerceSearchAfterFieldDoc(fd, this.luceneSort.get())
+                        : fd);
+
+    FieldDoc after = searchAfterFieldDoc.orElse(null);
     return this.luceneSort.isPresent()
         ? new TopFieldCollectorManager(
-            this.luceneSort.get(), batchSize, searchAfterFieldDoc, hitsThreshold)
-        : new TopScoreDocCollectorManager(batchSize, searchAfterFieldDoc, hitsThreshold);
+            this.luceneSort.get(), batchSize, after, hitsThreshold)
+        : new TopScoreDocCollectorManager(batchSize, after, hitsThreshold);
+  }
+
+  /**
+   * Coerces searchAfter token values for $meta/nullness sort fields from BsonInt64 to Long.
+   *
+   * <p>The $meta/nullness sort field uses a plain SortedNumericSortField whose comparator produces
+   * raw Long values, unlike MqlLongSort/MqlDateSort which wrap their comparators in
+   * FieldComparatorBsonWrapper to convert between Long and BsonValue. Until we introduce a
+   * dedicated MqlNullnessSortField with proper BsonValue conversion, raw Long values must be
+   * handled here during token deserialization.
+   */
+  private static FieldDoc coerceSearchAfterFieldDoc(FieldDoc fieldDoc, Sort sort) {
+    if (fieldDoc.fields == null) {
+      return fieldDoc;
+    }
+
+    SortField[] sortFields = sort.getSort();
+    String nullnessPrefix = FieldName.MetaField.NULLNESS.getLuceneFieldName();
+
+    Object[] coerced =
+        IntStream.range(0, fieldDoc.fields.length)
+            .mapToObj(
+                i -> {
+                  if (i < sortFields.length
+                      && sortFields[i].getField() != null
+                      && sortFields[i].getField().startsWith(nullnessPrefix)
+                      && fieldDoc.fields[i] instanceof BsonInt64 b) {
+                    return (Object) b.getValue();
+                  }
+                  return fieldDoc.fields[i];
+                })
+            .toArray();
+    return new FieldDoc(fieldDoc.doc, fieldDoc.score, coerced, fieldDoc.shardIndex);
   }
 
   /**

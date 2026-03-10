@@ -172,6 +172,13 @@ public record SequenceToken(Optional<BsonValue> id, FieldDoc fieldDoc) implement
       // This is a score value, return int32 because it isn't used for anything else
       float score = (Float) o;
       return ProtoValue.newBuilder().setInt32(Float.floatToIntBits(score)).build();
+    } else if (o instanceof Long) {
+      // The $meta/nullness sort field uses a plain SortedNumericSortField whose comparator
+      // produces raw Long values, unlike MqlLongSort/MqlDateSort which wrap their comparators
+      // in FieldComparatorBsonWrapper to convert between Long and BsonValue. Until we introduce
+      // a dedicated MqlNullnessSortField with proper BsonValue conversion, raw Long values must
+      // be handled here during token serialization.
+      return ProtoValue.newBuilder().setInt64((Long) o).build();
     } else if (o instanceof BsonValue) {
       return ProtoConverter.convert(((BsonValue) o));
     } else {

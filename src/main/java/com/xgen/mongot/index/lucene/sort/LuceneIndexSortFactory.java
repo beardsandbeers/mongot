@@ -6,13 +6,10 @@ import com.xgen.mongot.index.definition.NumericFieldDefinition;
 import com.xgen.mongot.index.definition.SearchFieldDefinitionResolver;
 import com.xgen.mongot.index.lucene.field.FieldName;
 import com.xgen.mongot.index.lucene.query.sort.LuceneSortFactory;
-import com.xgen.mongot.index.lucene.query.sort.MqlDateSort;
-import com.xgen.mongot.index.lucene.query.sort.MqlLongSort;
 import com.xgen.mongot.index.query.sort.MongotSortField;
-import com.xgen.mongot.index.query.sort.NullEmptySortPosition;
 import com.xgen.mongot.index.query.sort.Sort;
-import com.xgen.mongot.index.query.sort.UserFieldSortOptions;
 import com.xgen.mongot.util.Check;
+import com.xgen.mongot.util.FieldPath;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -40,18 +37,16 @@ public class LuceneIndexSortFactory {
     List<SortField> sortFields = new ArrayList<>();
 
     for (MongotSortField mongotSortField : sort.getSortFields()) {
-      SortField luceneSortField = createSortFieldFromMongotField(mongotSortField);
-      sortFields.add(luceneSortField);
+      sortFields.addAll(createSortFieldsFromMongotField(mongotSortField));
     }
 
     return new org.apache.lucene.search.Sort(sortFields.toArray(new SortField[0]));
   }
 
-  private SortField createSortFieldFromMongotField(MongotSortField mongotSortField) {
+  private List<SortField> createSortFieldsFromMongotField(MongotSortField mongotSortField) {
     FieldDefinition fieldDefinition = Check.isPresent(
         this.fieldDefinitionResolver.getFieldDefinition(
-            mongotSortField.field(),
-            Optional.empty()), "fieldDefinition");
+            mongotSortField.field(), Optional.empty()), "fieldDefinition");
 
     FieldName.TypeField typeField = determineTypeField(fieldDefinition, mongotSortField);
 
@@ -67,26 +62,20 @@ public class LuceneIndexSortFactory {
       throw new IllegalStateException("Failed to create sort field " + mongotSortField.field());
     }
 
-    // Note that this cast is safe as index definition has already been validated in
-    // IndexSortValidator.
-    UserFieldSortOptions options =
-        Check.instanceOf(mongotSortField.options(), UserFieldSortOptions.class);
+    boolean needsNullness =
+        typeField == FieldName.TypeField.NUMBER_INT64_V2
+            || typeField == FieldName.TypeField.DATE_V2;
 
-    // Set the missing value for the sort field.
-    // Note only MqlDoubleSort and MqlLongSort are not set missing values and we can't set it in
-    // their constructors as it will break the nulls query sort pruning.
-    switch (sortField.get()) {
-      case MqlDateSort sort ->
-          sort.setMissingValue(getLuceneMissingValue(options.nullEmptySortPosition()));
-      case MqlLongSort sort ->
-          sort.setMissingValue(getLuceneMissingValue(options.nullEmptySortPosition()));
-      default -> {
-        // No-op
-      }
+    List<SortField> result = new ArrayList<>();
+    if (needsNullness) {
+      FieldPath nullnessPath =
+          FieldPath.newRoot(FieldName.getNullnessFieldName(mongotSortField.field()));
+      MongotSortField nullnessSortField =
+          new MongotSortField(nullnessPath, mongotSortField.options());
+      result.add(LuceneSortFactory.createNullnessSortField(nullnessSortField));
     }
-    Check.checkState(sortField.get().getMissingValue() != null,
-        "Can't find missing value for sort field");
-    return sortField.get();
+    result.add(sortField.get());
+    return result;
   }
 
   /**
@@ -141,25 +130,5 @@ public class LuceneIndexSortFactory {
       case DOUBLE -> FieldName.TypeField.NUMBER_DOUBLE_V2;
     };
     return typeField;
-  }
-
-  /**
-   * Map nulls to either MIN_VALUE or MAX_VALUE depending on `position`.
-   *
-   * <p>Note: This doesn't order correctly between null values and MIN_VALUE/MAX_VALUE documents.
-   * This is not a correctness issue since query sort handles nulls correctly in mqlLongCompare
-   * function. This will impact that query sort will not fully benefit from index sort since
-   * the missing value is different from the query sort field, however the sort pruning should be
-   * more effective given the documents haven't pre-sorted on the same query sort fields.
-   *
-   * <p>This limitation will be lifted in public preview in CLOUDP-360859
-   * where we will provide an additional meta field representing the doc's nullness on this field
-   * and sort both fields together with respect to noData option.
-   */
-  private static long getLuceneMissingValue(NullEmptySortPosition position) {
-    return switch (position) {
-      case LOWEST -> Long.MIN_VALUE;
-      case HIGHEST -> Long.MAX_VALUE;
-    };
   }
 }

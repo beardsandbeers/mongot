@@ -108,7 +108,8 @@ public class LuceneVectorIndexReader implements VectorIndexReader {
         new LuceneSearchManagerFactory(
             queryFactory.getDefinitionResolver(),
             new BinaryQuantizedVectorRescorer(concurrentVectorRescoringExecutor),
-            this.metricsUpdater);
+            this.metricsUpdater,
+            false);
 
     ReentrantReadWriteLock shutdownLock = new ReentrantReadWriteLock(true);
     this.shutdownExclusiveLock = shutdownLock.writeLock();

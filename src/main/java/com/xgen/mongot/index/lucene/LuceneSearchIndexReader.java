@@ -238,7 +238,8 @@ public class LuceneSearchIndexReader implements SearchIndexReader {
         new LuceneSearchManagerFactory(
             fieldDefinitionResolver,
             new BinaryQuantizedVectorRescorer(concurrentVectorRescoringExecutor),
-            queryingMetricsUpdater),
+            queryingMetricsUpdater,
+            indexDefinition.getSort().isPresent()),
         concurrentSearchExecutor,
         indexPartitionId,
         featureFlags,

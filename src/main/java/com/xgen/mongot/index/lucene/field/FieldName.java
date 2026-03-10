@@ -56,7 +56,9 @@ public class FieldName {
     EMBEDDED_ROOT("embeddedRoot"),
     FIELD_NAMES("fieldNames"),
     ID("_id"),
-    PARENT_FIELD("parentField");
+    PARENT_FIELD("parentField"),
+    /** Internal meta field used to encode null/noData ordering for index sort. */
+    NULLNESS("nullness");
 
     private static final String PREFIX = "$meta/";
 
@@ -591,5 +593,9 @@ public class FieldName {
               "Field name does not contain a valid TypeField or MultiField component: %s",
               fieldName));
     }
+  }
+
+  public static String getNullnessFieldName(FieldPath path) { 
+    return MetaField.NULLNESS.getLuceneFieldName() + "/" + path; 
   }
 }
