@@ -122,7 +122,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
             .withReadConcern(ReadConcern.LINEARIZABLE)
             .withReadPreference(ReadPreference.primary());
     this.mongoClient = mongoClient;
-    initLeases();
+    syncLeasesFromMongod();
   }
 
   public static DynamicLeaderLeaseManager create(
@@ -240,7 +240,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
    *
    * @throws RuntimeException if there is an error talking to the database.
    */
-  private void initLeases() {
+  private void syncLeasesFromMongod() {
     try {
       List<BsonDocument> rawLeases =
           this.operationExecutor.execute(
@@ -249,6 +249,11 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
         Lease lease = normalizeLeaseIfNeeded(Lease.fromBson(rawLease));
         if (lease != null) {
           this.leases.put(lease.id(), lease);
+        } else {
+          // TODO(CLOUDP-384971): clean up corrupted leases
+          LOG.atError()
+              .addKeyValue("leaseId", rawLease.getString("_id"))
+              .log("Corrupted lease found, skipping");
         }
       }
       LOG.atInfo()
@@ -710,8 +715,8 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
       throws Exception {
     var existingLease = this.leases.get(proposedMetadata.collectionName());
     if (existingLease != null) {
-      // If another Mongot already created the initial lease before this mongot calls initLeases in
-      // constructor, just reuse, no need to make another network call.
+      // If another Mongot already created the initial lease before this mongot calls method
+      // syncLeasesFromMongod in the constructor, just reuse, no need to make another network call.
       return existingLease.materializedViewCollectionMetadata();
     }
     Lease lease =

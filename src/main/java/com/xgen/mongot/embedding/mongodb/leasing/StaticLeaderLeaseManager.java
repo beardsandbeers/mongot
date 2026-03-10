@@ -117,9 +117,7 @@ public class StaticLeaderLeaseManager implements LeaseManager {
             .withReadConcern(ReadConcern.LINEARIZABLE)
             .withReadPreference(ReadPreference.primary());
     this.isLeader = isLeader;
-    if (this.isLeader) {
-      initLeases();
-    }
+    syncLeasesFromMongod();
   }
 
   public static StaticLeaderLeaseManager create(
@@ -142,7 +140,7 @@ public class StaticLeaderLeaseManager implements LeaseManager {
    *
    * @throws Exception if there is an error talking to the database.
    */
-  private void initLeases() {
+  private void syncLeasesFromMongod() {
     try {
       List<BsonDocument> rawLeases =
           this.operationExecutor.execute(
@@ -151,6 +149,11 @@ public class StaticLeaderLeaseManager implements LeaseManager {
         Lease lease = normalizedLeaseIfNeeded(Lease.fromBson(rawLease));
         if (lease != null) {
           this.leases.put(lease.id(), lease);
+        } else {
+          // TODO(CLOUDP-384971): clean up corrupted leases
+          LOG.atError()
+              .addKeyValue("leaseId", rawLease.getString("_id"))
+              .log("Corrupted lease found, skipping");
         }
       }
     } catch (Exception e) {
@@ -282,8 +285,8 @@ public class StaticLeaderLeaseManager implements LeaseManager {
       ensureLeaseExists(generationId);
       return EncodedUserData.fromString(this.leases.get(getLeaseKey(generationId)).commitInfo());
     }
-    // If follower, read from database. Although technically, a follower should never call this
-    // method as we use a no-op replication manager on followers.
+    // If follower, read from the database. Although technically, a follower should never call this
+    // method as it's on the write path that a follower should never go into.
     try {
       Lease lease = getLeaseFromDatabase(generationId);
       if (lease == null) {
@@ -401,8 +404,8 @@ public class StaticLeaderLeaseManager implements LeaseManager {
       MaterializedViewCollectionMetadata proposedMetadata) {
     var existingLease = this.leases.get(proposedMetadata.collectionName());
     if (existingLease != null) {
-      // If another Mongot already created the initial lease before this mongot calls initLeases in
-      // constructor, just reuse, no need to make another network call.
+      // If another Mongot already created the initial lease before this mongot calls method
+      // syncLeasesFromMongod in the constructor, just reuse, no need to make another network call.
       return existingLease.materializedViewCollectionMetadata();
     }
     // When using static leader in Community version, we assume all mongots are using the same MV

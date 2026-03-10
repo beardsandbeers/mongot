@@ -718,12 +718,12 @@ public class DynamicLeaderLeaseManagerTest {
     UUID originalUuid = UUID.randomUUID();
     Lease lease = createLeaseWithMatViewUuid(collectionName, originalUuid);
 
-    // Put the lease in the mock collection for initLeases
+    // Put the lease in the mock collection for syncLeasesFromMongod
     ArrayList<BsonDocument> leaseList = new ArrayList<>();
     leaseList.add(lease.toBson());
     when(this.mockFindIterable.into(any())).thenReturn(leaseList);
 
-    // Act - create a new manager (initLeases will be called in constructor)
+    // Act - create a new manager (syncLeasesFromMongod will be called in constructor)
     DynamicLeaderLeaseManager manager =
         new DynamicLeaderLeaseManager(
             this.mockMongoClient,
@@ -765,7 +765,7 @@ public class DynamicLeaderLeaseManagerTest {
                 + "          }\n"
                 + "        }}");
 
-    // Put the lease in the mock collection for initLeases
+    // Put the lease in the mock collection for syncLeasesFromMongod
     ArrayList<BsonDocument> leaseList = new ArrayList<>();
     leaseList.add(rawLease);
     when(this.mockFindIterable.into(any())).thenReturn(leaseList);
@@ -773,7 +773,7 @@ public class DynamicLeaderLeaseManagerTest {
     // Mock the internal database for getCollectionInfo
     setupInternalDatabaseCollectionInfo(collectionName, expectedUuid);
 
-    // Act - create a new manager (initLeases will call normalizeLeaseIfNeeded)
+    // Act - create a new manager (syncLeasesFromMongod will call normalizeLeaseIfNeeded)
     DynamicLeaderLeaseManager manager =
         new DynamicLeaderLeaseManager(
             this.mockMongoClient,
@@ -815,7 +815,7 @@ public class DynamicLeaderLeaseManagerTest {
                 + "          }\n"
                 + "        }}");
 
-    // Put the lease in the mock collection for initLeases
+    // Put the lease in the mock collection for syncLeasesFromMongod
     ArrayList<BsonDocument> leaseList = new ArrayList<>();
     leaseList.add(rawLease);
     when(this.mockFindIterable.into(any())).thenReturn(leaseList);
