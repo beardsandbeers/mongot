@@ -113,7 +113,9 @@ public class FileSystemDirectory extends FileSwitchDirectory {
    */
   public void prewarmVectorFiles() {
     try {
-      LOG.atInfo().addKeyValue("directory", this.mmapDirectory.getDirectory()).log("Warming cache");
+      LOG.atInfo()
+          .addKeyValue("directory", this.mmapDirectory.getDirectory())
+          .log("Cache Warmer: warming directory");
 
       this.mmapDirectory.setPreload(MMapDirectory.BASED_ON_LOAD_IO_CONTEXT);
 
@@ -138,7 +140,7 @@ public class FileSystemDirectory extends FileSwitchDirectory {
       for (String ex : FileSystemDirectory.extensionLoadOrder) {
         for (String bn : extensionsAndBaseNames.get(ex)) {
           String fileName = bn + "." + ex;
-          LOG.atDebug().addKeyValue("file", fileName).log("Warming file into page cache");
+          LOG.atDebug().addKeyValue("file", fileName).log("Cache Warmer: warming segment");
           try (IndexInput input = this.mmapDirectory.openInput(fileName, IOContext.LOAD)) {
             // The openInput() call with IOContext.LOAD plus the above setPreload() call is
             // expected to trigger the preload inside Lucene 9. For Lucene 10 the migration guide
@@ -158,7 +160,7 @@ public class FileSystemDirectory extends FileSwitchDirectory {
       LOG.atWarn()
           .addKeyValue("directory", this.mmapDirectory.getDirectory())
           .setCause(e)
-          .log("Warming cache failed (ignored because this is only an optimization)");
+          .log("Cache Warmer: failure (ignored because this is only an optimization)");
     } finally {
       this.mmapDirectory.setPreload(MMapDirectory.NO_FILES); // No way to discover the prior value.
     }

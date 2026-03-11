@@ -1,6 +1,10 @@
 package com.xgen.mongot.index.lucene;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
 import com.xgen.mongot.index.lucene.directory.FileSystemDirectory;
@@ -10,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NRTCachingDirectory;
 import org.junit.Assert;
@@ -60,5 +65,49 @@ public class IndexDirectoryFactoryTest {
       Assert.assertEquals(
           testCase.expectedPath, dirFactory.getIndexPartitionDataPath(testCase.partitionId));
     }
+  }
+
+  @Test
+  public void create_withPrewarmEnabled_callsAccumulateCacheWarmerMilliseconds()
+      throws IOException {
+    LuceneConfig config =
+        LuceneConfigBuilder.builder().dataPath(ROOT_PATH).nrtCacheEnabled(false).build();
+    IndexDirectoryFactory directoryFactory =
+        spy(
+            new IndexDirectoryFactory(
+                INDEX_PATH,
+                METADATA_PATH,
+                config,
+                1,
+                Optional.empty(),
+                true,
+                Optional.of(new AtomicLong())));
+
+    Directory directory = directoryFactory.create(0);
+
+    assertThat(directory).isInstanceOf(FileSystemDirectory.class);
+    verify(directoryFactory).accumulateCacheWarmerMilliseconds(anyLong());
+  }
+
+  @Test
+  public void create_withPrewarmDisabled_doesNotCallAccumulateCacheWarmerMilliseconds()
+      throws IOException {
+    LuceneConfig config =
+        LuceneConfigBuilder.builder().dataPath(ROOT_PATH).nrtCacheEnabled(false).build();
+    IndexDirectoryFactory directoryFactory =
+        spy(
+            new IndexDirectoryFactory(
+                INDEX_PATH,
+                METADATA_PATH,
+                config,
+                1,
+                Optional.empty(),
+                false,
+                Optional.of(new AtomicLong())));
+
+    Directory directory = directoryFactory.create(0);
+
+    assertThat(directory).isInstanceOf(FileSystemDirectory.class);
+    verify(directoryFactory, never()).accumulateCacheWarmerMilliseconds(anyLong());
   }
 }

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
@@ -51,6 +52,8 @@ import org.apache.lucene.index.MergePolicy;
 import org.bson.types.ObjectId;
 import org.junit.Assert;
 import org.junit.Test;
+import oshi.SystemInfo;
+import oshi.software.os.OperatingSystem;
 
 public class LuceneIndexFactoryTest {
   @Test
@@ -115,7 +118,8 @@ public class LuceneIndexFactoryTest {
     LuceneIndexFactory factory =
         LuceneIndexFactory.fromConfig(
             LuceneConfigBuilder.builder().tempDataPath().build(),
-            FeatureFlags.getDefault(), new DynamicFeatureFlagRegistry(
+            FeatureFlags.getDefault(),
+            new DynamicFeatureFlagRegistry(
                 Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
             EnvironmentVariantPerfConfig.getDefault(),
             MeterAndFtdcRegistry.createWithSimpleRegistries(),
@@ -404,6 +408,102 @@ public class LuceneIndexFactoryTest {
       Check.instanceOf(
           index1.getVectorIndexProperties().queryCacheProvider,
           QueryCacheProvider.DefaultQueryCacheProvider.class);
+    }
+  }
+
+  @Test
+  public void isCacheWarmerEnabled_whenUptimeWithinThreshold_returnsTrue() {
+    FeatureFlags featureFlags = FeatureFlags.withDefaults().enable(Feature.CACHE_WARMER).build();
+    Optional<SystemInfo> systemInfo = Optional.of(mock(SystemInfo.class));
+    OperatingSystem operatingSystem = mock(OperatingSystem.class);
+    when(systemInfo.get().getOperatingSystem()).thenReturn(operatingSystem);
+    when(operatingSystem.getSystemUptime()).thenReturn(30L * 60L);
+    assertThat(LuceneIndexFactory.isCacheWarmerEnabled(featureFlags, systemInfo)).isTrue();
+  }
+
+  @Test
+  public void isCacheWarmerEnabled_whenUptimeExceedsThreshold_returnsFalse() {
+    FeatureFlags featureFlags = FeatureFlags.withDefaults().enable(Feature.CACHE_WARMER).build();
+    Optional<SystemInfo> systemInfo = Optional.of(mock(SystemInfo.class));
+    OperatingSystem operatingSystem = mock(OperatingSystem.class);
+    when(systemInfo.get().getOperatingSystem()).thenReturn(operatingSystem);
+    when(operatingSystem.getSystemUptime()).thenReturn(30L * 60L + 1L);
+    assertThat(LuceneIndexFactory.isCacheWarmerEnabled(featureFlags, systemInfo)).isFalse();
+  }
+
+  @Test
+  public void isCacheWarmerEnabled_whenFeatureFlagDisabled_returnsFalse() {
+    FeatureFlags featureFlags = FeatureFlags.withDefaults().disable(Feature.CACHE_WARMER).build();
+    Optional<SystemInfo> systemInfo = Optional.of(mock(SystemInfo.class));
+    OperatingSystem operatingSystem = mock(OperatingSystem.class);
+    when(systemInfo.get().getOperatingSystem()).thenReturn(operatingSystem);
+    when(operatingSystem.getSystemUptime()).thenReturn(30L * 60L);
+    assertThat(LuceneIndexFactory.isCacheWarmerEnabled(featureFlags, systemInfo)).isFalse();
+  }
+
+  @Test
+  public void isCacheWarmerEnabled_whenSystemInfoThrows_returnsFalse() {
+    FeatureFlags featureFlags = FeatureFlags.withDefaults().enable(Feature.CACHE_WARMER).build();
+    Optional<SystemInfo> systemInfo = Optional.of(mock(SystemInfo.class));
+    when(systemInfo.get().getOperatingSystem()).thenThrow(new RuntimeException("native error"));
+    assertThat(LuceneIndexFactory.isCacheWarmerEnabled(featureFlags, systemInfo)).isFalse();
+  }
+
+  @Test
+  public void isCacheWarmerEnabled_onceDisabled_remainsDisabledWithoutRequeryingSystemInfo()
+      throws InvalidAnalyzerDefinitionException, IOException {
+    FeatureFlags featureFlags = FeatureFlags.withDefaults().enable(Feature.CACHE_WARMER).build();
+    Optional<SystemInfo> systemInfo = Optional.of(mock(SystemInfo.class));
+    OperatingSystem operatingSystem = mock(OperatingSystem.class);
+    when(systemInfo.get().getOperatingSystem()).thenReturn(operatingSystem);
+    when(operatingSystem.getSystemUptime()).thenReturn(30L * 60L + 1L);
+
+    try (LuceneIndexFactory factory =
+        LuceneIndexFactory.fromConfig(
+            LuceneConfigBuilder.builder().tempDataPath().build(),
+            featureFlags,
+            new DynamicFeatureFlagRegistry(
+                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+            EnvironmentVariantPerfConfig.getDefault(),
+            MeterAndFtdcRegistry.createWithSimpleRegistries(),
+            Optional.empty(),
+            AnalyzerRegistry.factory(),
+            new NoOpDiskMonitor(),
+            systemInfo)) {
+
+      assertThat(factory.isCacheWarmerEnabled()).isFalse();
+      assertThat(factory.isCacheWarmerEnabled()).isFalse();
+
+      verify(systemInfo.get(), times(1)).getOperatingSystem();
+    }
+  }
+
+  @Test
+  public void isCacheWarmerEnabled_whileEnabled_continuesCheckingSystemInfo()
+      throws InvalidAnalyzerDefinitionException, IOException {
+    FeatureFlags featureFlags = FeatureFlags.withDefaults().enable(Feature.CACHE_WARMER).build();
+    Optional<SystemInfo> systemInfo = Optional.of(mock(SystemInfo.class));
+    OperatingSystem operatingSystem = mock(OperatingSystem.class);
+    when(systemInfo.get().getOperatingSystem()).thenReturn(operatingSystem);
+    when(operatingSystem.getSystemUptime()).thenReturn(0L);
+
+    try (LuceneIndexFactory factory =
+        LuceneIndexFactory.fromConfig(
+            LuceneConfigBuilder.builder().tempDataPath().build(),
+            featureFlags,
+            new DynamicFeatureFlagRegistry(
+                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+            EnvironmentVariantPerfConfig.getDefault(),
+            MeterAndFtdcRegistry.createWithSimpleRegistries(),
+            Optional.empty(),
+            AnalyzerRegistry.factory(),
+            new NoOpDiskMonitor(),
+            systemInfo)) {
+
+      assertThat(factory.isCacheWarmerEnabled()).isTrue();
+      assertThat(factory.isCacheWarmerEnabled()).isTrue();
+
+      verify(systemInfo.get(), times(2)).getOperatingSystem();
     }
   }
 }

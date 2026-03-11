@@ -44,13 +44,17 @@ import com.xgen.mongot.util.concurrent.MeteredCallerRunsPolicy;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.lucene.index.MergePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import oshi.SystemInfo;
 
 public class LuceneIndexFactory implements IndexFactory {
   private static final Logger LOG = LoggerFactory.getLogger(LuceneIndexFactory.class);
+  private static final long CACHE_WARMER_MAX_UPTIME_MINUTES = 30L; // VM likely rebooted
 
   private final LuceneConfig config;
   private final AtomicDirectoryRemover indexRemover;
@@ -71,6 +75,9 @@ public class LuceneIndexFactory implements IndexFactory {
   private final FeatureFlags featureFlags;
   private final DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry;
   private final EnvironmentVariantPerfConfig environmentVariantPerfConfig;
+  private final Optional<SystemInfo> systemInfo;
+  private final AtomicLong cacheWarmerTotalMilliseconds;
+  private volatile boolean cacheWarmerAlreadyDisabled;
 
   @VisibleForTesting
   LuceneIndexFactory(
@@ -90,7 +97,8 @@ public class LuceneIndexFactory implements IndexFactory {
       IndexDirectoryHelper indexDirectoryHelper,
       FeatureFlags featureFlags,
       DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry,
-      EnvironmentVariantPerfConfig environmentVariantPerfConfig) {
+      EnvironmentVariantPerfConfig environmentVariantPerfConfig,
+      Optional<SystemInfo> systemInfo) {
     this.config = config;
     this.indexRemover = indexRemover;
     this.analyzerRegistryFactory = analyzerRegistryFactory;
@@ -113,10 +121,54 @@ public class LuceneIndexFactory implements IndexFactory {
     } else {
       this.byteReadCollector = Optional.empty();
     }
+    this.systemInfo = systemInfo;
+    this.cacheWarmerTotalMilliseconds =
+        this.metricsFactory.timeGauge(
+            "cacheWarmerTotalMilliseconds", new AtomicLong(), AtomicLong::doubleValue);
+    this.cacheWarmerAlreadyDisabled = false;
   }
 
-  /** Creates LuceneIndexFactory. */
-  public static LuceneIndexFactory fromConfig(
+  LuceneIndexFactory(
+      LuceneConfig config,
+      AtomicDirectoryRemover indexRemover,
+      AnalyzerRegistryFactory analyzerRegistryFactory,
+      InstrumentedConcurrentMergeScheduler mergeScheduler,
+      MergePolicy mergePolicy,
+      Optional<MergePolicy> vectorMergePolicy,
+      QueryCacheProvider queryCacheProvider,
+      NamedScheduledExecutorService refreshExecutor,
+      Optional<NamedExecutorService> concurrentSearchExecutor,
+      Optional<NamedExecutorService> concurrentVectorRescoringExecutor,
+      Optional<LuceneIndexSnapshotterManager> luceneSnapshotterManager,
+      MeterAndFtdcRegistry meterAndFtdcRegistry,
+      MetricsFactory metricsFactory,
+      IndexDirectoryHelper indexDirectoryHelper,
+      FeatureFlags featureFlags,
+      DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry,
+      EnvironmentVariantPerfConfig environmentVariantPerfConfig) {
+    this(
+        config,
+        indexRemover,
+        analyzerRegistryFactory,
+        mergeScheduler,
+        mergePolicy,
+        vectorMergePolicy,
+        queryCacheProvider,
+        refreshExecutor,
+        concurrentSearchExecutor,
+        concurrentVectorRescoringExecutor,
+        luceneSnapshotterManager,
+        meterAndFtdcRegistry,
+        metricsFactory,
+        indexDirectoryHelper,
+        featureFlags,
+        dynamicFeatureFlagRegistry,
+        environmentVariantPerfConfig,
+        LuceneIndexFactory.tryNewSystemInfo());
+  }
+
+  @VisibleForTesting
+  static LuceneIndexFactory fromConfig(
       LuceneConfig config,
       FeatureFlags featureFlags,
       DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry,
@@ -124,7 +176,8 @@ public class LuceneIndexFactory implements IndexFactory {
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       Optional<LuceneIndexSnapshotterManager> snapshotterManager,
       AnalyzerRegistryFactory analyzerRegistryFactory,
-      DiskMonitor diskMonitor)
+      DiskMonitor diskMonitor,
+      Optional<SystemInfo> systemInfo)
       throws IOException {
     var meterRegistry = meterAndFtdcRegistry.meterRegistry();
 
@@ -206,7 +259,42 @@ public class LuceneIndexFactory implements IndexFactory {
         indexDirectoryHelper,
         featureFlags,
         dynamicFeatureFlagRegistry,
-        environmentVariantPerfConfig);
+        environmentVariantPerfConfig,
+        systemInfo);
+  }
+
+  /** Creates LuceneIndexFactory. */
+  public static LuceneIndexFactory fromConfig(
+      LuceneConfig config,
+      FeatureFlags featureFlags,
+      DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry,
+      EnvironmentVariantPerfConfig environmentVariantPerfConfig,
+      MeterAndFtdcRegistry meterAndFtdcRegistry,
+      Optional<LuceneIndexSnapshotterManager> snapshotterManager,
+      AnalyzerRegistryFactory analyzerRegistryFactory,
+      DiskMonitor diskMonitor)
+      throws IOException {
+    return LuceneIndexFactory.fromConfig(
+        config,
+        featureFlags,
+        dynamicFeatureFlagRegistry,
+        environmentVariantPerfConfig,
+        meterAndFtdcRegistry,
+        snapshotterManager,
+        analyzerRegistryFactory,
+        diskMonitor,
+        LuceneIndexFactory.tryNewSystemInfo());
+  }
+
+  private static Optional<SystemInfo> tryNewSystemInfo() {
+    try {
+      return Optional.of(new SystemInfo());
+    } catch (Exception | LinkageError e) {
+      LOG.atWarn()
+          .setCause(e)
+          .log("failed to create OSHI SystemInfo (ignored because this is optional)");
+      return Optional.empty();
+    }
   }
 
   /** Must be called after all associated indexes are closed. */
@@ -323,7 +411,8 @@ public class LuceneIndexFactory implements IndexFactory {
             definitionGeneration,
             this.config,
             this.byteReadCollector,
-            this.featureFlags.isEnabled(Feature.CACHE_WARMER));
+            this.isCacheWarmerEnabled(),
+            Optional.of(this.cacheWarmerTotalMilliseconds));
     GenerationId generationId = definitionGeneration.getGenerationId();
 
     if (definitionGeneration.getType() == Type.VECTOR) {
@@ -345,6 +434,54 @@ public class LuceneIndexFactory implements IndexFactory {
           luceneIndexSnapshotter,
           this.featureFlags,
           this.dynamicFeatureFlagRegistry);
+    }
+  }
+
+  boolean isCacheWarmerEnabled() {
+    if (this.cacheWarmerAlreadyDisabled) {
+      return false; // Decide very quickly after the cache warmer becomes disabled one time.
+    }
+    if (!LuceneIndexFactory.isCacheWarmerEnabled(this.featureFlags, this.systemInfo)) {
+      this.cacheWarmerAlreadyDisabled = true;
+      return false;
+    }
+    return true;
+  }
+
+  @VisibleForTesting
+  static boolean isCacheWarmerEnabled(FeatureFlags featureFlags, Optional<SystemInfo> systemInfo) {
+    try {
+      if (!featureFlags.isEnabled(Feature.CACHE_WARMER)) {
+        return false;
+      }
+
+      if (systemInfo.isEmpty()) {
+        return false;
+      }
+
+      long uptimeSeconds = systemInfo.get().getOperatingSystem().getSystemUptime();
+      long maxSeconds =
+          Duration.ofMinutes(LuceneIndexFactory.CACHE_WARMER_MAX_UPTIME_MINUTES).toSeconds();
+      if (uptimeSeconds > maxSeconds) {
+        long uptimeMinutes = Duration.ofSeconds(uptimeSeconds + 59L).toMinutes();
+        LOG.atInfo()
+            .addKeyValue("uptimeSeconds", uptimeSeconds)
+            .addKeyValue(
+                "CACHE_WARMER_MAX_UPTIME_MINUTES",
+                LuceneIndexFactory.CACHE_WARMER_MAX_UPTIME_MINUTES)
+            .log(
+                "Cache Warmer: disabled because system uptime {} minutes exceeds {} minutes",
+                uptimeMinutes,
+                LuceneIndexFactory.CACHE_WARMER_MAX_UPTIME_MINUTES);
+        return false;
+      }
+
+      return true;
+    } catch (Exception | LinkageError e) {
+      LOG.atWarn()
+          .setCause(e)
+          .log("Cache Warmer: failure (ignored because this is only an optimization)");
+      return false;
     }
   }
 }
