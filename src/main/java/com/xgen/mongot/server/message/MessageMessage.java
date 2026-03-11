@@ -52,16 +52,10 @@ public record MessageMessage(
     out.writeIntLE(this.messageHeader.requestId());
     out.writeIntLE(this.messageHeader.responseTo());
     out.writeIntLE(this.messageHeader.opCode().code);
-
     out.writeIntLE(this.flagBits);
 
     for (MessageSection section : this.sections) {
-      ByteBuf buf = section.toByteBuf(alloc);
-      try {
-        out.writeBytes(buf);
-      } finally {
-        buf.release();
-      }
+      section.append(out);
     }
 
     return out;

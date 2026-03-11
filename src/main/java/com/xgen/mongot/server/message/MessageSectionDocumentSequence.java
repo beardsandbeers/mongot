@@ -4,29 +4,30 @@ import com.google.common.base.Objects;
 import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.util.BsonUtils;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
 import org.bson.RawBsonDocument;
-import org.bson.io.BasicOutputBuffer;
 
 public final class MessageSectionDocumentSequence implements MessageSection {
 
   private final int size;
   private final String id;
-  private final List<BsonDocument> objects;
+  private final List<RawBsonDocument> objects;
 
   public MessageSectionDocumentSequence(String id, List<BsonDocument> objects) {
     this.id = id;
-    this.objects = objects;
+    this.objects = new ArrayList<>(objects.size());
 
-    @Var int size = 1 + id.length() + 1;
+    // Size includes header of (byte type, int size, cstring)
+    @Var int size = 1 + this.id.length() + 1;
     for (BsonDocument object : objects) {
       RawBsonDocument rawDoc = new RawBsonDocument(object, BsonUtils.BSON_DOCUMENT_CODEC);
-      size += rawDoc.getByteBuffer().remaining();
+      ByteBuffer buffer = rawDoc.getByteBuffer().asNIO();
+      this.objects.add(rawDoc);
+      size += buffer.remaining();
     }
     this.size = size;
   }
@@ -37,30 +38,17 @@ public final class MessageSectionDocumentSequence implements MessageSection {
   }
 
   @Override
-  public ByteBuf toByteBuf(ByteBufAllocator allocator) {
-    @Var int size = 4 + this.id.length() + 1;
-    List<BasicOutputBuffer> objectBuffers = new ArrayList<>(this.objects.size());
-    for (BsonDocument object : this.objects) {
-      BasicOutputBuffer buffer = new BasicOutputBuffer();
-      objectBuffers.add(buffer);
-      try (BsonBinaryWriter writer = new BsonBinaryWriter(buffer)) {
-        BsonUtils.BSON_DOCUMENT_CODEC.encode(writer, object, BsonUtils.DEFAULT_FAST_CONTEXT);
-      }
-      size += buffer.getSize();
-    }
-
-    ByteBuf out = allocator.buffer(size + 1);
-
+  public void append(ByteBuf out) {
+    int actualSize = this.size + 4;
+    out.ensureWritable(actualSize);
     out.writeByte(0x01);
-    out.writeIntLE(size);
+    out.writeIntLE(actualSize - 1);
     out.writeCharSequence(this.id, StandardCharsets.UTF_8);
     out.writeByte(0x00);
 
-    for (BasicOutputBuffer buf : objectBuffers) {
-      out.writeBytes(buf.getInternalBuffer(), 0, buf.getSize());
+    for (RawBsonDocument buf : this.objects) {
+      out.writeBytes(buf.getByteBuffer().asNIO());
     }
-
-    return out;
   }
 
   static MessageSectionDocumentSequence fromBytes(ByteBuf body) {
