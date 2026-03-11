@@ -1,5 +1,6 @@
 package com.xgen.mongot.index.lucene.query.custom;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.metrics.PerIndexMetricsFactory;
@@ -48,6 +49,7 @@ public class MongotKnnQueryMetricsTest {
   private ExecutorService executor;
   private PerIndexMetricsFactory metricsFactory;
   private IndexMetricsUpdater.QueryingMetricsUpdater metrics;
+  private final FeatureFlags flags = FeatureFlags.getDefault();
 
   @Before
   public void setUp() throws IOException {
@@ -145,7 +147,8 @@ public class MongotKnnQueryMetricsTest {
     float[] target = new float[] {0.5f, 1.0f, 1.5f};
     // Use a filter that matches all documents
     Query filter = new MatchAllDocsQuery();
-    Query query = new MongotKnnFloatQuery(this.metrics, FLOAT_VECTOR_FIELD, target, K, filter);
+    Query query =
+        new MongotKnnFloatQuery(this.metrics, this.flags, FLOAT_VECTOR_FIELD, target, K, filter);
 
     // Rewrite triggers the KNN search
     query.rewrite(this.searcher);
@@ -227,7 +230,8 @@ public class MongotKnnQueryMetricsTest {
     // Use a filter that matches only 2 docs per segment (10 total across 5 segments)
     // With k=10, this forces exact search since approximate search can't find enough candidates
     Query filter = new TermQuery(new Term(CATEGORY_FIELD, "rare"));
-    Query query = new MongotKnnFloatQuery(this.metrics, FLOAT_VECTOR_FIELD, target, K, filter);
+    Query query =
+        new MongotKnnFloatQuery(this.metrics, this.flags, FLOAT_VECTOR_FIELD, target, K, filter);
 
     // Rewrite triggers the KNN search
     query.rewrite(this.searcher);

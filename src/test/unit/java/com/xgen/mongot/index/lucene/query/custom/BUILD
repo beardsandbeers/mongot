@@ -4,12 +4,14 @@ java_test_suite(
     name = "custom",
     srcs = [
         "ExactVectorSearchQueryTest.java",
+        "MongotKnnFloatQueryTest.java",
         "MongotKnnQueryMetricsTest.java",
         "WrappedKnnQueryTest.java",
         "WrappedQueryTest.java",
     ],
     tags = ["unit"],
     deps = [
+        "//src/main/java/com/xgen/mongot/featureflag",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/lucene/query/custom",
         "//src/main/java/com/xgen/mongot/index/lucene/query/util",

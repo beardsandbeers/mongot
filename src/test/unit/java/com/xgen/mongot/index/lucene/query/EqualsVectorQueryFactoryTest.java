@@ -2,6 +2,7 @@ package com.xgen.mongot.index.lucene.query;
 
 import static com.xgen.mongot.util.bson.FloatVector.OriginalType.NATIVE;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorQuantization;
@@ -54,7 +55,12 @@ public class EqualsVectorQueryFactoryTest {
             .build();
     KnnFloatVectorQuery luceneVectorQuery =
         new MongotKnnFloatQuery(
-            metrics, "$type:knnVector/vector", new float[] {1, 2, 3}, 20, luceneQuery);
+            metrics,
+            FeatureFlags.getDefault(),
+            "$type:knnVector/vector",
+            new float[] {1, 2, 3},
+            20,
+            luceneQuery);
 
     Clause filter =
         ClauseBuilder.simpleClause()
@@ -88,7 +94,12 @@ public class EqualsVectorQueryFactoryTest {
             .build();
     KnnFloatVectorQuery luceneVectorQuery =
         new MongotKnnFloatQuery(
-            metrics, "$type:knnVector/vector", new float[] {1, 2, 3}, 20, luceneQuery);
+            metrics,
+            FeatureFlags.getDefault(),
+            "$type:knnVector/vector",
+            new float[] {1, 2, 3},
+            20,
+            luceneQuery);
 
     Clause filter =
         ClauseBuilder.simpleClause()
@@ -144,7 +155,12 @@ public class EqualsVectorQueryFactoryTest {
 
     KnnFloatVectorQuery luceneVectorQuery =
         new MongotKnnFloatQuery(
-            metrics, "$type:knnVector/vector", new float[] {1, 2, 3}, 20, luceneQuery);
+            metrics,
+            FeatureFlags.getDefault(),
+            "$type:knnVector/vector",
+            new float[] {1, 2, 3},
+            20,
+            luceneQuery);
 
     Clause filter =
         ClauseBuilder.simpleClause()
@@ -180,7 +196,12 @@ public class EqualsVectorQueryFactoryTest {
             .build();
     KnnFloatVectorQuery luceneVectorQuery =
         new MongotKnnFloatQuery(
-            metrics, "$type:knnVector/vector", new float[] {1, 2, 3}, 20, luceneQuery);
+            metrics,
+            FeatureFlags.getDefault(),
+            "$type:knnVector/vector",
+            new float[] {1, 2, 3},
+            20,
+            luceneQuery);
 
     Clause filter =
         ClauseBuilder.simpleClause()

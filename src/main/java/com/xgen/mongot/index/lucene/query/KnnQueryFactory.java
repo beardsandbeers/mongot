@@ -51,7 +51,12 @@ public class KnnQueryFactory {
                       path, singleQueryContext.getEmbeddedRoot());
 
               return new MongotKnnFloatQuery(
-                  this.context.getMetrics(), field, vector, operator.k(), filter.orElse(null));
+                  this.context.getMetrics(),
+                  this.context.getFeatureFlags(),
+                  field,
+                  vector,
+                  operator.k(),
+                  filter.orElse(null));
             },
             BooleanClause.Occur.SHOULD);
   }

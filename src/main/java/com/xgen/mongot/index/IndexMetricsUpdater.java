@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.lucene.search.TotalHits;
 import org.jetbrains.annotations.TestOnly;
 
 /**
@@ -56,6 +57,7 @@ public class IndexMetricsUpdater implements Closeable {
     APPROXIMATE,
     EXACT,
     FALLBACK_TO_EXACT,
+    FULL_SCAN,
   }
 
   /**
@@ -415,6 +417,10 @@ public class IndexMetricsUpdater implements Closeable {
     /** The number of times mongot receives an extractable limit query from mongod. */
     private final Counter extractableLimitQueryCounter;
 
+    /** Counters for full scan experiment stats. These should be removed by 6/1/2026. */
+    private final Counter fallBackHeuristicSuccessCounter;
+    private final Counter fallBackHeuristicFailureCounter;
+
     /**
      * The number of times mongot oversubscription to an extracted limit hint was not enough, and a
      * second batch is required.
@@ -606,6 +612,10 @@ public class IndexMetricsUpdater implements Closeable {
       this.vectorSearchVisitedNodesFilteredExactCounter =
           metricsFactory.counter(
               "vectorSearchVisitedNodes", Tags.of("filter", "true", "mode", "exact"));
+      this.fallBackHeuristicSuccessCounter =
+          metricsFactory.counter("fallBackHeuristicSuccessCounter");
+      this.fallBackHeuristicFailureCounter =
+          metricsFactory.counter("fallBackHeuristicFailureCounter");
     }
 
     public Counter getTotalQueryCounter() {
@@ -644,7 +654,7 @@ public class IndexMetricsUpdater implements Closeable {
             case APPROXIMATE -> hasFilter
                 ? this.vectorSearchVisitedNodesFilteredApproximateCounter
                 : this.vectorSearchVisitedNodesUnfilteredApproximateCounter;
-            case EXACT, FALLBACK_TO_EXACT -> hasFilter
+            case EXACT, FALLBACK_TO_EXACT, FULL_SCAN -> hasFilter
                 ? this.vectorSearchVisitedNodesFilteredExactCounter
                 : this.vectorSearchVisitedNodesUnfilteredExactCounter;
           };
@@ -814,6 +824,17 @@ public class IndexMetricsUpdater implements Closeable {
     public void close() {
       this.metricsFactory.close();
       this.queryFeaturesMetricsUpdater.close();
+    }
+
+    /**
+     * Given that we predicted that we should use full scan but instead chose HNSW search, record
+     * whether full scan would have been better in hindsight.
+     */
+    public void recordFallbackHeuristicResult(TotalHits.Relation relation) {
+      switch (relation) {
+        case EQUAL_TO -> this.fallBackHeuristicFailureCounter.increment();
+        case GREATER_THAN_OR_EQUAL_TO -> this.fallBackHeuristicSuccessCounter.increment();
+      }
     }
 
     /**

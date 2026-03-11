@@ -148,6 +148,7 @@ public class LuceneVectorQueryFactoryDistributorTest {
     MongotKnnFloatQuery luceneQuery =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/foo.vector",
             new float[] {1, 2, 3},
             20,
@@ -451,6 +452,7 @@ public class LuceneVectorQueryFactoryDistributorTest {
     MongotKnnFloatQuery expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/_autoEmbed.title", // Vector uses internal path
             new float[1024],
             20,

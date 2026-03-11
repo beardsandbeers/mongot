@@ -11,6 +11,7 @@ import static org.mockito.Mockito.spy;
 
 import com.google.common.collect.Streams;
 import com.google.common.truth.Truth;
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.lucene.explain.explainers.CollectorTimingFeatureExplainer;
@@ -336,7 +337,8 @@ public class ProfilingIndexSearcherTest {
     }
 
     private static Query knnQueryWithFilter(Query filter) {
-      return new MongotKnnFloatQuery(metrics, "path", new float[] {1F, 2F, 3F}, 100, filter);
+      return new MongotKnnFloatQuery(
+          metrics, FeatureFlags.getDefault(), "path", new float[] {1F, 2F, 3F}, 100, filter);
     }
 
     private static Query termQuery(String value) {

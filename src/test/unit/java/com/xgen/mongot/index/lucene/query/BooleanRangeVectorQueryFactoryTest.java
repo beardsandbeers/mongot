@@ -5,6 +5,7 @@ import static java.util.Optional.empty;
 import static java.util.Optional.of;
 import static org.mockito.Mockito.mock;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorQuantization;
@@ -186,7 +187,12 @@ public class BooleanRangeVectorQueryFactoryTest {
 
     var expectedLuceneVectorQuery =
         new MongotKnnFloatQuery(
-            metrics, "$type:knnVector/vector", new float[] {1, 2, 3}, 20, rangeBoundQuery);
+            metrics,
+            FeatureFlags.getDefault(),
+            "$type:knnVector/vector",
+            new float[] {1, 2, 3},
+            20,
+            rangeBoundQuery);
 
     Assert.assertEquals(expectedLuceneVectorQuery, translatedQuery);
   }

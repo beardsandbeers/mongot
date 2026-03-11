@@ -18,6 +18,7 @@ java_library(
         "@maven//:org_apache_lucene_lucene_core",
     ],
     deps = [
+        "//src/main/java/com/xgen/mongot/featureflag",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/lucene/explain/information",
         "//src/main/java/com/xgen/mongot/index/lucene/explain/timing",
@@ -31,6 +32,7 @@ java_library(
         "@maven//:com_google_guava_guava",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_apache_lucene_lucene_core",
+        "@maven//:org_jetbrains_annotations",
         "@maven//:org_mongodb_bson",
     ],
 )

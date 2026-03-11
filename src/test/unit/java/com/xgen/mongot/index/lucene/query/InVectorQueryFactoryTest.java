@@ -69,6 +69,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -101,6 +102,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -144,6 +146,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -187,6 +190,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -234,6 +238,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -281,6 +286,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -321,6 +327,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,
@@ -368,6 +375,7 @@ public class InVectorQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/vector",
             new float[] {1, 2, 3},
             20,

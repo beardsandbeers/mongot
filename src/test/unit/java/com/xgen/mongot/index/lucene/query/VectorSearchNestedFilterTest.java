@@ -75,6 +75,7 @@ public class VectorSearchNestedFilterTest {
   private static final int NUM_CANDIDATES = 100;
   private static final int LIMIT = 2;
   private static final int NUM_DIMENSIONS = 3;
+  private static final FeatureFlags FLAGS = FeatureFlags.getDefault();
 
   private static final String EMBEDDED_VECTOR_FIELD =
       "$embedded:8/sections/$type:knnVector/sections.section_vector";
@@ -174,7 +175,7 @@ public class VectorSearchNestedFilterTest {
 
     MongotKnnFloatQuery expectedKnn =
         new MongotKnnFloatQuery(
-            METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
+            METRICS, FLAGS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
 
     Query expectedBlockJoin =
         new WrappedToParentBlockJoinQuery(
@@ -252,7 +253,7 @@ public class VectorSearchNestedFilterTest {
 
     MongotKnnFloatQuery expectedKnn =
         new MongotKnnFloatQuery(
-            METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
+            METRICS, FLAGS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
 
     Query expected =
         new WrappedToParentBlockJoinQuery(
@@ -361,7 +362,7 @@ public class VectorSearchNestedFilterTest {
 
     MongotKnnFloatQuery expectedKnn =
         new MongotKnnFloatQuery(
-            METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
+            METRICS, FLAGS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
 
     Query expected =
         new WrappedToParentBlockJoinQuery(
@@ -399,7 +400,7 @@ public class VectorSearchNestedFilterTest {
 
     MongotKnnFloatQuery expectedKnn =
         new MongotKnnFloatQuery(
-            METRICS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
+            METRICS, FLAGS, EMBEDDED_VECTOR_FIELD, QUERY_VECTOR, NUM_CANDIDATES, childFilter);
 
     Query expectedBlockJoin =
         new WrappedToParentBlockJoinQuery(

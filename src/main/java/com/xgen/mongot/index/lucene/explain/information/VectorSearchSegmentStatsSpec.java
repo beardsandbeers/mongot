@@ -25,6 +25,7 @@ public record VectorSearchSegmentStatsSpec(
   public enum SegmentExecutionType {
     APPROXIMATE,
     EXACT,
+    FULL_SCAN_HEURISTIC,
     APPROXIMATE_FALLBACK_TO_EXACT
   }
 

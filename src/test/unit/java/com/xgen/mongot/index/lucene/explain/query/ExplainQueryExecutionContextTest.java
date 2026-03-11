@@ -1,5 +1,6 @@
 package com.xgen.mongot.index.lucene.explain.query;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.lucene.query.custom.MongotKnnFloatQuery;
 import com.xgen.testing.mongot.mock.index.SearchIndex;
@@ -252,7 +253,8 @@ public class ExplainQueryExecutionContextTest {
         new BooleanQuery.Builder()
             .add(new BooleanClause(subQuery, BooleanClause.Occur.MUST))
             .build();
-    Query knnQuery = new MongotKnnFloatQuery(metrics, path, target, k, filter);
+    Query knnQuery =
+        new MongotKnnFloatQuery(metrics, FeatureFlags.getDefault(), path, target, k, filter);
     Query rewritten = new MatchNoDocsQuery();
     executionContext.getOrCreateNode(knnQuery);
     assertNodesForQueries(executionContext, knnQuery);

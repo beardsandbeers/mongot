@@ -61,7 +61,8 @@ public class ExplainTimings {
     RETRIEVE_AND_SERIALIZE("retrieveAndSerialize"),
 
     VECTOR_SEARCH_APPROXIMATE("vectorSearchApproximate"),
-    VECTOR_SEARCH_EXACT("vectorSearchExact");
+    VECTOR_SEARCH_EXACT("vectorSearchExact"),
+    VECTOR_SEARCH_FULL_SCAN_HEURISTIC("vectorSearchFullScanHeuristic");
 
     private final String name;
 

@@ -16,6 +16,7 @@ java_library(
         "@maven//:org_apache_lucene_lucene_core",
     ],
     deps = [
+        "//src/main/java/com/xgen/mongot/featureflag",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/lucene/util",
         "//src/main/java/com/xgen/mongot/util",

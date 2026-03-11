@@ -74,6 +74,31 @@ public class KnnInstrumentationHelper {
     }
   }
 
+  /** Wraps 'fullScanSearch' method invocation and records related stats. */
+  public TopDocs meteredFullScanHeuristicSearch(
+      LeafReaderContext context,
+      BitSetIterator bitSetIterator,
+      CheckedSupplier<TopDocs, IOException> fullScanSearch)
+      throws IOException {
+
+    VectorSearchExplainer.SegmentStatistics segmentStats =
+        getBaseSegmentStats(context, () -> Optional.of((int) bitSetIterator.cost()));
+
+    List<TracingInformation> infos = tracingInfosForSegment(context);
+    for (TracingInformation info : infos) {
+      info.setExecutionType(VectorSearchSegmentStatsSpec.SegmentExecutionType.FULL_SCAN_HEURISTIC);
+    }
+
+    if (this.filterPresent) {
+      checkFilteredOutDocuments(infos, bitSetIterator.getBitSet(), context);
+    }
+
+    try (var unused =
+        segmentStats.getTimings().split(ExplainTimings.Type.VECTOR_SEARCH_FULL_SCAN_HEURISTIC)) {
+      return fullScanSearch.get();
+    }
+  }
+
   /** Wraps 'exactSearch' method invocation and records related stats. */
   public TopDocs meteredExactSearch(
       LeafReaderContext context,

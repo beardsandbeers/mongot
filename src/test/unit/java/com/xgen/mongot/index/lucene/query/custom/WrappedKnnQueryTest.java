@@ -1,6 +1,7 @@
 package com.xgen.mongot.index.lucene.query.custom;
 
 import com.google.common.truth.Truth;
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.query.VectorSearchQuery;
 import com.xgen.mongot.util.FieldPath;
@@ -74,6 +75,7 @@ public class WrappedKnnQueryTest {
   }
 
   private static Query knnQuery(float[] target, int k) {
-    return new MongotKnnFloatQuery(metrics, DEFAULT_PATH, target, k);
+    return new MongotKnnFloatQuery(
+        metrics, FeatureFlags.getDefault(), DEFAULT_PATH, target, k, null);
   }
 }

@@ -1,5 +1,6 @@
 package com.xgen.mongot.index.lucene.query;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorSimilarity;
 import com.xgen.mongot.index.lucene.explain.knn.InstrumentableKnnByteVectorQuery;
@@ -146,6 +147,7 @@ class VectorSearchQueryFactory {
                 approximateCriteria,
                 fieldName,
                 effectiveQueryContext.getIndexReader(),
+                this.factoryContext.getFeatureFlags(),
                 this.factoryContext.getMetrics());
         childQuery = switch (queryVector) {
           case FloatVector floatVector ->
@@ -231,6 +233,7 @@ class VectorSearchQueryFactory {
         ApproximateVectorSearchCriteria criteria,
         String fieldName,
         IndexReader indexReader,
+        FeatureFlags flags,
         IndexMetricsUpdater.QueryingMetricsUpdater metrics)
         throws IOException {
       if (Explain.getQueryInfo().isPresent()) {
@@ -239,16 +242,16 @@ class VectorSearchQueryFactory {
 
         if (explainOptions.isEmpty()) {
           return new InstrumentableApproximateVectorQueryCreator(
-              Explain.getQueryInfo().get(), List.of(), metrics);
+              Explain.getQueryInfo().get(), List.of(), flags, metrics);
         }
 
         List<VectorSearchExplainer.TracingTarget> targets =
             resolveTraceTargets(explainOptions.get().traceDocuments(), fieldName, indexReader);
         return new InstrumentableApproximateVectorQueryCreator(
-            Explain.getQueryInfo().get(), targets, metrics);
+            Explain.getQueryInfo().get(), targets, flags, metrics);
       }
 
-      return new RegularApproximateVectorQueryCreator(metrics);
+      return new RegularApproximateVectorQueryCreator(metrics, flags);
     }
 
     private static List<VectorSearchExplainer.TracingTarget> resolveTraceTargets(
@@ -289,17 +292,20 @@ class VectorSearchQueryFactory {
     class RegularApproximateVectorQueryCreator implements ApproximateVectorQueryCreator {
 
       private final IndexMetricsUpdater.QueryingMetricsUpdater metrics;
+      private final FeatureFlags flags;
 
       private RegularApproximateVectorQueryCreator(
-          IndexMetricsUpdater.QueryingMetricsUpdater metrics) {
+          IndexMetricsUpdater.QueryingMetricsUpdater metrics, FeatureFlags flags) {
         this.metrics = metrics;
+        this.flags = flags;
       }
 
       @Override
       public Query query(
           FloatVector vector, String field, int k, int limit, Optional<Query> filter) {
         float[] target = vector.getFloatVector();
-        return new MongotKnnFloatQuery(this.metrics, field, target, k, filter.orElse(null));
+        return new MongotKnnFloatQuery(
+            this.metrics, this.flags, field, target, k, filter.orElse(null));
       }
 
       @Override
@@ -320,11 +326,14 @@ class VectorSearchQueryFactory {
 
       private final VectorSearchExplainer tracingExplainer;
       private final IndexMetricsUpdater.QueryingMetricsUpdater metrics;
+      private final FeatureFlags flags;
 
       private InstrumentableApproximateVectorQueryCreator(
           Explain.QueryInfo explainQueryInfo,
           List<VectorSearchExplainer.TracingTarget> tracingTargets,
+          FeatureFlags flags,
           IndexMetricsUpdater.QueryingMetricsUpdater metrics) {
+        this.flags = flags;
         this.tracingExplainer =
             explainQueryInfo.getFeatureExplainer(
                 VectorSearchExplainer.class, () -> new VectorSearchExplainer(tracingTargets));
@@ -339,11 +348,8 @@ class VectorSearchQueryFactory {
         KnnInstrumentationHelper instrumentationHelper =
             new KnnInstrumentationHelper(this.tracingExplainer, field, limit, filterPresent);
 
-        return filterPresent
-            ? new InstrumentableKnnFloatVectorQuery(
-                this.metrics, instrumentationHelper, field, target, k, filter.get())
-            : new InstrumentableKnnFloatVectorQuery(
-                this.metrics, instrumentationHelper, field, target, k);
+        return new InstrumentableKnnFloatVectorQuery(
+            this.metrics, this.flags, instrumentationHelper, field, target, k, filter.orElse(null));
       }
 
       @Override

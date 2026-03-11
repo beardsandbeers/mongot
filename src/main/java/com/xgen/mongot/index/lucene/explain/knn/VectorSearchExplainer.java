@@ -89,14 +89,14 @@ public class VectorSearchExplainer implements FeatureExplainer {
               Optional<QueryExecutionArea> exactExecutionArea =
                   QueryExecutionArea.notEmptyAreaForType(
                       ExplainTimings.Type.VECTOR_SEARCH_EXACT, stats.timings.extractTimingData());
+              Optional<QueryExecutionArea> fullScanHeuristicExecutionArea =
+                  QueryExecutionArea.notEmptyAreaForType(
+                      ExplainTimings.Type.VECTOR_SEARCH_FULL_SCAN_HEURISTIC,
+                      stats.timings.extractTimingData());
 
               VectorSearchSegmentStatsSpec.SegmentExecutionType executionType =
-                  (approximateExecutionArea.isPresent() && exactExecutionArea.isPresent())
-                      ? VectorSearchSegmentStatsSpec.SegmentExecutionType
-                          .APPROXIMATE_FALLBACK_TO_EXACT
-                      : approximateExecutionArea.isPresent()
-                          ? VectorSearchSegmentStatsSpec.SegmentExecutionType.APPROXIMATE
-                          : VectorSearchSegmentStatsSpec.SegmentExecutionType.EXACT;
+                  getExecutionType(
+                      approximateExecutionArea, exactExecutionArea, fullScanHeuristicExecutionArea);
 
               return new VectorSearchSegmentStatsSpec(
                   stats.getSegmentId(),
@@ -108,6 +108,25 @@ public class VectorSearchExplainer implements FeatureExplainer {
                   stats.getFilterMatchedDocsCount());
             })
         .toList();
+  }
+
+  private VectorSearchSegmentStatsSpec.SegmentExecutionType getExecutionType(
+      Optional<QueryExecutionArea> approximateExecutionArea,
+      Optional<QueryExecutionArea> exactExecutionArea,
+      Optional<QueryExecutionArea> fullScanHeuristicExecutionArea) {
+    boolean isApproximateFallback =
+        approximateExecutionArea.isPresent() && exactExecutionArea.isPresent();
+    boolean isFullScanHeuristic = fullScanHeuristicExecutionArea.isPresent();
+
+    if (isFullScanHeuristic) {
+      return VectorSearchSegmentStatsSpec.SegmentExecutionType.FULL_SCAN_HEURISTIC;
+    } else if (isApproximateFallback) {
+      return VectorSearchSegmentStatsSpec.SegmentExecutionType.APPROXIMATE_FALLBACK_TO_EXACT;
+    } else if (exactExecutionArea.isPresent()) {
+      return VectorSearchSegmentStatsSpec.SegmentExecutionType.EXACT;
+    } else {
+      return VectorSearchSegmentStatsSpec.SegmentExecutionType.APPROXIMATE;
+    }
   }
 
   public static class SegmentStatistics {

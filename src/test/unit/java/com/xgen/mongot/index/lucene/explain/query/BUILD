@@ -11,6 +11,7 @@ java_test_suite(
     ],
     tags = ["unit"],
     deps = [
+        "//src/main/java/com/xgen/mongot/featureflag",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/lucene/explain/query",
         "//src/main/java/com/xgen/mongot/index/lucene/explain/timing",

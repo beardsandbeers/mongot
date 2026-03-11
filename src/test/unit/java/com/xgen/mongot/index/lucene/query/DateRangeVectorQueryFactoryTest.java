@@ -2,6 +2,7 @@ package com.xgen.mongot.index.lucene.query;
 
 import static com.xgen.mongot.util.bson.FloatVector.OriginalType.NATIVE;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorQuantization;
@@ -160,6 +161,7 @@ public class DateRangeVectorQueryFactoryTest {
     Query dateQuery = builder.build();
     return new MongotKnnFloatQuery(
         metrics,
+        FeatureFlags.getDefault(),
         FieldName.TypeField.KNN_VECTOR.getLuceneFieldName(
             FieldPath.parse(VECTOR_FIELD_NAME), Optional.empty()),
         new float[] {1.0f, 2.0f},

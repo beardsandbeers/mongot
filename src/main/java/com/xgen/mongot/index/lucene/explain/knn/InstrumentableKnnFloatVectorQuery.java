@@ -1,9 +1,9 @@
 package com.xgen.mongot.index.lucene.explain.knn;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.lucene.query.custom.MongotKnnFloatQuery;
 import java.io.IOException;
-import javax.annotation.Nullable;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.QueryTimeout;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -11,7 +11,9 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.knn.KnnCollectorManager;
+import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.Bits;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A decorator over MongotKnnFloatQuery to intercept calls to 'approximateSearch' and 'exactSearch'
@@ -23,22 +25,13 @@ public class InstrumentableKnnFloatVectorQuery extends MongotKnnFloatQuery {
 
   public InstrumentableKnnFloatVectorQuery(
       IndexMetricsUpdater.QueryingMetricsUpdater metrics,
-      KnnInstrumentationHelper instrumentationHelper,
-      String field,
-      float[] target,
-      int k) {
-    super(metrics, field, target, k);
-    this.instrumentationHelper = instrumentationHelper;
-  }
-
-  public InstrumentableKnnFloatVectorQuery(
-      IndexMetricsUpdater.QueryingMetricsUpdater metrics,
+      FeatureFlags flags,
       KnnInstrumentationHelper instrumentationHelper,
       String field,
       float[] target,
       int k,
-      Query filter) {
-    super(metrics, field, target, k, filter);
+      @Nullable Query filter) {
+    super(metrics, flags, field, target, k, filter);
     this.instrumentationHelper = instrumentationHelper;
   }
 
@@ -68,6 +61,13 @@ public class InstrumentableKnnFloatVectorQuery extends MongotKnnFloatQuery {
 
     return this.instrumentationHelper.meteredExactSearch(
         context, acceptIterator, () -> super.exactSearch(context, acceptIterator, queryTimeout));
+  }
+
+  @Override
+  protected TopDocs fullScanHeuristicSearch(LeafReaderContext context, BitSetIterator acceptDocs)
+      throws IOException {
+    return this.instrumentationHelper.meteredFullScanHeuristicSearch(
+        context, acceptDocs, () -> super.fullScanHeuristicSearch(context, acceptDocs));
   }
 
   @Override

@@ -1,5 +1,6 @@
 package com.xgen.mongot.index.lucene.query;
 
+import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.DocumentFieldDefinition;
 import com.xgen.mongot.index.definition.VectorSimilarity;
@@ -108,6 +109,7 @@ public class KnnQueryFactoryTest {
     var expected =
         new MongotKnnFloatQuery(
             metrics,
+            FeatureFlags.getDefault(),
             "$type:knnVector/a",
             new float[] {0.1f, 0.2f},
             10,
