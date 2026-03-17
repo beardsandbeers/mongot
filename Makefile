@@ -189,7 +189,6 @@ test.bisect:
 tracer.parse:
 	@$(call BAZEL) run //src/main/java/com/xgen/mongot/trace/parser:parser -- $(INPUT) $(DIR)
 
-
 ##############################################################
 ############# ADD NEW TARGETS ABOVE THIS LINE ################
 ##############################################################

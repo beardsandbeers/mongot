@@ -10,6 +10,7 @@ import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
 import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.VectorSearchEngine;
 import com.xgen.mongot.index.definition.VectorSimilarity;
 import com.xgen.mongot.index.definition.VectorTextFieldDefinition;
 import com.xgen.mongot.index.definition.ViewDefinition;
@@ -133,6 +134,16 @@ public class VectorIndexDefinitionBuilder {
         path, dimensions, VectorSimilarity.COSINE, VectorQuantization.NONE);
   }
 
+  public VectorIndexDefinitionBuilder withCustomEngineVectorField(String path, int dimensions) {
+    return withVectorField(
+        path,
+        dimensions,
+        VectorSimilarity.COSINE,
+        VectorQuantization.NONE,
+        new VectorIndexingAlgorithm.HnswIndexingAlgorithm(),
+        VectorSearchEngine.CUSTOM);
+  }
+
   public VectorIndexDefinitionBuilder withDotProductVectorField(String path, int dimensions) {
     return withVectorFieldDefaultOptions(
         path, dimensions, VectorSimilarity.DOT_PRODUCT, VectorQuantization.NONE);
@@ -179,6 +190,22 @@ public class VectorIndexDefinitionBuilder {
         new VectorDataFieldDefinition(
             FieldPath.parse(path),
             new VectorFieldSpecification(dimensions, function, quantization, indexingAlgorithm));
+    this.fields.add(vector);
+    return this;
+  }
+
+  public VectorIndexDefinitionBuilder withVectorField(
+      String path,
+      int dimensions,
+      VectorSimilarity function,
+      VectorQuantization quantization,
+      VectorIndexingAlgorithm indexingAlgorithm,
+      VectorSearchEngine engine) {
+    VectorDataFieldDefinition vector =
+        new VectorDataFieldDefinition(
+            FieldPath.parse(path),
+            new VectorFieldSpecification(
+                dimensions, function, quantization, indexingAlgorithm, engine));
     this.fields.add(vector);
     return this;
   }

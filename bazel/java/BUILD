@@ -142,7 +142,8 @@ java_package_configuration(
         "-XepOpt:NullAway:CheckOptionalEmptiness=false",  # Temporary
         "-XepOpt:NullAway:IgnoreLibraryModelsFor=" + ",".join(_NULLAWAY_WHITELISTED_METHODS),
         "-XepOpt:NullAway:AnnotatedPackages=com.xgen,io.micrometer.core",
-        "-XepOpt:NullAway:UnannotatedSubPackages=com.xgen.mongot.index.lucene.query.sort.mixed,com.google.common",  # Temporary
+        "-XepOpt:NullAway:UnannotatedSubPackages=com.xgen.mongot.index.lucene.query.sort.mixed,com.google.common," +  # Temporary
+        "com.xgen.atlas.index.vectorlite.ffm",
         "-XepOpt:NullAway:ExcludedFieldAnnotations=picocli.CommandLine.Option,picocli.CommandLine.ArgGroup",
     ],
     packages = [":nullaway_packages"],

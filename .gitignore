@@ -35,3 +35,5 @@ community-quick-start/mongot-community-local-docker.tar
 community-quick-start/tls/
 
 scripts/tests/copybara/test-results/
+
+.cache/

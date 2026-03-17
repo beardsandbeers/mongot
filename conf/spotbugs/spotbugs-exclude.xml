@@ -30,6 +30,11 @@
         </Or>
     </Match>
 
+    <!-- Exclude jextract-generated FFM bindings (regenerate with: make regenerate-vectorlite-ffm) -->
+    <Match>
+        <Package name="com.xgen.atlas.index.vectorlite.ffm"/>
+    </Match>
+
     <!-- ========================================================================
          SUPPRESSED CHECKS - All patterns disabled except SF_SWITCH_FALLTHROUGH
          ======================================================================== -->

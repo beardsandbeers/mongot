@@ -140,6 +140,7 @@ filegroup(
 
 # gazelle:resolve java com.xgen.mongot.proto.bson //src/proto/bson:types_java_proto
 # gazelle:resolve java com.xgen.mongot.searchenvoy.grpc //src/proto/searchenvoy:searchenvoy_java_proto
+# gazelle:resolve java com.xgen.atlas.index.vectorlite //src/main/java/com/xgen/atlas/index/vectorlite
 
 # Wrappers for contrib_jvm rules.
 # * library wrapper handles nullaway
