@@ -37,6 +37,7 @@ java_library(
         "Optionals.java",
         "RepeatableActionFailureException.java",
         "Runtime.java",
+        "SecretsParser.java",
         "Shutdown.java",
         "SingleLinkedList.java",
         "Streams.java",

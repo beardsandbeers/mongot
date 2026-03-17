@@ -35,10 +35,17 @@ public record SyncSourceConfig(
   }
 
   public static SyncSourceConfig fromBson(DocumentParser parser) throws BsonParseException {
-    return new SyncSourceConfig(
-        parser.getField(Fields.REPLICA_SET).unwrap(),
-        parser.getField(Fields.ROUTER).unwrap(),
-        parser.getField(Fields.CA_FILE).unwrap());
+    SyncSourceConfig syncSourceConfig =
+        new SyncSourceConfig(
+            parser.getField(Fields.REPLICA_SET).unwrap(),
+            parser.getField(Fields.ROUTER).unwrap(),
+            parser.getField(Fields.CA_FILE).unwrap());
+
+    syncSourceConfig.replicaSet.validate(parser, syncSourceConfig.caFile);
+    if (syncSourceConfig.router.isPresent()) {
+      syncSourceConfig.router.get().validate(parser, syncSourceConfig.caFile);
+    }
+    return syncSourceConfig;
   }
 
   @Override

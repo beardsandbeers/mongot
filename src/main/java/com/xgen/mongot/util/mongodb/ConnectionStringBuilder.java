@@ -1,6 +1,7 @@
 package com.xgen.mongot.util.mongodb;
 
 import com.google.common.net.HostAndPort;
+import com.google.errorprone.annotations.Var;
 import com.mongodb.ConnectionString;
 import com.mongodb.lang.Nullable;
 import com.xgen.mongot.util.Check;
@@ -24,6 +25,7 @@ public class ConnectionStringBuilder {
   @Nullable private String authenticationCredentials;
   @Nullable private List<HostAndPort> hostAndPorts;
   @Nullable private String authenticationDatabase;
+  private boolean x509Authentication = false;
 
   private final Map<String, String> options;
 
@@ -72,6 +74,14 @@ public class ConnectionStringBuilder {
     return this;
   }
 
+  public ConnectionStringBuilder withX509Config() {
+    this.options.put("authSource", "$external");
+    this.options.put("authMechanism", "MONGODB-X509");
+
+    this.x509Authentication = true;
+    return this;
+  }
+
   /** Sets an option on the connection string. {@code value} must be urlencoded if required. */
   public ConnectionStringBuilder withOption(String key, String value) {
     this.options.put(key, value);
@@ -83,11 +93,16 @@ public class ConnectionStringBuilder {
     Check.checkState(!this.hostAndPorts.isEmpty(), "At least one host must be provided");
 
     String scheme = this.scheme;
-    String authenticationPrefix =
-        Optional.ofNullable(this.authenticationCredentials).map(s -> s + "@").orElse("");
+    @Var String authenticationPrefix = "";
+    @Var String authenticationDatabase = "";
+    if (!this.x509Authentication) {
+      authenticationPrefix =
+          Optional.ofNullable(this.authenticationCredentials).map(s -> s + "@").orElse("");
+      authenticationDatabase = Objects.requireNonNullElse(this.authenticationDatabase, "");
+    }
+
     String hostList =
         this.hostAndPorts.stream().map(HostAndPort::toString).collect(Collectors.joining(","));
-    String authenticationDatabase = Objects.requireNonNullElse(this.authenticationDatabase, "");
     String options =
         this.options.entrySet().stream()
             .map(e -> e.getKey() + "=" + e.getValue())

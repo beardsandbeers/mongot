@@ -1,7 +1,10 @@
 package com.xgen.mongot.util.mongodb;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
+import com.google.common.net.HostAndPort;
 import org.junit.Test;
 
 public class ConnectionStringBuilderTest {
@@ -86,5 +89,21 @@ public class ConnectionStringBuilderTest {
             .withOption("ssl", "false")
             .build()
             .toString();
+  }
+
+  @Test
+  public void testX509Config() throws ConnectionStringUtil.InvalidConnectionStringException {
+    String uri =
+        ConnectionStringBuilder.standard()
+            .withHostAndPort(HostAndPort.fromString("mongod:27017"))
+            .withX509Config()
+            .withOption("tls", "true")
+            .build()
+            .toString();
+
+    assertFalse("X.509 URI should not contain user:password", uri.contains("@"));
+    assertTrue(
+        "Should contain authMechanism=MONGODB-X509", uri.contains("authMechanism=MONGODB-X509"));
+    assertTrue("Should contain authSource", uri.contains("authSource=$external"));
   }
 }

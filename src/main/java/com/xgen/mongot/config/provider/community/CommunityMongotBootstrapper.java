@@ -6,7 +6,6 @@ import static com.xgen.mongot.cursor.CursorConfig.DEFAULT_MESSAGE_SIZE_LIMIT;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.google.common.net.HostAndPort;
-import com.mongodb.ConnectionString;
 import com.xgen.mongot.catalog.DefaultIndexCatalog;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
@@ -70,17 +69,15 @@ import com.xgen.mongot.server.grpc.HealthManager;
 import com.xgen.mongot.server.http.HealthCheckServer;
 import com.xgen.mongot.server.http.ReadinessChecker;
 import com.xgen.mongot.util.Bytes;
-import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.Crash;
 import com.xgen.mongot.util.GlobalMetricFactory;
 import com.xgen.mongot.util.LoggableIdUtils;
 import com.xgen.mongot.util.MongotVersionResolver;
 import com.xgen.mongot.util.Runtime;
+import com.xgen.mongot.util.SecretsParser;
 import com.xgen.mongot.util.Shutdown;
 import com.xgen.mongot.util.concurrent.Executors;
-import com.xgen.mongot.util.mongodb.ConnectionStringBuilder;
 import com.xgen.mongot.util.mongodb.MongoDbMetadataClient;
-import com.xgen.mongot.util.mongodb.SslContextFactory;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
@@ -90,13 +87,11 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import javax.net.ssl.SSLContext;
 import org.bson.BsonArray;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -108,12 +103,6 @@ import org.slf4j.LoggerFactory;
 public class CommunityMongotBootstrapper {
 
   public static final Logger LOG = LoggerFactory.getLogger(CommunityMongotBootstrapper.class);
-
-  private static final List<PosixFilePermission> POSIX_OWNER_PERMISSIONS =
-      List.of(
-          PosixFilePermission.OWNER_READ,
-          PosixFilePermission.OWNER_WRITE,
-          PosixFilePermission.OWNER_EXECUTE);
 
   private static final double DISK_USAGE_PAUSE_REPLICATION_THRESHOLD = 0.9;
   private static final double DISK_USAGE_RESUME_REPLICATION_THRESHOLD = 0.85;
@@ -313,79 +302,16 @@ public class CommunityMongotBootstrapper {
 
   private static SyncSourceConfig syncSourceConfig(
       com.xgen.mongot.config.provider.community.SyncSourceConfig communitySyncSourceConfig) {
-    String replicaSetPassword =
-        Crash.because("failed to read replicaSet.passwordFile")
-            .ifThrows(() -> readSecretFile(communitySyncSourceConfig.replicaSet().passwordFile()));
 
-    var replicaSetConfig = communitySyncSourceConfig.replicaSet();
-    ConnectionString replicaSetConnectionString =
-        Crash.because("failed to construct replicaSet connection string")
-            .ifThrows(
-                () ->
-                    ConnectionStringBuilder.standard()
-                        .withHostAndPorts(replicaSetConfig.hostandPorts())
-                        .withAuthenticationCredentials(
-                            replicaSetConfig.username(), replicaSetPassword)
-                        .withAuthenticationDatabase(replicaSetConfig.authSource())
-                        .withOption("tls", Boolean.toString(replicaSetConfig.tls()))
-                        .withOption(
-                            "readPreference",
-                            replicaSetConfig.readPreference().asReadPreference().getName())
-                        // Per spec, this should be false by default, however, it is not: JAVA-4257
-                        .withOption("directConnection", "false")
-                        .build());
-
-    Optional<ConnectionString> routerConnectionString =
+    var caFile = communitySyncSourceConfig.caFile();
+    var replicaSetSyncSource =
+        ConnectionInfoFactory.getConnectionInfo(communitySyncSourceConfig.replicaSet(), caFile);
+    var routerSyncSource =
         communitySyncSourceConfig
             .router()
-            .map(
-                routerConfig -> {
-                  String routerPassword =
-                      Crash.because("failed to read router.passwordFile")
-                          .ifThrows(() -> readSecretFile(routerConfig.passwordFile()));
+            .map(router -> ConnectionInfoFactory.getConnectionInfo(router, caFile));
 
-                  return Crash.because("failed to construct router connection string")
-                      .ifThrows(
-                          () ->
-                              ConnectionStringBuilder.standard()
-                                  .withHostAndPorts(routerConfig.hostandPorts())
-                                  .withAuthenticationCredentials(
-                                      routerConfig.username(), routerPassword)
-                                  .withAuthenticationDatabase(routerConfig.authSource())
-                                  .withOption("tls", Boolean.toString(routerConfig.tls()))
-                                  .withOption(
-                                      "readPreference",
-                                      routerConfig.readPreference().asReadPreference().getName())
-                                  .withOption("directConnection", "false")
-                                  .build());
-                });
-
-    Optional<SSLContext> sslContext =
-        communitySyncSourceConfig
-            .caFile()
-            .flatMap(caFile -> Optional.of(SslContextFactory.getWithCaFile(caFile)));
-    return new SyncSourceConfig(
-        replicaSetConnectionString, routerConnectionString, replicaSetConnectionString, sslContext);
-  }
-
-  private static String readSecretFile(Path filePath) throws IOException {
-    Check.checkArg(filePath.toFile().exists(), "Secret file %s does not exist", filePath);
-    Check.checkArg(filePath.toFile().isFile(), "Secret file %s is not a file", filePath);
-
-    try {
-      var filePermissions = Files.getPosixFilePermissions(filePath);
-
-      POSIX_OWNER_PERMISSIONS.forEach(filePermissions::remove);
-      Check.checkArg(
-          filePermissions.isEmpty(),
-          "Secret file %s permissions are too permissive (must only be readable by owner)",
-          filePath);
-    } catch (UnsupportedOperationException ignored) {
-      // Not all filesystems support POSIX permissions, we won't verify file permissions on those
-      // filesystems as the number of edge cases increase significantly.
-    }
-
-    return Files.readString(filePath);
+    return new SyncSourceConfig(replicaSetSyncSource, routerSyncSource, replicaSetSyncSource);
   }
 
   private static Optional<PrometheusServer> maybeStartPrometheusServer(
@@ -582,8 +508,8 @@ public class CommunityMongotBootstrapper {
     }
 
     try {
-      String queryKey = readSecretFile(config.queryKeyFile().get()).trim();
-      String indexingKey = readSecretFile(config.indexingKeyFile().get()).trim();
+      String queryKey = SecretsParser.readSecretFile(config.queryKeyFile().get());
+      String indexingKey = SecretsParser.readSecretFile(config.indexingKeyFile().get());
 
       LOG.info(
           "Loaded Voyage credentials from files: {} and {}",

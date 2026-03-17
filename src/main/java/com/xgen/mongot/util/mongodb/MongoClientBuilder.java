@@ -77,10 +77,9 @@ public class MongoClientBuilder {
 
   /** Convenience method to create a non-replication MongoClient that prefers mongos. */
   public static MongoClient buildNonReplicationPreferringMongos(
-      SyncSourceConfig syncSource, String applicationName, MeterRegistry meterRegistry) {
-    var connectionString = syncSource.mongosUri.orElse(syncSource.mongodUri);
-    return buildNonReplicationWithDefaults(
-        connectionString, applicationName, syncSource.sslContext, meterRegistry);
+      SyncSourceConfig syncSourceConfig, String applicationName, MeterRegistry meterRegistry) {
+    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
+    return buildNonReplicationWithDefaults(syncSource, applicationName, meterRegistry);
   }
 
   /**
@@ -88,15 +87,12 @@ public class MongoClientBuilder {
    * maxConnections} and {@code socketTimeoutMs}.
    */
   public static MongoClient buildNonReplicationWithDefaults(
-      ConnectionString connectionString,
-      String applicationName,
-      Optional<SSLContext> sslContext,
-      MeterRegistry meterRegistry) {
+      ConnectionInfo connectionInfo, String applicationName, MeterRegistry meterRegistry) {
     return buildNonReplicationWithDefaults(
-        connectionString,
+        connectionInfo.uri(),
         applicationName,
         Defaults.SINGLE_THREAD_MAX_CONNECTIONS,
-        sslContext,
+        connectionInfo.sslContext(),
         meterRegistry);
   }
 

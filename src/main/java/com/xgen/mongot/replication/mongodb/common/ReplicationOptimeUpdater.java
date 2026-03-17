@@ -99,10 +99,7 @@ public class ReplicationOptimeUpdater implements AutoCloseable {
         syncSource.map(
             syncSourceConfig ->
                 MongoClientBuilder.buildNonReplicationWithDefaults(
-                    syncSourceConfig.mongodUri,
-                    "periodic optime fetcher",
-                    syncSourceConfig.sslContext,
-                    meterRegistry));
+                    syncSourceConfig.mongodUri, "periodic optime fetcher", meterRegistry));
     var executor =
         Executors.singleThreadScheduledExecutor("replicationOptimeUpdater", meterRegistry);
     return new ReplicationOptimeUpdater(

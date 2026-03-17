@@ -99,6 +99,47 @@
       }
     },
     {
+      "description": "replicaSet x509",
+      "value": {
+        "syncSource": {
+          "replicaSet": {
+            "hostAndPort": "mongod:27017",
+            "x509": {
+              "tlsCertificateKeyFile": "/etc/mongot/tls/client-combined.pem"
+            },
+            "authSource": "admin",
+            "tls": true
+          },
+          "caFile": "/etc/mongot/ca.pem"
+        },
+        "storage": {
+          "dataPath": "data/mongot"
+        },
+        "server": {
+          "grpc": {
+            "address": "localhost:27028"
+          }
+        },
+        "metrics": {
+          "enabled": true,
+          "address": "localhost:9946"
+        },
+        "healthCheck": {
+          "address": "localhost:8080"
+        },
+        "logging": {
+          "verbosity": "DEBUG",
+          "logPath": "/var/log/mongot"
+        },
+        "ftdc": {
+          "enabled": true,
+          "directorySizeMb": 100,
+          "fileSizeMb": 10,
+          "collectionPeriodMillis": 1000
+        }
+      }
+    },
+    {
       "description": "with default log verbosity",
       "value": {
         "syncSource": {
@@ -615,6 +656,169 @@
           "collectionPeriodMillis": 99
         }
       }
+    },
+    {
+      "description": "replicaSet both x509 and username password",
+      "value": {
+        "syncSource": {
+          "replicaSet": {
+            "hostAndPort": "mongod:27017",
+            "username": "user",
+            "passwordFile": "/etc/mongot/replicaSet.passwd",
+            "x509": {
+              "tlsCertificateKeyFile": "/etc/mongot/tls/client.pem"
+            }
+          }
+        },
+        "storage": {
+          "dataPath": "data/mongot"
+        },
+        "server": {
+          "grpc": {
+            "address": "localhost:27028"
+          }
+        },
+        "metrics": {
+          "enabled": true,
+          "address": "localhost:9946"
+        },
+        "healthCheck": {
+          "address": "localhost:8080"
+        },
+        "logging": {
+          "verbosity": "DEBUG"
+        }
+      },
+      "errorMessageContains": "x509 and username/passwordFile"
+    },
+    {
+      "description": "replicaSet neither auth",
+      "value": {
+        "syncSource": {
+          "replicaSet": {
+            "hostAndPort": "mongod:27017"
+          }
+        },
+        "storage": {
+          "dataPath": "data/mongot"
+        },
+        "server": {
+          "grpc": {
+            "address": "localhost:27028"
+          }
+        },
+        "metrics": {
+          "enabled": true,
+          "address": "localhost:9946"
+        },
+        "healthCheck": {
+          "address": "localhost:8080"
+        },
+        "logging": {
+          "verbosity": "DEBUG"
+        }
+      },
+      "errorMessageContains": "username"
+    },
+    {
+      "description": "replicaSet username without passwordFile",
+      "value": {
+        "syncSource": {
+          "replicaSet": {
+            "hostAndPort": "mongod:27017",
+            "username": "user"
+          }
+        },
+        "storage": {
+          "dataPath": "data/mongot"
+        },
+        "server": {
+          "grpc": {
+            "address": "localhost:27028"
+          }
+        },
+        "metrics": {
+          "enabled": true,
+          "address": "localhost:9946"
+        },
+        "healthCheck": {
+          "address": "localhost:8080"
+        },
+        "logging": {
+          "verbosity": "DEBUG"
+        }
+      },
+      "errorMessageContains": "passwordFile"
+    },
+    {
+      "description": "replicaSet passwordFile without username",
+      "value": {
+        "syncSource": {
+          "replicaSet": {
+            "hostAndPort": "mongod:27017",
+            "passwordFile": "/etc/mongot/replicaSet.passwd"
+          }
+        },
+        "storage": {
+          "dataPath": "data/mongot"
+        },
+        "server": {
+          "grpc": {
+            "address": "localhost:27028"
+          }
+        },
+        "metrics": {
+          "enabled": true,
+          "address": "localhost:9946"
+        },
+        "healthCheck": {
+          "address": "localhost:8080"
+        },
+        "logging": {
+          "verbosity": "DEBUG"
+        }
+      },
+      "errorMessageContains": "username"
+    },
+    {
+      "description": "router both x509 and username password",
+      "value": {
+        "syncSource": {
+          "replicaSet": {
+            "hostAndPort": "mongod:27017",
+            "username": "user",
+            "passwordFile": "/etc/mongot/replicaSet.passwd"
+          },
+          "router": {
+            "hostAndPort": "mongos:27017",
+            "username": "routerUser",
+            "passwordFile": "/etc/mongot/router.passwd",
+            "x509": {
+              "tlsCertificateKeyFile": "/etc/mongot/tls/router-client.pem"
+            }
+          },
+          "caFile": "/etc/mongot/ca.pem"
+        },
+        "storage": {
+          "dataPath": "data/mongot"
+        },
+        "server": {
+          "grpc": {
+            "address": "localhost:27028"
+          }
+        },
+        "metrics": {
+          "enabled": true,
+          "address": "localhost:9946"
+        },
+        "healthCheck": {
+          "address": "localhost:8080"
+        },
+        "logging": {
+          "verbosity": "DEBUG"
+        }
+      },
+      "errorMessageContains": "x509 and username/passwordFile"
     }
   ]
 }

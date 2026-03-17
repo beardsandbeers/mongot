@@ -258,12 +258,12 @@ public class MaterializedViewCollectionResolver {
     // driver
     // to automatically discover replica set topology and route writes to the primary, avoiding
     // NotWritablePrimary errors after failovers.
-    var connectionString = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
+    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
     return MongoClientBuilder.buildNonReplicationWithDefaults(
-        connectionString,
+        syncSource.uri(),
         "AutoEmbedding Materialized View Collection Resolver",
         DEFAULT_MAX_CONNECTIONS,
-        syncSourceConfig.sslContext,
+        syncSource.sslContext(),
         meterRegistry);
   }
 }

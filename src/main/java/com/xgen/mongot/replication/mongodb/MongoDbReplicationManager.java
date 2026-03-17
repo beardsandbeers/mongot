@@ -41,6 +41,7 @@ import com.xgen.mongot.util.concurrent.Executors;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
 import com.xgen.mongot.util.mongodb.BatchMongoClient;
+import com.xgen.mongot.util.mongodb.ConnectionInfo;
 import com.xgen.mongot.util.mongodb.MongoClientBuilder;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -293,8 +294,7 @@ public class MongoDbReplicationManager implements ReplicationManager {
 
     var decodingWorkScheduler =
         DecodingWorkScheduler.create(
-            replicationConfig.numChangeStreamDecodingThreads,
-            meterRegistry);
+            replicationConfig.numChangeStreamDecodingThreads, meterRegistry);
 
     var sessionRefreshExecutor =
         Executors.singleThreadScheduledExecutor("session-refresh", meterRegistry);
@@ -319,10 +319,10 @@ public class MongoDbReplicationManager implements ReplicationManager {
             .get()
             .mongosUri
             .map(
-                connectionString ->
+                syncSource ->
                     getSynonymsMongoClient(
-                        connectionString,
-                        syncSourceConfig.get().sslContext,
+                        syncSource.uri(),
+                        syncSource.sslContext(),
                         replicationConfig.numConcurrentSynonymSyncs,
                         meterRegistry));
 
@@ -501,13 +501,12 @@ public class MongoDbReplicationManager implements ReplicationManager {
   }
 
   public static com.mongodb.client.MongoClient getSyncMongoClient(
-      SyncSourceConfig syncSourceConfig,
+      ConnectionInfo syncSource,
       String metricsNamespacePrefix,
       MeterRegistry meterRegistry,
-      ConnectionString uri,
       int maxConnections) {
-    return MongoClientBuilder.builder(uri, metricsNamespacePrefix, meterRegistry)
-        .sslContext(syncSourceConfig.sslContext)
+    return MongoClientBuilder.builder(syncSource.uri(), metricsNamespacePrefix, meterRegistry)
+        .sslContext(syncSource.sslContext())
         .description("initial sync and session refresh")
         .maxConnections(maxConnections)
         .buildSyncClient();
@@ -528,11 +527,7 @@ public class MongoDbReplicationManager implements ReplicationManager {
     // make sure syncClient and session refresher connecting mongodUri is included
     var syncMongoClient =
         getSyncMongoClient(
-            syncSourceConfig,
-            metricsNamespacePrefix,
-            meterRegistry,
-            syncSourceConfig.mongodUri,
-            maxConnections);
+            syncSourceConfig.mongodUri, metricsNamespacePrefix, meterRegistry, maxConnections);
     var sessionRefresher =
         DefaultSessionRefresher.create(
             sessionRefresherMetricsFactory, sessionRefreshExecutor, syncMongoClient);
@@ -544,15 +539,11 @@ public class MongoDbReplicationManager implements ReplicationManager {
     syncSourceConfig.mongodUris.ifPresent(
         uris ->
             uris.forEach(
-                (host, connectionString) -> {
+                (host, syncSource) -> {
                   if (!clientSessionHostMap.containsKey(host)) {
                     var client =
                         getSyncMongoClient(
-                            syncSourceConfig,
-                            metricsNamespacePrefix,
-                            meterRegistry,
-                            connectionString,
-                            maxConnections);
+                            syncSource, metricsNamespacePrefix, meterRegistry, maxConnections);
                     var refresher =
                         DefaultSessionRefresher.create(
                             sessionRefresherMetricsFactory, sessionRefreshExecutor, client);
@@ -589,7 +580,7 @@ public class MongoDbReplicationManager implements ReplicationManager {
     if (hostName.isEmpty()) {
       // There should only be one host from mongodUri for Atlas that's using a direct connection for
       // initial sync
-      String host = syncSourceConfig.mongodUri.getHosts().getFirst();
+      String host = syncSourceConfig.mongodUri.uri().getHosts().getFirst();
       // return the host name excluding port.
       return host.split(":")[0];
     }
@@ -615,8 +606,8 @@ public class MongoDbReplicationManager implements ReplicationManager {
       String metricsNamespacePrefix,
       MeterRegistry meterRegistry) {
     return MongoClientBuilder.builder(
-            syncSourceConfig.mongodClusterUri, metricsNamespacePrefix, meterRegistry)
-        .sslContext(syncSourceConfig.sslContext)
+            syncSourceConfig.mongodClusterUri.uri(), metricsNamespacePrefix, meterRegistry)
+        .sslContext(syncSourceConfig.mongodClusterUri.sslContext())
         .description("steady state sync")
         .maxConnections(numConcurrentChangeStreams)
         .buildSyncBatchClient();

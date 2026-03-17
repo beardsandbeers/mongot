@@ -334,13 +334,13 @@ public class MaterializedViewWriter implements IndexWriter {
       // Use mongosUri if available, otherwise fall back to mongodUri. This allows the MongoDB
       // driver to automatically discover replica set topology and route writes to the primary,
       // avoiding NotWritablePrimary errors after failovers.
-      var originalConnectionString = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
+      var connectionInfo = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
       // Replace directConnection=true with directConnection=false to enable topology discovery.
       // MMS provides connection strings with directConnection=true which forces the driver to
       // connect only to the specified host. For write operations, we need to route to the primary,
       // so we must enable topology discovery by setting directConnection=false.
       // TODO(CLOUDP-360542): have mms return connection strings with directConnection=false.
-      var connectionString = disableDirectConnection(originalConnectionString);
+      var connectionString = disableDirectConnection(connectionInfo.uri());
       LOG.atInfo()
           .addKeyValue("hosts", connectionString.getHosts())
           .addKeyValue("directConnection", connectionString.isDirectConnection())
@@ -349,7 +349,7 @@ public class MaterializedViewWriter implements IndexWriter {
           connectionString,
           "AutoEmbedding Materialized View Writer",
           DEFAULT_MAX_CONNECTIONS,
-          syncSourceConfig.sslContext,
+          connectionInfo.sslContext(),
           meterRegistry);
     }
   }

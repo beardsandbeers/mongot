@@ -207,11 +207,11 @@ public class MongoClientBuilderTest {
   @Test
   public void testBuildNonReplicationWithDefaults() {
     String uri = "mongodb://localhost:11111";
-    ConnectionString connectionString = new ConnectionString(uri);
+    var connectionInfo = new ConnectionInfo(new ConnectionString(uri));
     String applicationName = "testApp";
     MongoClient client =
         MongoClientBuilder.buildNonReplicationWithDefaults(
-            connectionString, applicationName, Optional.empty(), new SimpleMeterRegistry());
+            connectionInfo, applicationName, new SimpleMeterRegistry());
 
     MongoClientSettings settings = ((MongoClientImpl) client).getSettings();
 

@@ -1,0 +1,23 @@
+syncSource:
+  replicaSet:
+    hostAndPort: "mongod.example.com:27017"
+    x509:
+      tlsCertificateKeyFile: "/etc/mongot/tls/client-combined.pem"
+      tlsCertificateKeyFilePasswordFile: "/etc/mongot/secrets/cert-key-pass"
+    authSource: admin
+    tls: true
+    readPreference: primaryPreferred
+  caFile: /etc/mongot/tls/ca.pem
+storage:
+  dataPath: "/var/lib/mongot"
+server:
+  grpc:
+    address: "localhost:27028"
+metrics:
+  enabled: true
+  address: "localhost:9946"
+healthCheck:
+  address: "localhost:8080"
+logging:
+  verbosity: "DEBUG"
+  logPath: "/var/log/mongot"

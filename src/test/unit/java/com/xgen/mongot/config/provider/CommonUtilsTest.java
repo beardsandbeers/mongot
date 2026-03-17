@@ -125,7 +125,7 @@ public class CommonUtilsTest {
         Assert.assertThrows(
             Exception.class, () -> factory.create(Optional.of(mock(SyncSourceConfig.class))));
     String errorMessage = exception.getMessage();
-    String expectedPattern = "Cannot invoke \".*\" because \"connectionString\" is null";
+    String expectedPattern = "Cannot invoke \".*\" because \".*\" is null";
     // Assert that the message matches the regex pattern
     Assert.assertTrue(Pattern.compile(expectedPattern).matcher(errorMessage).find());
   }
@@ -163,7 +163,7 @@ public class CommonUtilsTest {
         Assert.assertThrows(
             Exception.class, () -> factory.create(Optional.of(mock(SyncSourceConfig.class))));
     String errorMessage = exception.getMessage();
-    String expectedPattern = "Cannot invoke \".*\" because \"connectionString\" is null";
+    String expectedPattern = "Cannot invoke \".*\" because \".*\" is null";
     // Assert that the message matches the regex pattern
     Assert.assertTrue(Pattern.compile(expectedPattern).matcher(errorMessage).find());
   }

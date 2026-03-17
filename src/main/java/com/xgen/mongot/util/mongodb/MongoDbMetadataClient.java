@@ -56,10 +56,7 @@ public class MongoDbMetadataClient implements MongoDbServerInfoProvider, Closeab
     this.directMongodClient =
         Optional.of(
             MongoClientBuilder.buildNonReplicationWithDefaults(
-                syncSource.mongodUri,
-                "server info resolver",
-                syncSource.sslContext,
-                this.meterRegistry));
+                syncSource.mongodUri, "server info resolver", this.meterRegistry));
   }
 
   private static MongoDbCollectionInfos resolveCollectionInfos(

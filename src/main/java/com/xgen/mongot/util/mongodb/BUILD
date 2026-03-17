@@ -13,6 +13,7 @@ java_library(
         "CollectionScanFindCommand.java",
         "CollectionStatsCommand.java",
         "CollectionStatsResponse.java",
+        "ConnectionInfo.java",
         "ConnectionStringBuilder.java",
         "ConnectionStringUtil.java",
         "Databases.java",
@@ -59,6 +60,8 @@ java_library(
         "@maven//:io_netty_netty_handler",
         "@maven//:io_netty_netty_transport_classes_kqueue",  # keep: netty native
         "@maven//:io_netty_netty_transport_native_unix_common",  # keep: netty native
+        "@maven//:org_bouncycastle_bc_fips",
+        "@maven//:org_bouncycastle_bcpkix_fips",
         "@maven//:org_jetbrains_annotations",
         "@maven//:org_mongodb_bson",
         "@maven//:org_mongodb_mongodb_driver_core",

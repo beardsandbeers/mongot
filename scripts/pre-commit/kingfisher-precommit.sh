@@ -19,4 +19,5 @@ kingfisher scan . \
   --skip-word xxx-sanitized-xxx \
   --exclude 'src/test/integration/resources/server/*.pem' \
   --exclude 'src/test/integration/resources/atlas/kmip/*.pem' \
+  --exclude 'src/test/integration/resources/replication/mongodb/*.pem' \
   --exclude 'docker/tls/*.pem'

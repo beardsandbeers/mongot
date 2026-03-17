@@ -304,11 +304,12 @@ public class CommunityMongotBootstrapperTest {
     return new SyncSourceConfig(
         new ReplicaSetConfig(
             List.of(com.google.common.net.HostAndPort.fromParts("localhost", 27017)),
-            "user",
-            Path.of("/tmp/test.passwd"),
+            Optional.of("user"),
+            Optional.of(Path.of("/tmp/test.passwd")),
             Databases.ADMIN,
             false,
-            MongoReadPreferenceName.PRIMARY),
+            MongoReadPreferenceName.PRIMARY,
+            Optional.empty()),
         Optional.empty(),
         Optional.empty());
   }
