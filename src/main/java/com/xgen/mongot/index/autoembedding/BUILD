@@ -21,6 +21,7 @@ java_library(
     ],
     deps = [
         "//src/main/java/com/xgen/mongot/catalog",
+        "//src/main/java/com/xgen/mongot/cursor/batch",
         "//src/main/java/com/xgen/mongot/embedding/config",
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
         "//src/main/java/com/xgen/mongot/embedding/mongodb",
@@ -30,6 +31,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/analyzer",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/lucene",
         "//src/main/java/com/xgen/mongot/index/mongodb",
         "//src/main/java/com/xgen/mongot/index/query",
         "//src/main/java/com/xgen/mongot/index/status",

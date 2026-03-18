@@ -6,7 +6,9 @@ import com.xgen.mongot.cursor.batch.BatchCursorOptions;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.IndexUnavailableException;
+import com.xgen.mongot.index.InitializedIndex;
 import com.xgen.mongot.index.InitializedSearchIndex;
+import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.Query;
@@ -52,7 +54,7 @@ class IndexCursorManagerImpl implements IndexCursorManager {
 
   @VisibleForTesting final ConcurrentHashMap<Long, CursorAndStats> cursorAndStats;
 
-  private final InitializedSearchIndex index;
+  private final InitializedIndex index;
 
   /**
    * To keep unique cursor ids across different indexes, one CursorFactory is shared between all
@@ -70,7 +72,7 @@ class IndexCursorManagerImpl implements IndexCursorManager {
 
   record CursorAndStats(MongotCursor cursor, ActiveCursorStats stats) {}
 
-  IndexCursorManagerImpl(InitializedSearchIndex index, CursorFactory cursorFactory) {
+  IndexCursorManagerImpl(InitializedIndex index, CursorFactory cursorFactory) {
     this.cursorAndStats = new ConcurrentHashMap<>();
     this.index = index;
     this.cursorFactory = cursorFactory;
@@ -79,14 +81,18 @@ class IndexCursorManagerImpl implements IndexCursorManager {
   @Override
   public SearchCursorInfo createCursor(
       String namespace,
-      Query query,
+      CursorQuery cursorQuery,
       QueryCursorOptions queryCursorOptions,
       QueryOptimizationFlags queryOptimizationFlags)
-      throws IOException, InvalidQueryException, IndexUnavailableException, InterruptedException {
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
     try (var ignored = LockGuard.with(this.sharedLock)) {
       var cursorInfo =
           this.cursorFactory.createCursor(
-              namespace, this.index, query, queryCursorOptions, queryOptimizationFlags);
+              namespace, this.index, cursorQuery, queryCursorOptions, queryOptimizationFlags);
 
       long cursorId = cursorInfo.cursor.getId();
 
@@ -95,7 +101,8 @@ class IndexCursorManagerImpl implements IndexCursorManager {
       // We might be registering empty cursors here as well (index in DOES_NOT_EXIST state), but
       // they will be killed after the one call to getNextBatch.
       this.cursorAndStats.put(
-          cursorId, new CursorAndStats(cursorInfo.cursor, new ActiveCursorStats(query)));
+          cursorId,
+          new CursorAndStats(cursorInfo.cursor, new ActiveCursorStats(cursorQuery.getQuery())));
       return new SearchCursorInfo(cursorId, cursorInfo.metaResults);
     }
   }
@@ -109,9 +116,11 @@ class IndexCursorManagerImpl implements IndexCursorManager {
       QueryOptimizationFlags queryOptimizationFlags)
       throws IOException, InvalidQueryException, IndexUnavailableException, InterruptedException {
     try (var ignored = LockGuard.with(this.sharedLock)) {
+      InitializedSearchIndex searchIndex = this.index.asSearchIndex();
+
       var cursorInfo =
           this.cursorFactory.createIntermediateCursors(
-              namespace, this.index, query, queryCursorOptions, queryOptimizationFlags);
+              namespace, searchIndex, query, queryCursorOptions, queryOptimizationFlags);
 
       long searchCursorId = cursorInfo.searchCursor.getId();
       long metaCursorId = cursorInfo.metaCursor.getId();

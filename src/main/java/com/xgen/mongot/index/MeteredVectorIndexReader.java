@@ -1,8 +1,11 @@
 package com.xgen.mongot.index;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.xgen.mongot.cursor.batch.BatchSizeStrategy;
+import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
+import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import java.io.IOException;
 import org.bson.BsonArray;
 
@@ -32,6 +35,26 @@ public class MeteredVectorIndexReader implements VectorIndexReader {
     } catch (Exception e) {
       this.metricsUpdater.handleQueryException(
           e, materializedQuery.vectorSearchQuery().toBson().toString());
+      throw e;
+    }
+  }
+
+  @Override
+  public VectorProducerAndMetaResults query(
+      MaterializedVectorSearchQuery query,
+      QueryCursorOptions queryCursorOptions,
+      BatchSizeStrategy batchSizeStrategy,
+      QueryOptimizationFlags queryOptimizationFlags)
+      throws InvalidQueryException, IOException, InterruptedException, ReaderClosedException {
+    this.metricsUpdater.getTotalQueryCounter().increment();
+    try {
+      VectorProducerAndMetaResults result =
+          this.indexReader.query(
+              query, queryCursorOptions, batchSizeStrategy, queryOptimizationFlags);
+      this.queryMetricsRecorder.record(query.vectorSearchQuery());
+      return result;
+    } catch (Exception e) {
+      this.metricsUpdater.handleQueryException(e, query.vectorSearchQuery().toBson().toString());
       throw e;
     }
   }

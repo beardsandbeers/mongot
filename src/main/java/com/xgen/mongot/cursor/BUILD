@@ -6,6 +6,7 @@ java_library(
         "CursorConfig.java",
         "CursorFactory.java",
         "CursorIdSupplier.java",
+        "CursorQuery.java",
         "IndexCursorManager.java",
         "IndexCursorManagerImpl.java",
         "IntermediateSearchCursorInfo.java",
@@ -24,6 +25,7 @@ java_library(
     exports = [
         "//src/main/java/com/xgen/mongot/cursor/serialization",
         "//src/main/java/com/xgen/mongot/index/lucene/explain/tracing",
+        "//src/main/java/com/xgen/mongot/index/query",
         "@maven//:io_opentelemetry_opentelemetry_api",
         "@maven//:org_mongodb_bson",
     ],

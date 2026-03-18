@@ -3,14 +3,18 @@ package com.xgen.mongot.index.lucene;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
+import com.xgen.mongot.cursor.batch.BatchSizeStrategy;
+import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.IndexReader;
+import com.xgen.mongot.index.MetaResults;
 import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.VectorIndexReader;
 import com.xgen.mongot.index.VectorSearchResult;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
+import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.CheckedStream;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
@@ -94,6 +98,33 @@ public class MultiLuceneVectorIndexReader implements VectorIndexReader {
         mergeVectorSearchResults(vectorSearchResultIterators, query.limit());
 
     return LuceneVectorIndexReader.getBsonArray(mergeVectorSearchResult, this.metricsUpdater);
+  }
+
+  @Override
+  public VectorProducerAndMetaResults query(
+      MaterializedVectorSearchQuery materializedVectorSearchQuery,
+      QueryCursorOptions queryCursorOptions,
+      BatchSizeStrategy batchSizeStrategy,
+      QueryOptimizationFlags queryOptimizationFlags)
+      throws InvalidQueryException, IOException, InterruptedException, ReaderClosedException {
+    List<Iterator<VectorSearchResult>> vectorSearchResultIterators =
+        new ArrayList<>(this.readers.size());
+    for (int i = 0; i < this.readers.size(); i++) {
+      try (var indexPartitionResourceManager = Explain.maybeEnterIndexPartitionQueryContext(i)) {
+        var reader = this.readers.get(i);
+        vectorSearchResultIterators.add(
+            reader.queryResults(materializedVectorSearchQuery).iterator());
+      }
+    }
+
+    List<VectorSearchResult> mergeVectorSearchResult =
+        mergeVectorSearchResults(
+            vectorSearchResultIterators, materializedVectorSearchQuery.limit());
+
+    return new VectorProducerAndMetaResults(
+        new LuceneVectorSearchBatchProducer(
+            mergeVectorSearchResult, this.metricsUpdater, batchSizeStrategy),
+        MetaResults.EMPTY);
   }
 
   @Override

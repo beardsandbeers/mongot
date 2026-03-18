@@ -6,8 +6,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.MustBeClosed;
 import com.google.errorprone.annotations.Var;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
+import com.xgen.mongot.cursor.batch.BatchSizeStrategy;
+import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
+import com.xgen.mongot.index.MetaResults;
 import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.VectorIndexReader;
 import com.xgen.mongot.index.VectorSearchResult;
@@ -30,6 +33,7 @@ import com.xgen.mongot.index.lucene.searcher.LuceneSearcherManager;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
+import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.trace.Tracing;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.BsonArrayBuilder;
@@ -62,11 +66,13 @@ public class LuceneVectorIndexReader implements VectorIndexReader {
   private static final Set<String> LUCENE_ID_FIELD_NAME_SET =
       Set.of(FieldName.MetaField.ID.getLuceneFieldName());
   private static final int VECTOR_SEARCH_BATCH_SIZE = 10_000;
+
   /**
-   * Conservative HNSW graph size estimate: 8 * M * num_vectors bytes
-   * Using minimum M=16 so the estimate is a lower bound
+   * Conservative HNSW graph size estimate: 8 * M * num_vectors bytes Using minimum M=16 so the
+   * estimate is a lower bound
    */
   private static final long HNSW_GRAPH_BYTES_PER_VECTOR = 8L * 16;
+
   private final VectorIndexDefinition indexDefinition;
 
   @GuardedBy("shutdownSharedLock")
@@ -141,32 +147,58 @@ public class LuceneVectorIndexReader implements VectorIndexReader {
     return getBsonArray(queryResults(materializedVectorQuery), this.metricsUpdater);
   }
 
+  @Override
+  public VectorProducerAndMetaResults query(
+      MaterializedVectorSearchQuery query,
+      QueryCursorOptions queryCursorOptions,
+      BatchSizeStrategy batchSizeStrategy,
+      QueryOptimizationFlags queryOptimizationFlags)
+      throws InvalidQueryException, IOException, InterruptedException, ReaderClosedException {
+    try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
+      ensureOpen("query");
+      List<VectorSearchResult> allResults;
+      try (var searcherReference = createSearcherReference(query.concurrent())) {
+        allResults = queryResults(query, searcherReference);
+      }
+      return new VectorProducerAndMetaResults(
+          new LuceneVectorSearchBatchProducer(
+              allResults, this.metricsUpdater, batchSizeStrategy),
+          MetaResults.EMPTY);
+    }
+  }
+
   /** Returns a List of {@link VectorSearchResult}. */
   public List<VectorSearchResult> queryResults(
       MaterializedVectorSearchQuery materializedVectorQuery)
       throws ReaderClosedException, IOException, InvalidQueryException {
     try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
       ensureOpen("query");
-
       try (var searcherReference = createSearcherReference(materializedVectorQuery.concurrent())) {
-        var indexSearcher = searcherReference.getIndexSearcher();
-        var luceneQuery =
-            Explain.isEnabled()
-                ? this.queryFactory.createExplainQuery(
-                    materializedVectorQuery, indexSearcher.getIndexReader())
-                : this.queryFactory.createQuery(
-                    materializedVectorQuery, indexSearcher.getIndexReader());
-
-        LuceneSearchManager<QueryInfo> searchManager =
-            this.luceneSearchManagerFactory.newVectorQueryManager(
-                luceneQuery, materializedVectorQuery.materializedCriteria());
-
-        QueryInfo queryInfo =
-            searchManager.initialSearch(searcherReference, VECTOR_SEARCH_BATCH_SIZE);
-
-        return getResults(queryInfo.topDocs, indexSearcher, materializedVectorQuery);
+        return queryResults(materializedVectorQuery, searcherReference);
       }
     }
+  }
+
+  /** Returns a List of {@link VectorSearchResult}. */
+  public List<VectorSearchResult> queryResults(
+      MaterializedVectorSearchQuery materializedVectorQuery,
+      LuceneIndexSearcherReference searcherReference)
+      throws ReaderClosedException, IOException, InvalidQueryException {
+    var indexSearcher = searcherReference.getIndexSearcher();
+    var luceneQuery =
+        Explain.isEnabled()
+            ? this.queryFactory.createExplainQuery(
+                materializedVectorQuery, indexSearcher.getIndexReader())
+            : this.queryFactory.createQuery(
+                materializedVectorQuery, indexSearcher.getIndexReader());
+
+    LuceneSearchManager<QueryInfo> searchManager =
+        this.luceneSearchManagerFactory.newVectorQueryManager(
+            luceneQuery, materializedVectorQuery.materializedCriteria());
+
+    QueryInfo queryInfo = searchManager.initialSearch(searcherReference, VECTOR_SEARCH_BATCH_SIZE);
+
+    return getResults(queryInfo.topDocs, indexSearcher, materializedVectorQuery);
   }
 
   public static BsonArray getBsonArray(
@@ -285,7 +317,8 @@ public class LuceneVectorIndexReader implements VectorIndexReader {
         @Var long requiredMemory = 0L;
         for (VectorIndexVectorFieldDefinition vectorField : vectorFieldDefinition) {
           VectorFieldSpecification specification = vectorField.specification();
-          boolean includeGraphBytes = !(specification.indexingAlgorithm()
+          boolean includeGraphBytes =
+              !(specification.indexingAlgorithm()
                   instanceof VectorIndexingAlgorithm.FlatIndexingAlgorithm);
           VectorQuantization quantizationType = specification.quantization();
           for (Vector.VectorType vectorType : Vector.VectorType.values()) {
@@ -347,8 +380,8 @@ public class LuceneVectorIndexReader implements VectorIndexReader {
    *     example, this would be 0.125 for a bit vector field.
    */
   @VisibleForTesting
-  static long computeRequiredHeapBytes(LeafReader reader, FieldInfo fieldInfo, double bytesPerDim,
-      boolean includeGraphBytes)
+  static long computeRequiredHeapBytes(
+      LeafReader reader, FieldInfo fieldInfo, double bytesPerDim, boolean includeGraphBytes)
       throws IOException {
     String fieldName = fieldInfo.getName();
     long count =

@@ -4,6 +4,8 @@ import static com.xgen.mongot.embedding.mongodb.leasing.StaticLeaderLeaseManager
 import static com.xgen.mongot.index.definition.IndexDefinitionGeneration.Type.AUTO_EMBEDDING;
 import static com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration.MIN_VERSION_FOR_MATERIALIZED_VIEW_EMBEDDING;
 
+import com.xgen.mongot.cursor.batch.BatchSizeStrategy;
+import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata.MaterializedViewSchemaMetadata;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewNonTransientException;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
@@ -14,15 +16,18 @@ import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.IndexUnavailableException;
 import com.xgen.mongot.index.IndexWriter;
 import com.xgen.mongot.index.InitializedVectorIndex;
+import com.xgen.mongot.index.MetaResults;
 import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.VectorIndexReader;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
 import com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
+import com.xgen.mongot.index.lucene.EmptySearchBatchProducer;
 import com.xgen.mongot.index.mongodb.MaterializedViewWriter;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
+import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.index.version.MaterializedViewGenerationId;
 import java.io.IOException;
@@ -180,6 +185,16 @@ public class InitializedMaterializedViewIndex implements InitializedVectorIndex 
     public BsonArray query(MaterializedVectorSearchQuery materializedQuery)
         throws ReaderClosedException, IOException, InvalidQueryException {
       return new BsonArray();
+    }
+
+    @Override
+    public VectorProducerAndMetaResults query(
+        MaterializedVectorSearchQuery materializedVectorSearchQuery,
+        QueryCursorOptions queryCursorOptions,
+        BatchSizeStrategy batchSizeStrategy,
+        QueryOptimizationFlags queryOptimizationFlags)
+        throws IOException, InvalidQueryException, InterruptedException, ReaderClosedException {
+      return new VectorProducerAndMetaResults(new EmptySearchBatchProducer(), MetaResults.EMPTY);
     }
 
     @Override

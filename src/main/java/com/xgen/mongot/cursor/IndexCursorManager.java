@@ -3,8 +3,10 @@ package com.xgen.mongot.cursor;
 import com.xgen.mongot.cursor.batch.BatchCursorOptions;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.IndexUnavailableException;
+import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
 import com.xgen.mongot.index.query.InvalidQueryException;
+import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
 import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.index.query.SearchQuery;
@@ -19,12 +21,44 @@ import java.util.Optional;
 /** Manages the cursors for one index. */
 interface IndexCursorManager {
 
-  SearchCursorInfo createCursor(
+  default SearchCursorInfo createCursor(
       String namespace,
       Query query,
       QueryCursorOptions queryCursorOptions,
       QueryOptimizationFlags queryOptimizationFlags)
-      throws IOException, InvalidQueryException, IndexUnavailableException, InterruptedException;
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
+    return createCursor(
+        namespace, new CursorQuery.Search(query), queryCursorOptions, queryOptimizationFlags);
+  }
+
+  default SearchCursorInfo createCursor(
+      String namespace,
+      MaterializedVectorSearchQuery query,
+      QueryCursorOptions queryCursorOptions,
+      QueryOptimizationFlags queryOptimizationFlags)
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
+    return createCursor(
+        namespace, new CursorQuery.Vector(query), queryCursorOptions, queryOptimizationFlags);
+  }
+
+  SearchCursorInfo createCursor(
+      String namespace,
+      CursorQuery cursorQuery,
+      QueryCursorOptions queryCursorOptions,
+      QueryOptimizationFlags queryOptimizationFlags)
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException;
 
   IntermediateSearchCursorInfo createIntermediateCursors(
       String namespace,

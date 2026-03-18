@@ -3,8 +3,10 @@ package com.xgen.mongot.cursor;
 import com.xgen.mongot.cursor.batch.BatchCursorOptions;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.IndexUnavailableException;
+import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
 import com.xgen.mongot.index.query.InvalidQueryException;
+import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
 import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.index.query.SearchQuery;
@@ -21,7 +23,7 @@ public interface MongotCursorManager {
    * Registers a new cursor for the given query over the supplied index and returns the cursor's id
    * along with its MetaResults.
    */
-  SearchCursorInfo newCursor(
+  default SearchCursorInfo newCursor(
       String databaseName,
       String collectionName,
       UUID collectionUuid,
@@ -30,7 +32,61 @@ public interface MongotCursorManager {
       QueryCursorOptions queryCursorOptions,
       QueryOptimizationFlags queryOptimizationFlags,
       Optional<SearchEnvoyMetadata> searchEnvoyMetadata)
-      throws IOException, InvalidQueryException, IndexUnavailableException, InterruptedException;
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
+    return newCursor(
+        databaseName,
+        collectionName,
+        collectionUuid,
+        viewName,
+        new CursorQuery.Search(query),
+        queryCursorOptions,
+        queryOptimizationFlags,
+        searchEnvoyMetadata);
+  }
+
+  default SearchCursorInfo newCursor(
+      String databaseName,
+      String collectionName,
+      UUID collectionUuid,
+      Optional<String> viewName,
+      MaterializedVectorSearchQuery query,
+      QueryCursorOptions queryCursorOptions,
+      QueryOptimizationFlags queryOptimizationFlags,
+      Optional<SearchEnvoyMetadata> searchEnvoyMetadata)
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
+    return newCursor(
+        databaseName,
+        collectionName,
+        collectionUuid,
+        viewName,
+        new CursorQuery.Vector(query),
+        queryCursorOptions,
+        queryOptimizationFlags,
+        searchEnvoyMetadata);
+  }
+
+  SearchCursorInfo newCursor(
+      String databaseName,
+      String collectionName,
+      UUID collectionUuid,
+      Optional<String> viewName,
+      CursorQuery cursorQuery,
+      QueryCursorOptions queryCursorOptions,
+      QueryOptimizationFlags queryOptimizationFlags,
+      Optional<SearchEnvoyMetadata> searchEnvoyMetadata)
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException;
 
   IntermediateSearchCursorInfo newIntermediateCursors(
       String databaseName,

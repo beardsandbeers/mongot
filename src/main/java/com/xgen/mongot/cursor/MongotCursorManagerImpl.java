@@ -8,7 +8,7 @@ import com.xgen.mongot.cursor.batch.BatchCursorOptions;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.IndexUnavailableException;
 import com.xgen.mongot.index.InitializedIndex;
-import com.xgen.mongot.index.InitializedSearchIndex;
+import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.Query;
@@ -131,11 +131,15 @@ public class MongotCursorManagerImpl implements MongotCursorManager {
       String collectionName,
       UUID collectionUuid,
       Optional<String> viewName,
-      Query query,
+      CursorQuery cursorQuery,
       QueryCursorOptions queryCursorOptions,
       QueryOptimizationFlags queryOptimizationFlags,
       Optional<SearchEnvoyMetadata> searchEnvoyMetadata)
-      throws IOException, InvalidQueryException, IndexUnavailableException, InterruptedException {
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
     // Lock the MongotCursorManagerImpl from dropping index cursors while we construct ours.
     // This relies on higher level owners of the MongotCursorManagerImpl removing indexes from
     // the shared IndexCatalog prior to calling MongotCursorManager::killIndexCursors.
@@ -147,14 +151,19 @@ public class MongotCursorManagerImpl implements MongotCursorManager {
       // appropriate.
       IndexCursorManager indexManager =
           provideIndexManager(
-              databaseName, collectionName, collectionUuid, viewName, query, searchEnvoyMetadata);
+              databaseName,
+              collectionName,
+              collectionUuid,
+              viewName,
+              cursorQuery.getQuery(),
+              searchEnvoyMetadata);
 
       // if another thread is in killIndexCursors right now, the index should not be available, and
       // so we would throw or use an empty cursor.
       SearchCursorInfo cursorInfo =
           indexManager.createCursor(
               NamespaceBuilder.build(databaseName, collectionName, viewName),
-              query,
+              cursorQuery,
               queryCursorOptions,
               queryOptimizationFlags);
 
@@ -407,18 +416,11 @@ public class MongotCursorManagerImpl implements MongotCursorManager {
     }
 
     InitializedIndex index = optionalInitializedIndex.get();
-    if (index instanceof InitializedSearchIndex searchIndex) {
-      GenerationId id = index.getGenerationId();
-
-      // this method can be called by multiple threads, so we rely on the concurrent hash map to
-      // instantiate one index manager atomically.
-      return this.indexManagers.computeIfAbsent(
-          id, ignored -> new IndexCursorManagerImpl(searchIndex, this.cursorFactory));
-    } else {
-      throw new InvalidQueryException(
-          "Cannot execute $search over vectorSearch index '%s'".formatted(query.index()),
-          InvalidQueryException.Type.STRICT);
-    }
+    // this method can be called by multiple threads, so we rely on the concurrent hash map to
+    // instantiate one index manager atomically.
+    GenerationId id = index.getGenerationId();
+    return this.indexManagers.computeIfAbsent(
+        id, ignored -> new IndexCursorManagerImpl(index, this.cursorFactory));
   }
 
   private void checkCursorExhausted(MongotCursorResultInfo batch, long cursorId) {

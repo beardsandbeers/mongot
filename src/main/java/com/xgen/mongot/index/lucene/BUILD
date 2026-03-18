@@ -46,6 +46,7 @@ java_library(
         "LuceneVectorIndex.java",
         "LuceneVectorIndexMetricValuesSupplier.java",
         "LuceneVectorIndexReader.java",
+        "LuceneVectorSearchBatchProducer.java",
         "LuceneVectorSearchManager.java",
         "MeteredLuceneSearchManager.java",
         "MeteredLuceneVectorSearchManager.java",

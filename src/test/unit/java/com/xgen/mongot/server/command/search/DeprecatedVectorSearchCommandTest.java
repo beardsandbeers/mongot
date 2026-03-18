@@ -42,6 +42,7 @@ import com.xgen.mongot.index.lucene.explain.information.MetadataExplainInformati
 import com.xgen.mongot.index.lucene.explain.information.SearchExplainInformation;
 import com.xgen.mongot.index.lucene.explain.information.SearchExplainInformationBuilder;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
+import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.operators.VectorSearchFilter;
 import com.xgen.mongot.index.query.operators.mql.Clause;
 import com.xgen.mongot.index.status.IndexStatus;
@@ -646,7 +647,7 @@ public class DeprecatedVectorSearchCommandTest {
     MongotCursorBatch batch = mockMongotCursorBatchForVectorSearch();
 
     // Only return a cursor batch for the correct cursor id.
-    when(cursorManager.newCursor(any(), any(), any(), any(), any(), any(), any(), any()))
+    when(cursorManager.newCursor(any(), any(), any(), any(), any(Query.class), any(), any(), any()))
         .then(
             invocation ->
                 new SearchCursorInfo(
@@ -675,7 +676,7 @@ public class DeprecatedVectorSearchCommandTest {
   /** Creates a MongotCursorManager that throws an IOException when getting the batch. */
   private MongotCursorManager getIoExceptionCursorManager() throws Exception {
     MongotCursorManager cursorManager = mock(MongotCursorManager.class);
-    when(cursorManager.newCursor(any(), any(), any(), any(), any(), any(), any(), any()))
+    when(cursorManager.newCursor(any(), any(), any(), any(), any(Query.class), any(), any(), any()))
         .thenReturn(
             new SearchCursorInfo(
                 MOCK_SEARCH_CURSOR_ID, new MetaResults(CountResult.lowerBoundCount(1000))));

@@ -17,6 +17,7 @@ import com.xgen.mongot.catalog.DefaultIndexCatalog;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.IndexUnavailableException;
+import com.xgen.mongot.index.InitializedIndex;
 import com.xgen.mongot.index.InitializedSearchIndex;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
@@ -83,10 +84,11 @@ public class IndexCursorManagerImplTest {
 
           MongotCursor mockCursor = spy(cursorAndMeta.cursor);
           this.lastCreatedSearchCursor = Optional.of(mockCursor);
-          return new CursorFactory.CursorAndMetaResults(
-              mockCursor, cursorAndMeta.metaResults);
+          return new CursorFactory.CursorAndMetaResults(mockCursor, cursorAndMeta.metaResults);
         };
-    Mockito.doAnswer(wrapNewCursors).when(factory).createCursor(any(), any(), any(), any(), any());
+    Mockito.doAnswer(wrapNewCursors)
+        .when(factory)
+        .createCursor(any(), any(InitializedIndex.class), any(CursorQuery.class), any(), any());
 
     Answer<CursorFactory.SearchCursorAndMetaCursor> wrapNewIntermediateCursors =
         invocationOnMock -> {

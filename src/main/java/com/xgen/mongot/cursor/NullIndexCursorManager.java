@@ -3,7 +3,6 @@ package com.xgen.mongot.cursor;
 import com.xgen.mongot.cursor.batch.BatchCursorOptions;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
-import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.index.query.SearchQuery;
 import com.xgen.mongot.util.Bytes;
@@ -35,7 +34,7 @@ class NullIndexCursorManager implements IndexCursorManager {
   @Override
   public SearchCursorInfo createCursor(
       String namespace,
-      Query query,
+      CursorQuery cursorQuery,
       QueryCursorOptions queryCursorOptions,
       QueryOptimizationFlags queryOptimizationFlags) {
     var cursorInfo = this.cursorFactory.getEmptyCursor(namespace);

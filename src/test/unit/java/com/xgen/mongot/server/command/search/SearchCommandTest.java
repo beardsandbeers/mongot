@@ -45,6 +45,7 @@ import com.xgen.mongot.index.lucene.explain.information.SearchExplainInformation
 import com.xgen.mongot.index.lucene.explain.information.SearchExplainInformationBuilder;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
 import com.xgen.mongot.index.query.InvalidQueryException;
+import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.SearchQuery;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.metrics.MetricsFactory;
@@ -1306,7 +1307,8 @@ public class SearchCommandTest {
     // We don't actually care about the collection named, since it's just used to populate the "ns"
     // key in the cursor batch response.
     // Only return a cursor batch for the correct cursor id.
-    when(cursorManager.newCursor(any(), any(), any(), any(), any(), any(), any(), any()))
+    when(cursorManager.newCursor(
+            any(), any(), any(), any(), any(Query.class), any(), any(), any()))
         .then(
             invocation -> {
               String databaseName = invocation.getArgument(0);
@@ -1362,7 +1364,8 @@ public class SearchCommandTest {
   private MongotCursorManager getThrowableCursorManager(
       Supplier<? extends Throwable> throwableSupplier) throws Exception {
     MongotCursorManager cursorManager = mock(MongotCursorManager.class);
-    when(cursorManager.newCursor(any(), any(), any(), any(), any(), any(), any(), any()))
+    when(cursorManager.newCursor(
+            any(), any(), any(), any(), any(Query.class), any(), any(), any()))
         .thenReturn(
             new SearchCursorInfo(
                 MOCK_SEARCH_CURSOR_ID, new MetaResults(CountResult.lowerBoundCount(1000))));
