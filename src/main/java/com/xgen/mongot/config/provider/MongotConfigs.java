@@ -41,8 +41,7 @@ public class MongotConfigs implements SanitizableDocumentEncodable {
       FeatureFlags featureFlags,
       EnvironmentVariantPerfConfig environmentVariantPerfConfig,
       RegularBlockingRequestSettings regularBlockingRequestSettings,
-      AutoEmbeddingMaterializedViewConfig autoEmbeddingMaterializedViewConfig
-  ) {
+      AutoEmbeddingMaterializedViewConfig autoEmbeddingMaterializedViewConfig) {
     this.luceneConfig = luceneConfig;
     this.replicationConfig = replicationConfig;
     this.initialSyncConfig = initialSyncConfig;
@@ -61,6 +60,7 @@ public class MongotConfigs implements SanitizableDocumentEncodable {
     var luceneConfig =
         LuceneConfig.create(
             dataPath,
+            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),

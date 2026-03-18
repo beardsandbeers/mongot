@@ -796,6 +796,7 @@ public class CommunityMongotBootstrapper {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
+            Optional.empty(),
             Optional.of(
                 new HysteresisConfig(
                     DISK_USAGE_PAUSE_REPLICATION_THRESHOLD,

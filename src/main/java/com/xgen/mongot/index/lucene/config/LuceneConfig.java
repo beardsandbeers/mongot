@@ -62,6 +62,8 @@ import org.slf4j.LoggerFactory;
  *     Intended to be set on shared tier clusters.
  * @param maxDocumentsPerSynonymCollection Maximum number of documents allowed in a single synonyms
  *     collection. Intended to be set on shared tier clusters.
+ * @param disableMaxClauseLimit Deprecated. Use {@link #maxClauseLimit} instead. When true,
+ *     disables the clause limit entirely (Integer.MAX_VALUE). Takes precedence over maxClauseLimit.
  * @param deletesPctAllowed The maximum percentage of deleted documents allowed in the index before
  *     triggering merges to reclaim space.
  * @param forceMergeDeletesPctAllowed Percentage threshold of deleted documents that triggers
@@ -86,7 +88,8 @@ public record LuceneConfig(
     Optional<Integer> docsLimit,
     Optional<Integer> maxSynonymMappingsPerIndex,
     Optional<Integer> maxDocumentsPerSynonymCollection,
-    boolean disableMaxClauseLimit,
+    @Deprecated boolean disableMaxClauseLimit,
+    Optional<Integer> maxClauseLimit,
     boolean enableConcurrentSearch,
     int concurrentSearchExecutorThreads,
     int concurrentSearchExecutorQueueSize,
@@ -129,6 +132,9 @@ public record LuceneConfig(
 
     private static final Field.Required<Boolean> DISABLE_MAX_CLAUSE_LIMIT =
         Field.builder("disableMaxClauseLimit").booleanField().required();
+
+    private static final Field.Optional<Integer> MAX_CLAUSE_LIMIT =
+        Field.builder("maxClauseLimit").intField().optional().noDefault();
 
     private static final Field.Required<Boolean> ENABLE_CONCURRENT_SEARCH =
         Field.builder("enableConcurrentSearch").booleanField().required();
@@ -229,6 +235,7 @@ public record LuceneConfig(
       Optional<Integer> optionalMaxSynonymMappingsPerIndex,
       Optional<Integer> optionalMaxDocumentsPerSynonymCollection,
       Optional<Boolean> disableMaxClauseLimit,
+      Optional<Integer> maxClauseLimit,
       Optional<Boolean> enableConcurrentSearch,
       Optional<Integer> concurrentSearchExecutorThreads,
       Optional<Integer> concurrentSearchExecutorQueueSize,
@@ -260,6 +267,7 @@ public record LuceneConfig(
         optionalMaxSynonymMappingsPerIndex,
         optionalMaxDocumentsPerSynonymCollection,
         disableMaxClauseLimit,
+        maxClauseLimit,
         enableConcurrentSearch,
         concurrentSearchExecutorThreads,
         concurrentSearchExecutorQueueSize,
@@ -294,6 +302,7 @@ public record LuceneConfig(
       Optional<Integer> optionalMaxSynonymMappingsPerIndex,
       Optional<Integer> optionalMaxDocumentsPerSynonymCollection,
       Optional<Boolean> optionalDisableMaxClauseLimit,
+      Optional<Integer> maxClauseLimit,
       Optional<Boolean> optionalEnableConcurrentSearch,
       Optional<Integer> optionalConcurrentSearchExecutorThreads,
       Optional<Integer> optionalConcurrentSearchExecutorQueueSize,
@@ -354,6 +363,8 @@ public record LuceneConfig(
 
     validateFloorSegmentMB(floorSegmentMB);
 
+    validateMaxClauseLimit(maxClauseLimit);
+
     boolean disableMaxClauseLimit = optionalDisableMaxClauseLimit.orElse(false);
     boolean enableConcurrentSearch = optionalEnableConcurrentSearch.orElse(false);
     int concurrentSearchExecutorThreads =
@@ -388,6 +399,7 @@ public record LuceneConfig(
         optionalMaxSynonymMappingsPerIndex,
         optionalMaxDocumentsPerSynonymCollection,
         disableMaxClauseLimit,
+        maxClauseLimit,
         enableConcurrentSearch,
         concurrentSearchExecutorThreads,
         concurrentSearchExecutorQueueSize,
@@ -416,6 +428,7 @@ public record LuceneConfig(
         .field(Fields.FIELD_LIMIT, this.fieldLimit)
         .field(Fields.DOCS_LIMIT, this.docsLimit)
         .field(Fields.DISABLE_MAX_CLAUSE_LIMIT, this.disableMaxClauseLimit)
+        .field(Fields.MAX_CLAUSE_LIMIT, this.maxClauseLimit)
         .field(Fields.ENABLE_CONCURRENT_SEARCH, this.enableConcurrentSearch)
         .field(Fields.CONCURRENT_SEARCH_EXECUTOR_THREADS, this.concurrentSearchExecutorThreads)
         .field(Fields.CONCURRENT_SEARCH_EXECUTOR_QUEUE_SIZE, this.concurrentSearchExecutorQueueSize)
@@ -642,6 +655,14 @@ public record LuceneConfig(
         value -> {
           Check.argIsPositive(value, "floorSegmentMB");
           LOG.atInfo().addKeyValue("floorSegmentMB", value).log("floorSegmentMB set");
+        });
+  }
+
+  private static void validateMaxClauseLimit(Optional<Integer> maxClauseLimit) {
+    maxClauseLimit.ifPresent(
+        limit -> {
+          Check.argIsPositive(limit, "maxClauseLimit");
+          LOG.atInfo().addKeyValue("maxClauseLimit", limit).log("maxClauseLimit set");
         });
   }
 
