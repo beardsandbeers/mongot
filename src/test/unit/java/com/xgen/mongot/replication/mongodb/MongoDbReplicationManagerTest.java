@@ -22,7 +22,6 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.errorprone.annotations.Keep;
-import com.mongodb.ConnectionString;
 import com.mongodb.client.MongoClient;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
 import com.xgen.mongot.cursor.MongotCursorManager;
@@ -46,6 +45,7 @@ import com.xgen.mongot.util.concurrent.Executors;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
 import com.xgen.mongot.util.mongodb.BatchMongoClient;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.testing.mongot.index.definition.DocumentFieldDefinitionBuilder;
 import com.xgen.testing.mongot.index.definition.SearchIndexDefinitionBuilder;
@@ -518,18 +518,18 @@ public class MongoDbReplicationManagerTest {
   }
 
   @Test
-  public void testGetClientSessionRecords() {
+  public void testGetClientSessionRecords() throws Exception {
     SyncSourceConfig syncSourceConfig1 =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://localhost1:27017"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+            Optional.empty(),
             Optional.of(
                 Map.of(
                     "localhost1",
-                    new ConnectionString("mongodb://localhost1:27017"),
+                    ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
                     "localhost2",
-                    new ConnectionString("mongodb://localhost2:27018"))),
-            Optional.empty(),
-            new ConnectionString("mongodb://localhost1:27017"));
+                    ConnectionStringUtil.toConnectionInfo("mongodb://localhost2:27018"))));
 
     var result1 =
         MongoDbReplicationManager.getClientSessionRecords(
@@ -546,15 +546,15 @@ public class MongoDbReplicationManagerTest {
 
     SyncSourceConfig syncSourceConfig2 =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://localhost1:27017"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+            Optional.empty(),
             Optional.of(
                 Map.of(
                     "localhost2",
-                    new ConnectionString("mongodb://localhost2:27017"),
+                    ConnectionStringUtil.toConnectionInfo("mongodb://localhost2:27017"),
                     "localhost3",
-                    new ConnectionString("mongodb://localhost3:27018"))),
-            Optional.empty(),
-            new ConnectionString("mongodb://localhost1:27017"));
+                    ConnectionStringUtil.toConnectionInfo("mongodb://localhost3:27018"))));
 
     var result2 =
         MongoDbReplicationManager.getClientSessionRecords(
@@ -572,44 +572,44 @@ public class MongoDbReplicationManagerTest {
   }
 
   @Test
-  public void testGetSyncSourceHost() {
+  public void testGetSyncSourceHost() throws Exception {
     // when there is a match
     Assert.assertEquals(
         "localhost1",
         MongoDbReplicationManager.getSyncSourceHost(
             new SyncSourceConfig(
-                new ConnectionString("mongodb://localhost1:27017"),
+                ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+                ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+                Optional.empty(),
                 Optional.of(
                     Map.of(
                         "localhost1",
-                        new ConnectionString("mongodb://localhost1:27017"),
+                        ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
                         "localhost2",
-                        new ConnectionString("mongodb://localhost2:27018"))),
-                Optional.empty(),
-                new ConnectionString("mongodb://localhost1:27017"))));
+                        ConnectionStringUtil.toConnectionInfo("mongodb://localhost2:27018"))))));
 
     // when connecting string mapping is empty
     Assert.assertEquals(
         "localhost1",
         MongoDbReplicationManager.getSyncSourceHost(
             new SyncSourceConfig(
-                new ConnectionString("mongodb://localhost1:27017"),
+                ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+                ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
                 Optional.empty(),
-                Optional.empty(),
-                new ConnectionString("mongodb://localhost1:27017"))));
+                Optional.empty())));
 
     // when there is no match
     SyncSourceConfig syncSourceConfig3 =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://localhost1:27017"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://localhost1:27017"),
+            Optional.empty(),
             Optional.of(
                 Map.of(
                     "localhost2",
-                    new ConnectionString("mongodb://localhost2:27017"),
+                    ConnectionStringUtil.toConnectionInfo("mongodb://localhost2:27017"),
                     "localhost3",
-                    new ConnectionString("mongodb://localhost3:27018"))),
-            Optional.empty(),
-            new ConnectionString("mongodb://localhost1:27017"));
+                    ConnectionStringUtil.toConnectionInfo("mongodb://localhost3:27018"))));
 
     Assert.assertEquals(
         "localhost1", MongoDbReplicationManager.getSyncSourceHost(syncSourceConfig3));
@@ -674,9 +674,16 @@ public class MongoDbReplicationManagerTest {
                   clientSessionRecordMap,
                   Optional.of(
                       new SyncSourceConfig(
-                          new ConnectionString("mongodb://newString"),
+                          Crash.because("invalid test uri")
+                              .ifThrows(
+                                  () ->
+                                      ConnectionStringUtil.toConnectionInfo("mongodb://newString")),
+                          Crash.because("invalid test uri")
+                              .ifThrows(
+                                  () ->
+                                      ConnectionStringUtil.toConnectionInfo("mongodb://newString")),
                           Optional.empty(),
-                          new ConnectionString("mongodb://newString"))),
+                          Optional.empty())),
                   FeatureFlags.getDefault(),
                   initialSyncQueue,
                   steadyStateManager,

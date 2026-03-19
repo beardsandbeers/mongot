@@ -21,7 +21,6 @@ import static org.mockito.Mockito.when;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.google.errorprone.annotations.Keep;
-import com.mongodb.ConnectionString;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
@@ -52,6 +51,7 @@ import com.xgen.mongot.util.concurrent.Executors;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
 import com.xgen.mongot.util.mongodb.BatchMongoClient;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.testing.TestUtils;
 import com.xgen.testing.mongot.index.version.GenerationIdBuilder;
@@ -714,9 +714,10 @@ public class MaterializedViewManagerTest {
 
       SyncSourceConfig syncSourceConfig =
           new SyncSourceConfig(
-              new ConnectionString("mongodb://newString"),
+              ConnectionStringUtil.toConnectionInfoUnchecked("mongodb://newString"),
+              ConnectionStringUtil.toConnectionInfoUnchecked("mongodb://newString"),
               Optional.empty(),
-              new ConnectionString("mongodb://newString"));
+              Optional.empty());
 
       this.managerSupplier =
           () ->

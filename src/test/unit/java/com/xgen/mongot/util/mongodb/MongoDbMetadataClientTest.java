@@ -1,6 +1,5 @@
 package com.xgen.mongot.util.mongodb;
 
-import com.mongodb.ConnectionString;
 import com.mongodb.client.internal.MongoClientImpl;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -15,12 +14,15 @@ import org.junit.Test;
 public class MongoDbMetadataClientTest {
 
   @Test
-  public void testMongodUriUsedWhenMongosUriIsNotPresent() {
+  public void testMongodUriUsedWhenMongosUriIsNotPresent() throws Exception {
     var syncSource =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
+            ConnectionStringUtil.toConnectionInfo(
+                "mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
+            ConnectionStringUtil.toConnectionInfo(
+                "mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
             Optional.empty(),
-            new ConnectionString("mongodb://user:pass@atlas-mongod:27017/")); // kingfisher:ignore
+            Optional.empty());
     try (var client =
         MongoClientBuilder.buildNonReplicationPreferringMongos(
             syncSource, this.getClass().getSimpleName(), new SimpleMeterRegistry())) {
@@ -31,14 +33,17 @@ public class MongoDbMetadataClientTest {
   }
 
   @Test
-  public void testMongosUriUsedWhenPresent() {
+  public void testMongosUriUsedWhenPresent() throws Exception {
     var syncSource =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
+            ConnectionStringUtil.toConnectionInfo(
+                "mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
+            ConnectionStringUtil.toConnectionInfo(
+                "mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
             Optional.of(
-                new ConnectionString(
+                ConnectionStringUtil.toConnectionInfo(
                     "mongodb://user:pass@atlas-mongos:27017/")), // kingfisher:ignore
-            new ConnectionString("mongodb://user:pass@atlas-mongod:27017/")); // kingfisher:ignore
+            Optional.empty());
     try (var client =
         MongoClientBuilder.buildNonReplicationPreferringMongos(
             syncSource, this.getClass().getSimpleName(), new SimpleMeterRegistry())) {
@@ -49,12 +54,15 @@ public class MongoDbMetadataClientTest {
   }
 
   @Test
-  public void testDefaultSocketTimeout() {
+  public void testDefaultSocketTimeout() throws Exception {
     var syncSource =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
+            ConnectionStringUtil.toConnectionInfo(
+                "mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
+            ConnectionStringUtil.toConnectionInfo(
+                "mongodb://user:pass@atlas-mongod:27017/"), // kingfisher:ignore
             Optional.empty(),
-            new ConnectionString("mongodb://user:pass@atlas-mongod:27017/")); // kingfisher:ignore
+            Optional.empty());
     try (var client =
         MongoClientBuilder.buildNonReplicationPreferringMongos(
             syncSource, this.getClass().getSimpleName(), new SimpleMeterRegistry())) {
@@ -68,16 +76,17 @@ public class MongoDbMetadataClientTest {
   }
 
   @Test
-  public void testSocketTimeoutIsNotOverriddenWhenSpecifiedInConnectionString() {
+  public void testSocketTimeoutIsNotOverriddenWhenSpecifiedInConnectionString() throws Exception {
     var syncSource =
         new SyncSourceConfig(
-            new ConnectionString(
+            ConnectionStringUtil.toConnectionInfo(
+                // kingfisher:ignore
+                "mongodb://user:pass@atlas-mongod:27017/?socketTimeoutMS=30000"),
+            ConnectionStringUtil.toConnectionInfo(
                 // kingfisher:ignore
                 "mongodb://user:pass@atlas-mongod:27017/?socketTimeoutMS=30000"),
             Optional.empty(),
-            new ConnectionString(
-                // kingfisher:ignore
-                "mongodb://user:pass@atlas-mongod:27017/?socketTimeoutMS=30000"));
+            Optional.empty());
     try (var client =
         MongoClientBuilder.buildNonReplicationPreferringMongos(
             syncSource, this.getClass().getSimpleName(), new SimpleMeterRegistry())) {

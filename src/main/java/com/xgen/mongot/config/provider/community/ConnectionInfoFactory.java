@@ -1,6 +1,8 @@
 package com.xgen.mongot.config.provider.community;
 
+import com.google.common.net.HostAndPort;
 import com.mongodb.ConnectionString;
+import com.mongodb.ReadConcernLevel;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.Crash;
 import com.xgen.mongot.util.SecretsParser;
@@ -9,23 +11,53 @@ import com.xgen.mongot.util.mongodb.ConnectionStringBuilder;
 import com.xgen.mongot.util.mongodb.SslContextFactory;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.net.ssl.SSLContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ConnectionInfoFactory {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ConnectionInfoFactory.class);
+
   public static ConnectionInfo getConnectionInfo(
-      MongoConnectionConfig config, Optional<Path> caFile) {
-    return new ConnectionInfo(getConnectionString(config), getSslContext(config, caFile));
+      MongoConnectionConfig config, Optional<Path> caFile, boolean directConnect) {
+    return new ConnectionInfo(
+        directConnect ? getSingleHostConnectionString(config) : getClusterConnectionString(config),
+        getSslContext(config, caFile));
   }
 
-  private static ConnectionString getConnectionString(MongoConnectionConfig config) {
+  private static ConnectionString getSingleHostConnectionString(MongoConnectionConfig config) {
+    HostAndPort hostAndPort =
+        config
+            .hostandPorts()
+            .get(ThreadLocalRandom.current().nextInt(config.hostandPorts().size()));
+
+    LOG.atInfo()
+        .addKeyValue("hostAndPort", hostAndPort)
+        .log("Selected host and port for sync source config");
+
+    ConnectionStringBuilder connectionStringBuilder =
+        ConnectionStringBuilder.standard()
+            .withHostAndPort(hostAndPort)
+            .withOption("directConnection", "true");
+    return getConnectionString(config, connectionStringBuilder);
+  }
+
+  private static ConnectionString getClusterConnectionString(MongoConnectionConfig config) {
     ConnectionStringBuilder connectionStringBuilder =
         ConnectionStringBuilder.standard()
             .withHostAndPorts(config.hostandPorts())
-            .withOption("tls", Boolean.toString(config.tls()))
             .withOption("readPreference", config.readPreference().asReadPreference().getName())
-            // Per spec, this should be false by default, however, it is not: JAVA-4257
             .withOption("directConnection", "false");
+    return getConnectionString(config, connectionStringBuilder);
+  }
+
+  private static ConnectionString getConnectionString(
+      MongoConnectionConfig config, ConnectionStringBuilder connectionStringBuilder) {
+    connectionStringBuilder
+        .withOption("readConcernLevel", ReadConcernLevel.MAJORITY.getValue())
+        .withOption("tls", Boolean.toString(config.tls()));
 
     if (config.x509().isPresent()) {
       connectionStringBuilder.withX509Config();

@@ -48,6 +48,5 @@ java_library(
         "@maven//:junit_junit",
         "@maven//:org_mockito_mockito_core",
         "@maven//:org_mongodb_bson",
-        "@maven//:org_mongodb_mongodb_driver_core",
     ],
 )

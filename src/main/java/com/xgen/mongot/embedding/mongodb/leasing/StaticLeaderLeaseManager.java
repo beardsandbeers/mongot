@@ -522,10 +522,10 @@ public class StaticLeaderLeaseManager implements LeaseManager {
 
   private static MongoClient getMongoClient(
       SyncSourceConfig syncSourceConfig, MeterAndFtdcRegistry meterAndFtdcRegistry) {
-    // Use mongosUri if available, otherwise fall back to mongodUri. This allows the MongoDB driver
-    // to automatically discover replica set topology and route writes to the primary, avoiding
-    // NotWritablePrimary errors after failovers.
-    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
+    // Use mongosUri if available, otherwise fall back to mongodClusterReadWriteUri. This allows the
+    // MongoDB driver to automatically discover replica set topology and route writes to the
+    // primary, avoiding NotWritablePrimary errors after failovers.
+    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
     return MongoClientBuilder.buildNonReplicationWithDefaults(
         syncSource.uri(),
         "Lease Manager mongo client",

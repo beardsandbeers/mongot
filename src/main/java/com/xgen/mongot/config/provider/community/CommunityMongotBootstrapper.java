@@ -306,14 +306,26 @@ public class CommunityMongotBootstrapper {
       com.xgen.mongot.config.provider.community.SyncSourceConfig communitySyncSourceConfig) {
 
     var caFile = communitySyncSourceConfig.caFile();
-    var replicaSetSyncSource =
-        ConnectionInfoFactory.getConnectionInfo(communitySyncSourceConfig.replicaSet(), caFile);
-    var routerSyncSource =
+    var mongodHostConnectionInfo =
+        ConnectionInfoFactory.getConnectionInfo(
+            communitySyncSourceConfig.replicaSet(), caFile, true /* directConnect */);
+    var mongodClusterConnectionInfo =
+        ConnectionInfoFactory.getConnectionInfo(
+            communitySyncSourceConfig.replicaSet(), caFile, false /* directConnect */);
+    var mongosConnectionInfo =
         communitySyncSourceConfig
             .router()
-            .map(router -> ConnectionInfoFactory.getConnectionInfo(router, caFile));
+            .map(
+                router ->
+                    ConnectionInfoFactory.getConnectionInfo(
+                        router, caFile, false /* directConnect */));
 
-    return new SyncSourceConfig(replicaSetSyncSource, routerSyncSource, replicaSetSyncSource);
+    return new SyncSourceConfig(
+        mongodHostConnectionInfo,
+        mongodClusterConnectionInfo,
+        mongodClusterConnectionInfo, // mongodClusterConnectionInfo has directConnection=false
+        mongosConnectionInfo,
+        Optional.empty());
   }
 
   private static Optional<PrometheusServer> maybeStartPrometheusServer(

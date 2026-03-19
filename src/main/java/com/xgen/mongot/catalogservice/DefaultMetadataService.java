@@ -51,7 +51,7 @@ public class DefaultMetadataService implements MetadataService {
       SyncSourceConfig syncSourceConfig, MeterRegistry meterRegistry) {
 
     MongoClient client =
-        MongoClientBuilder.buildNonReplicationPreferringMongos(
+        MongoClientBuilder.buildClusterReadWriteClient(
             syncSourceConfig, MONGO_CLIENT_DESCRIPTION, meterRegistry);
 
     return new DefaultMetadataService(

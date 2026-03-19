@@ -26,6 +26,5 @@ java_test_suite(
         "@maven//:io_micrometer_micrometer_core",
         "@maven//:junit_junit",
         "@maven//:org_mockito_mockito_core",
-        "@maven//:org_mongodb_mongodb_driver_core",
     ],
 )

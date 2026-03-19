@@ -254,11 +254,11 @@ public class MaterializedViewCollectionResolver {
 
   private static MongoClient createMongoClient(
       SyncSourceConfig syncSourceConfig, MeterRegistry meterRegistry) {
-    // Use mongosUri if available, otherwise fall back to mongodUri. This allows the MongoDB
-    // driver
-    // to automatically discover replica set topology and route writes to the primary, avoiding
-    // NotWritablePrimary errors after failovers.
-    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
+    // Use mongosUri if available (sharded), otherwise mongodClusterReadWriteUri. Do not use
+    // mongodUri: in community it is a direct single-host connection and may land on a secondary,
+    // causing NotWritablePrimary on createCollection/listCollections metadata paths.
+    var syncSource =
+        syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
     return MongoClientBuilder.buildNonReplicationWithDefaults(
         syncSource.uri(),
         "AutoEmbedding Materialized View Collection Resolver",

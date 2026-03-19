@@ -1,6 +1,5 @@
 package com.xgen.mongot.config.manager;
 
-import com.mongodb.ConnectionString;
 import com.xgen.mongot.config.backup.ConfigJournalV1;
 import com.xgen.mongot.config.util.Invariants;
 import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
@@ -11,6 +10,7 @@ import com.xgen.mongot.index.version.UserIndexVersion;
 import com.xgen.mongot.metrics.ServerStatusDataExtractor;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.functionalinterfaces.CheckedBiFunction;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.testing.mongot.config.backup.ConfigJournalV1Builder;
 import com.xgen.testing.mongot.config.manager.ConfigStateMocks;
@@ -56,9 +56,10 @@ public class ConfigStateTest {
     var mocks = ConfigStateMocks.create();
     SyncSourceConfig newSyncSourceConfig =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://newString"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://newString"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://newString"),
             Optional.empty(),
-            new ConnectionString("mongodb://newString"));
+            Optional.empty());
     mocks.configState.updateSyncSource(newSyncSourceConfig);
     Assert.assertTrue(
         mocks
@@ -96,9 +97,10 @@ public class ConfigStateTest {
     // only mongosUri changes
     SyncSourceConfig syncSourceConfigWithMongos =
         new SyncSourceConfig(
-            new ConnectionString(ConfigStateMocks.DEFAULT_MDB_URI),
-            Optional.of(new ConnectionString("mongodb://mongos")),
-            new ConnectionString(ConfigStateMocks.DEFAULT_MDB_URI));
+            ConnectionStringUtil.toConnectionInfo(ConfigStateMocks.DEFAULT_MDB_URI),
+            ConnectionStringUtil.toConnectionInfo(ConfigStateMocks.DEFAULT_MDB_URI),
+            Optional.of(ConnectionStringUtil.toConnectionInfo("mongodb://mongos")),
+            Optional.empty());
     mocks.configState.updateSyncSource(syncSourceConfigWithMongos);
     Assert.assertTrue(
         mocks
@@ -123,9 +125,10 @@ public class ConfigStateTest {
     // only mongoDbClusterUri changes
     SyncSourceConfig syncSourceConfigWithCulsterSeed =
         new SyncSourceConfig(
-            new ConnectionString(ConfigStateMocks.DEFAULT_MDB_URI),
+            ConnectionStringUtil.toConnectionInfo(ConfigStateMocks.DEFAULT_MDB_URI),
+            ConnectionStringUtil.toConnectionInfo("mongodb://cluster-seed"),
             Optional.empty(),
-            new ConnectionString("mongodb://cluster-seed"));
+            Optional.empty());
     mocks.configState.updateSyncSource(syncSourceConfigWithCulsterSeed);
     Assert.assertTrue(
         mocks

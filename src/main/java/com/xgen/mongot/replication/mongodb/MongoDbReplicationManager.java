@@ -606,8 +606,8 @@ public class MongoDbReplicationManager implements ReplicationManager {
       String metricsNamespacePrefix,
       MeterRegistry meterRegistry) {
     return MongoClientBuilder.builder(
-            syncSourceConfig.mongodClusterUri.uri(), metricsNamespacePrefix, meterRegistry)
-        .sslContext(syncSourceConfig.mongodClusterUri.sslContext())
+            syncSourceConfig.mongodClusterReaderUri.uri(), metricsNamespacePrefix, meterRegistry)
+        .sslContext(syncSourceConfig.mongodClusterReaderUri.sslContext())
         .description("steady state sync")
         .maxConnections(numConcurrentChangeStreams)
         .buildSyncBatchClient();

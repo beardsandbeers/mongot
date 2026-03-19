@@ -1,7 +1,6 @@
 package com.xgen.mongot.embedding.mongodb.leasing;
 
 import static com.xgen.mongot.embedding.mongodb.leasing.StatusResolutionUtils.getEffectiveMaterializedViewStatus;
-import static com.xgen.mongot.embedding.utils.EmbeddingConnectionStringUtils.disableDirectConnection;
 import static com.xgen.mongot.util.FutureUtils.COMPLETED_FUTURE;
 import static com.xgen.mongot.util.Uuids.NIL;
 import static com.xgen.mongot.util.mongodb.MongoDbDatabase.getCollectionInfo;
@@ -1177,27 +1176,19 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
 
   private static MongoClient getMongoClient(
       SyncSourceConfig syncSourceConfig, MeterAndFtdcRegistry meterAndFtdcRegistry) {
-    // Use mongosUri if available (for sharded clusters), otherwise use mongodClusterUri (for
-    // replica sets). We use mongodClusterUri instead of mongodUri because mongodUri is a direct
-    // connection to a specific node (often a secondary), while mongodClusterUri contains all
-    // replica set members and allows the driver to route to the primary. This is required for
-    // LINEARIZABLE read concern and write operations.
-    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterUri);
-
-    // Replace directConnection=true with directConnection=false to enable topology discovery.
-    // MMS provides connection strings with directConnection=true which forces the driver to
-    // connect only to the specified host. For lease operations, we need to route to the primary,
-    // so we must enable topology discovery by setting directConnection=false.
-    // TODO(CLOUDP-360542): have mms return connection strings with directConnection=false.
-    var connectionString = disableDirectConnection(syncSource.uri());
-
+    // Use mongosUri if available (for sharded clusters), otherwise use mongodClusterReadWriteUri
+    // (for replica sets). We use mongodClusterReadWriteUri instead of mongodUri because mongodUri
+    // is a direct connection to a specific node (often a secondary), while mongodClusterUri
+    // contains all replica set members and allows the driver to route to the primary. This is
+    // required for LINEARIZABLE read concern and write operations.
+    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
     LOG.atInfo()
-        .addKeyValue("hosts", connectionString.getHosts())
-        .addKeyValue("directConnection", connectionString.isDirectConnection())
-        .addKeyValue("replicaSet", connectionString.getRequiredReplicaSetName())
+        .addKeyValue("hosts", syncSource.uri().getHosts())
+        .addKeyValue("directConnection", syncSource.uri().isDirectConnection())
+        .addKeyValue("replicaSet", syncSource.uri().getRequiredReplicaSetName())
         .log("Creating MongoClient for DynamicLeaderLeaseManager");
     return MongoClientBuilder.buildNonReplicationWithDefaults(
-        connectionString,
+        syncSource.uri(),
         "Dynamic Lease Manager mongo client",
         MONGO_CLIENT_MAX_CONNECTIONS,
         syncSource.sslContext(),

@@ -5,7 +5,6 @@ import static org.mockito.Mockito.spy;
 
 import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.RateLimiter;
-import com.mongodb.ConnectionString;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
 import com.xgen.mongot.config.manager.DefaultConfigManager;
@@ -26,6 +25,7 @@ import com.xgen.mongot.replication.mongodb.common.AutoEmbeddingMaterializedViewC
 import com.xgen.mongot.replication.mongodb.common.CommonReplicationConfig;
 import com.xgen.mongot.replication.mongodb.common.MongoDbReplicationConfig;
 import com.xgen.mongot.replication.mongodb.initialsync.config.InitialSyncConfig;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Field;
@@ -67,9 +67,12 @@ public class CommonUtilsTest {
       this.meterRegistry = spy(new SimpleMeterRegistry());
       this.syncSourceConfig =
           new SyncSourceConfig(
-              new ConnectionString("mongodb://random/?serverselectiontimeoutms=100"),
+              ConnectionStringUtil.toConnectionInfoUnchecked(
+                  "mongodb://random/?serverselectiontimeoutms=100"),
+              ConnectionStringUtil.toConnectionInfoUnchecked(
+                  "mongodb://random/?serverselectiontimeoutms=100"),
               Optional.empty(),
-              new ConnectionString("mongodb://random/?serverselectiontimeoutms=100"));
+              Optional.empty());
       this.embeddingServiceManagerSupplier = Optional.empty();
       this.leaseManager = mock(LeaseManager.class);
       this.mvMetadataCatalog = mock(MaterializedViewCollectionMetadataCatalog.class);
@@ -246,13 +249,10 @@ public class CommonUtilsTest {
     Field writerFactoryField =
         MaterializedViewIndexFactory.class.getDeclaredField("materializedViewWriterFactory");
     writerFactoryField.setAccessible(true);
-    var writerFactory =
-        (MaterializedViewWriter.Factory) writerFactoryField.get(factory);
-    Field rateLimiterField =
-        MaterializedViewWriter.Factory.class.getDeclaredField("rateLimiter");
+    var writerFactory = (MaterializedViewWriter.Factory) writerFactoryField.get(factory);
+    Field rateLimiterField = MaterializedViewWriter.Factory.class.getDeclaredField("rateLimiter");
     rateLimiterField.setAccessible(true);
-    Optional<RateLimiter> rateLimiter =
-        (Optional<RateLimiter>) rateLimiterField.get(writerFactory);
+    Optional<RateLimiter> rateLimiter = (Optional<RateLimiter>) rateLimiterField.get(writerFactory);
     Assert.assertTrue(
         "Factory should have a rate limiter when configured", rateLimiter.isPresent());
 
@@ -269,8 +269,7 @@ public class CommonUtilsTest {
             collectionResolver,
             configWithoutRateLimit);
 
-    var writerFactory2 =
-        (MaterializedViewWriter.Factory) writerFactoryField.get(factoryNoLimit);
+    var writerFactory2 = (MaterializedViewWriter.Factory) writerFactoryField.get(factoryNoLimit);
     Optional<RateLimiter> rateLimiter2 =
         (Optional<RateLimiter>) rateLimiterField.get(writerFactory2);
     Assert.assertFalse(

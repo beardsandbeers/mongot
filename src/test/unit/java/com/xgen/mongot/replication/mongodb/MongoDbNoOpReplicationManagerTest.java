@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.errorprone.annotations.Var;
-import com.mongodb.ConnectionString;
 import com.mongodb.MongoNamespace;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
@@ -35,6 +34,7 @@ import com.xgen.mongot.replication.mongodb.common.IndexCommitUserData;
 import com.xgen.mongot.replication.mongodb.common.IndexStateInfo;
 import com.xgen.mongot.replication.mongodb.common.StaleStateInfo;
 import com.xgen.mongot.util.Condition;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
@@ -179,9 +179,10 @@ public class MongoDbNoOpReplicationManagerTest {
           MongoDbNoOpReplicationManager.create(
               Optional.of(
                   new SyncSourceConfig(
-                      new ConnectionString("mongodb://newString"),
+                      ConnectionStringUtil.toConnectionInfoUnchecked("mongodb://newString"),
+                      ConnectionStringUtil.toConnectionInfoUnchecked("mongodb://newString"),
                       Optional.empty(),
-                      new ConnectionString("mongodb://newString"))),
+                      Optional.empty())),
               cursorManager,
               mock(IndexCatalog.class),
               initializedIndexCatalog,

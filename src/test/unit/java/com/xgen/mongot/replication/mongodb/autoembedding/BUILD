@@ -36,7 +36,6 @@ java_test_suite(
         "@maven//:junit_junit",
         "@maven//:org_mockito_mockito_core",
         "@maven//:org_mongodb_bson",
-        "@maven//:org_mongodb_mongodb_driver_core",
         "@maven//:org_mongodb_mongodb_driver_sync",
         "@maven//:org_slf4j_slf4j_api",
     ],

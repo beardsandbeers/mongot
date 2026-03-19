@@ -109,7 +109,7 @@ public class ConnectionStringBuilder {
             .collect(Collectors.joining("&"));
     String optionsPrefix = options.isEmpty() ? "" : "?";
 
-    return ConnectionStringUtil.fromString(
+    return ConnectionStringUtil.toConnectionString(
         String.format(
             "%s://%s%s/%s%s%s",
             scheme,

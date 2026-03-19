@@ -21,7 +21,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.errorprone.annotations.Var;
-import com.mongodb.ConnectionString;
 import com.xgen.mongot.blobstore.BlobstoreException;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
 import com.xgen.mongot.index.IndexGeneration;
@@ -38,6 +37,8 @@ import com.xgen.mongot.replication.mongodb.MongoDbNoOpReplicationManager;
 import com.xgen.mongot.replication.mongodb.MongoDbReplicationManager;
 import com.xgen.mongot.util.concurrent.Executors;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
+import com.xgen.mongot.util.mongodb.ConnectionInfo;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.testing.mongot.index.definition.DocumentFieldDefinitionBuilder;
 import com.xgen.testing.mongot.index.definition.SearchIndexDefinitionBuilder;
@@ -57,11 +58,12 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class DefaultLifecycleManagerTest {
-  public static final SyncSourceConfig MOCK_SYNC_SOURCE_CONFIG =
-      new SyncSourceConfig(
-          new ConnectionString("mongodb://localhost"),
-          Optional.empty(),
-          new ConnectionString("mongodb://localhost"));
+  public static final SyncSourceConfig MOCK_SYNC_SOURCE_CONFIG = createMockSyncSourceConfig();
+
+  private static SyncSourceConfig createMockSyncSourceConfig() {
+    ConnectionInfo c = ConnectionStringUtil.toConnectionInfoUnchecked("mongodb://localhost");
+    return new SyncSourceConfig(c, c, Optional.empty(), Optional.empty());
+  }
 
   private static class Mocks {
     public final ReplicationManagerFactory replicationManagerFactory;

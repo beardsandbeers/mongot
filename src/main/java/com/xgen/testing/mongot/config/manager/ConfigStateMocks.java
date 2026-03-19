@@ -15,7 +15,6 @@ import static org.mockito.Mockito.when;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.Sets;
-import com.mongodb.ConnectionString;
 import com.xgen.mongot.catalog.DefaultIndexCatalog;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
@@ -56,6 +55,8 @@ import com.xgen.mongot.replication.ReplicationManager;
 import com.xgen.mongot.replication.ReplicationManagerFactory;
 import com.xgen.mongot.util.Condition;
 import com.xgen.mongot.util.concurrent.Executors;
+import com.xgen.mongot.util.mongodb.ConnectionInfo;
+import com.xgen.mongot.util.mongodb.ConnectionStringUtil;
 import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.testing.TestUtils;
 import com.xgen.testing.mongot.embedding.providers.FakeEmbeddingClientFactory;
@@ -80,11 +81,12 @@ import org.mockito.Mockito;
 public class ConfigStateMocks {
   public static final String DEFAULT_MDB_URI = "mongodb://localhost";
 
-  public static final SyncSourceConfig MOCK_SYNC_SOURCE_CONFIG =
-      new SyncSourceConfig(
-          new ConnectionString(DEFAULT_MDB_URI),
-          Optional.empty(),
-          new ConnectionString(DEFAULT_MDB_URI));
+  public static final SyncSourceConfig MOCK_SYNC_SOURCE_CONFIG = createMockSyncSourceConfig();
+
+  private static SyncSourceConfig createMockSyncSourceConfig() {
+    ConnectionInfo mongod = ConnectionStringUtil.toConnectionInfoUnchecked(DEFAULT_MDB_URI);
+    return new SyncSourceConfig(mongod, mongod, mongod, Optional.empty(), Optional.empty());
+  }
 
   public static final LifecycleConfig DEFAULT_LIFECYCLE_CONFIG = LifecycleConfig.getDefault();
 

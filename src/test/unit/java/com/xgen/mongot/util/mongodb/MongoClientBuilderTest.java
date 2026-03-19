@@ -250,12 +250,13 @@ public class MongoClientBuilderTest {
   }
 
   @Test
-  public void testBuildNonReplicationPreferringMongos() {
+  public void testBuildNonReplicationPreferringMongos() throws Exception {
     var syncSource =
         new SyncSourceConfig(
-            new ConnectionString("mongodb://mongod:11111"),
-            Optional.of(new ConnectionString("mongodb://mongos:11111")),
-            new ConnectionString("mongodb://mongod:11111"));
+            ConnectionStringUtil.toConnectionInfo("mongodb://mongod:11111"),
+            ConnectionStringUtil.toConnectionInfo("mongodb://mongod:11111"),
+            Optional.of(ConnectionStringUtil.toConnectionInfo("mongodb://mongos:11111")),
+            Optional.empty());
     String applicationName = "testApp";
     MongoClient client =
         MongoClientBuilder.buildNonReplicationPreferringMongos(

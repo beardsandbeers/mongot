@@ -75,7 +75,27 @@ public class MongoClientBuilder {
     return new MongoClientBuilder(connectionString, metricsNamespacePrefix, meterRegistry);
   }
 
-  /** Convenience method to create a non-replication MongoClient that prefers mongos. */
+  /**
+   * Builds a non-replication {@link MongoClient} for read/write against the sync source as a whole
+   * cluster: uses {@link SyncSourceConfig#mongosUri} when present (sharded deployments), otherwise
+   * {@link SyncSourceConfig#mongodClusterReadWriteUri} so the driver can discover the primary via
+   * replica-set discovery. Prefer this over {@link #buildNonReplicationPreferringMongos} when
+   * operations must reach the correct primary or mongos rather than a single direct {@code mongod}
+   * host.
+   */
+  public static MongoClient buildClusterReadWriteClient(
+      SyncSourceConfig syncSourceConfig, String applicationName, MeterRegistry meterRegistry) {
+    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
+    return buildNonReplicationWithDefaults(syncSource, applicationName, meterRegistry);
+  }
+
+  /**
+   * Builds a non-replication {@link MongoClient} using {@link SyncSourceConfig#mongosUri} when set,
+   * otherwise {@link SyncSourceConfig#mongodUri}. Use this when traffic should go through mongos if
+   * available (e.g. metadata or read paths), while still working when only a direct mongod URI is
+   * configured. Not suitable for writes that must hit the full cluster; for that use {@link
+   * #buildClusterReadWriteClient}.
+   */
   public static MongoClient buildNonReplicationPreferringMongos(
       SyncSourceConfig syncSourceConfig, String applicationName, MeterRegistry meterRegistry) {
     var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodUri);
@@ -211,7 +231,7 @@ public class MongoClientBuilder {
     if (Boolean.TRUE.equals(this.connectionString.getSslEnabled())) {
       attemptOpenSslDynamicLinking(settings);
     }
-    
+
     if (this.sslContext.isPresent()) {
       settings.applyToSslSettings(
           builder -> {
