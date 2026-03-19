@@ -16,6 +16,8 @@ import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
+import com.xgen.mongot.cursor.CursorConfig;
+import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.EmbeddingRequestContext;
 import com.xgen.mongot.embedding.VectorOrError;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
@@ -213,7 +215,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -666,7 +670,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -705,7 +711,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -744,7 +752,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -783,7 +793,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -909,7 +921,6 @@ public class VectorSearchCommandAutoEmbedTest {
     when(matViewIndex.getSchemaMetadata()).thenReturn(schemaMetadata);
     when(matViewIndex.getReader()).thenReturn(mocks.reader);
     when(matViewIndex.getDefinition()).thenReturn(vectorDef);
-    when(matViewIndex.asVectorIndex()).thenCallRealMethod();
 
     // MaterializedViewIndexGeneration - wraps the initialized index
     var matViewIndexGeneration = Mockito.mock(MaterializedViewIndexGeneration.class);
@@ -959,7 +970,9 @@ public class VectorSearchCommandAutoEmbedTest {
         mocks.initializedIndexCatalog,
         BOOTSTRAPPER_METADATA,
         embeddingServiceManagerSupplier,
-        new VectorSearchCommand.Metrics(mockMetricsFactory()));
+        new VectorSearchCommand.Metrics(mockMetricsFactory()),
+        mocks.cursorManager,
+        CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
   }
 
   private static VectorSearchCommand
@@ -987,7 +1000,9 @@ public class VectorSearchCommandAutoEmbedTest {
         mocks.initializedIndexCatalog,
         BOOTSTRAPPER_METADATA,
         MOCK_EMBEDDING_SERVICE,
-        new VectorSearchCommand.Metrics(mockMetricsFactory()));
+        new VectorSearchCommand.Metrics(mockMetricsFactory()),
+        mocks.cursorManager,
+        CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
   }
 
   private static Supplier<EmbeddingServiceManager> mockEmbeddingServiceManager(
@@ -1052,6 +1067,7 @@ public class VectorSearchCommandAutoEmbedTest {
     final IndexMetricsUpdater metricsUpdater;
     final LuceneVectorIndexReader reader;
     final BsonArray bsonResults;
+    final MongotCursorManager cursorManager;
 
     public Mocks()
         throws ReaderClosedException,
@@ -1107,6 +1123,8 @@ public class VectorSearchCommandAutoEmbedTest {
               .indexMetricsSupplier(Mockito.mock(IndexMetricValuesSupplier.class))
               .build();
       when(initializedIndex.getMetricsUpdater()).thenReturn(this.metricsUpdater);
+
+      this.cursorManager = mock(MongotCursorManager.class);
     }
   }
 
@@ -1168,7 +1186,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory));
+            new VectorSearchCommand.Metrics(mockMetricsFactory),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result =
         CompletableFuture.supplyAsync(() -> command.run(), Executors.newSingleThreadExecutor());
@@ -1230,7 +1250,9 @@ public class VectorSearchCommandAutoEmbedTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory));
+            new VectorSearchCommand.Metrics(mockMetricsFactory),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result =
         CompletableFuture.supplyAsync(() -> command.run(), Executors.newSingleThreadExecutor());

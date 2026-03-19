@@ -14,6 +14,8 @@ import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
+import com.xgen.mongot.cursor.CursorConfig;
+import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
@@ -276,7 +278,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -320,7 +324,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -365,8 +371,7 @@ public class VectorSearchCommandIndexSizeMetricsTest {
                     .queryVector(QUERY_VECTOR)
                     .path(nestedPath)
                     .filter(filter)
-                    .embeddedOptions(
-                        new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.MAX))
+                    .embeddedOptions(new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.MAX))
                     .build())
             .build();
 
@@ -382,7 +387,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -438,8 +445,7 @@ public class VectorSearchCommandIndexSizeMetricsTest {
                     .queryVector(QUERY_VECTOR)
                     .path(nestedPath)
                     .parentFilter(parentFilter)
-                    .embeddedOptions(
-                        new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.AVG))
+                    .embeddedOptions(new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.AVG))
                     .build())
             .build();
 
@@ -455,7 +461,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -507,8 +515,7 @@ public class VectorSearchCommandIndexSizeMetricsTest {
                     .path(nestedPath)
                     .filter(filter)
                     .parentFilter(parentFilter)
-                    .embeddedOptions(
-                        new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.MAX))
+                    .embeddedOptions(new VectorEmbeddedOptions(VectorEmbeddedOptions.ScoreMode.MAX))
                     .build())
             .build();
 
@@ -524,7 +531,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -587,7 +596,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -653,7 +664,9 @@ public class VectorSearchCommandIndexSizeMetricsTest {
             mocks.initializedIndexCatalog,
             metadata,
             MOCK_EMBEDDING_SERVICE,
-            metrics);
+            metrics,
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.run();
 
@@ -718,13 +731,14 @@ public class VectorSearchCommandIndexSizeMetricsTest {
         mocks.initializedIndexCatalog,
         metadata,
         MOCK_EMBEDDING_SERVICE,
-        metrics);
+        metrics,
+        mocks.cursorManager,
+        CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
   }
 
   private static VectorSearchFilter createMockClauseFilter() throws BsonParseException {
     BsonDocument filterDoc = BsonDocument.parse("{\"status\": \"active\"}");
-    try (var parser =
-        BsonDocumentParser.fromRoot(filterDoc).allowUnknownFields(true).build()) {
+    try (var parser = BsonDocumentParser.fromRoot(filterDoc).allowUnknownFields(true).build()) {
       Clause clause = Clause.fromBson(parser.getContext(), filterDoc);
       return new VectorSearchFilter.ClauseFilter(clause);
     }
@@ -744,6 +758,7 @@ public class VectorSearchCommandIndexSizeMetricsTest {
     final LuceneVectorIndexReader reader;
     final BsonArray bsonResults;
     final SimpleMeterRegistry meterRegistry;
+    final MongotCursorManager cursorManager;
 
     public Mocks()
         throws ReaderClosedException,
@@ -759,9 +774,7 @@ public class VectorSearchCommandIndexSizeMetricsTest {
               VectorIndexDefinitionBuilder.builder()
                   .withDotProductVectorField(PATH.toString(), 3)
                   .build());
-      lenient()
-          .when(this.initializedIndex.getGenerationId())
-          .thenReturn(MOCK_INDEX_GENERATION_ID);
+      lenient().when(this.initializedIndex.getGenerationId()).thenReturn(MOCK_INDEX_GENERATION_ID);
       lenient().when(index.isCompatibleWith(any(VectorIndexDefinition.class))).thenReturn(true);
       lenient().when(index.asVectorIndex()).thenCallRealMethod();
       lenient().when(this.initializedIndex.asVectorIndex()).thenCallRealMethod();
@@ -804,6 +817,8 @@ public class VectorSearchCommandIndexSizeMetricsTest {
           .thenReturn(1024L * 1024L * 100L); // 100 MB
 
       this.meterRegistry = new SimpleMeterRegistry();
+
+      this.cursorManager = mock(MongotCursorManager.class);
     }
   }
 
@@ -811,4 +826,3 @@ public class VectorSearchCommandIndexSizeMetricsTest {
     return new MetricsFactory("testNamespace", new SimpleMeterRegistry());
   }
 }
-

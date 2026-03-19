@@ -1,6 +1,7 @@
 package com.xgen.testing.mongot.server.command.search.definition.request;
 
 import com.xgen.mongot.index.query.VectorSearchQuery;
+import com.xgen.mongot.server.command.search.definition.request.CursorOptionsDefinition;
 import com.xgen.mongot.server.command.search.definition.request.ExplainDefinition;
 import com.xgen.mongot.server.command.search.definition.request.VectorSearchCommandDefinition;
 import com.xgen.mongot.util.Check;
@@ -17,6 +18,7 @@ public class VectorSearchCommandDefinitionBuilder {
   private Optional<Long> deadlineTimestampMs = Optional.empty();
   private Optional<VectorSearchCommandDefinition.VectorSearchQueryOrUserError> vectorSearchQuery =
       Optional.empty();
+  private Optional<CursorOptionsDefinition> cursorOptions = Optional.empty();
 
   public static VectorSearchCommandDefinitionBuilder builder() {
     return new VectorSearchCommandDefinitionBuilder();
@@ -66,6 +68,11 @@ public class VectorSearchCommandDefinitionBuilder {
     return this;
   }
 
+  public VectorSearchCommandDefinitionBuilder cursorOptions(CursorOptionsDefinition cursorOptions) {
+    this.cursorOptions = Optional.of(cursorOptions);
+    return this;
+  }
+
   /** Builds the VectorSearchCommandDefinition. */
   public VectorSearchCommandDefinition build() {
     Check.isPresent(this.db, "db");
@@ -79,6 +86,7 @@ public class VectorSearchCommandDefinitionBuilder {
         this.collectionUuid.get(),
         this.viewName,
         this.explain,
-        this.deadlineTimestampMs);
+        this.deadlineTimestampMs,
+        this.cursorOptions);
   }
 }

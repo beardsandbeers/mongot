@@ -116,7 +116,12 @@ class IndexCursorManagerImpl implements IndexCursorManager {
       QueryOptimizationFlags queryOptimizationFlags)
       throws IOException, InvalidQueryException, IndexUnavailableException, InterruptedException {
     try (var ignored = LockGuard.with(this.sharedLock)) {
-      InitializedSearchIndex searchIndex = this.index.asSearchIndex();
+      if (!(this.index instanceof InitializedSearchIndex searchIndex)) {
+        throw new InvalidQueryException(
+            "Cannot create intermediate cursors over vectorSearch index '%s'"
+                .formatted(query.index()),
+            InvalidQueryException.Type.STRICT);
+      }
 
       var cursorInfo =
           this.cursorFactory.createIntermediateCursors(

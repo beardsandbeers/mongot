@@ -79,8 +79,10 @@ public class SearchCommandsRegister {
     var killCursors = new KillCursorsCommand.Factory(cursorManager);
     var vectorSearch =
         new VectorSearchCommand.Factory(
+            cursorManager,
             indexCatalog,
             initializedIndexCatalog,
+            bsonSizeSoftLimit,
             embeddingServiceManagerSupplier,
             metadata,
             searchMetrics);

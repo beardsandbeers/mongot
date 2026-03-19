@@ -18,6 +18,11 @@ import com.google.common.base.Supplier;
 import com.xgen.mongot.catalog.DefaultIndexCatalog;
 import com.xgen.mongot.catalog.IndexCatalog;
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
+import com.xgen.mongot.cursor.CursorConfig;
+import com.xgen.mongot.cursor.CursorQuery;
+import com.xgen.mongot.cursor.MongotCursorManager;
+import com.xgen.mongot.cursor.MongotCursorResultInfo;
+import com.xgen.mongot.cursor.SearchCursorInfo;
 import com.xgen.mongot.cursor.serialization.MongotCursorBatch;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
@@ -27,6 +32,7 @@ import com.xgen.mongot.index.IndexMetricValuesSupplier;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.IndexUnavailableException;
 import com.xgen.mongot.index.InitializedVectorIndex;
+import com.xgen.mongot.index.MetaResults;
 import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.lucene.LuceneVectorIndex;
@@ -64,6 +70,7 @@ import com.xgen.testing.mongot.index.query.operators.mql.ValueBuilder;
 import com.xgen.testing.mongot.mock.index.SearchIndex;
 import com.xgen.testing.mongot.mock.index.VectorIndex;
 import com.xgen.testing.mongot.mock.index.VectorSearchResultBatch;
+import com.xgen.testing.mongot.server.command.search.definition.request.CursorOptionsDefinitionBuilder;
 import com.xgen.testing.mongot.server.command.search.definition.request.ExplainDefinitionBuilder;
 import com.xgen.testing.mongot.server.command.search.definition.request.VectorSearchCommandDefinitionBuilder;
 import io.micrometer.core.instrument.Tags;
@@ -154,7 +161,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -197,7 +206,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.handleSearchEnvoyMetadata(
         SearchEnvoyMetadata.newBuilder().setRoutedFromAnotherShard(true).build());
@@ -207,7 +218,8 @@ public class VectorSearchCommandTest {
   }
 
   @Test
-  public void testInvalidQuery() {
+  public void testInvalidQuery() throws Exception {
+    var mocks = new Mocks();
     VectorSearchCommand command =
         new VectorSearchCommand(
             VectorSearchCommandDefinitionBuilder.builder()
@@ -222,7 +234,9 @@ public class VectorSearchCommandTest {
             new InitializedIndexCatalog(),
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -261,7 +275,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     mocks.verifyEmptyBatchReturned(result, command);
@@ -293,7 +309,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     mocks.verifyEmptyBatchReturned(result, command);
@@ -321,6 +339,7 @@ public class VectorSearchCommandTest {
     when(initializedIndexCatalog.getIndex(indexGeneration.getGenerationId()))
         .thenReturn(Optional.empty());
 
+    var mocks = new Mocks();
     var command =
         new VectorSearchCommand(
             VectorSearchCommandDefinitionBuilder.builder()
@@ -344,7 +363,9 @@ public class VectorSearchCommandTest {
             initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(0, result.getInt32("ok").getValue());
@@ -389,7 +410,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     Assert.assertEquals(
@@ -439,7 +462,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var ignored =
         FakeExplain.setup(
@@ -495,7 +520,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var ignored =
         FakeExplain.setup(
@@ -542,7 +569,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var unused =
         Explain.setup(
@@ -617,7 +646,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var ignored =
         FakeExplain.setup(
@@ -669,7 +700,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var ignored =
         FakeExplain.setup(
@@ -719,7 +752,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     command.handleSearchEnvoyMetadata(
         SearchEnvoyMetadata.newBuilder().setRoutedFromAnotherShard(true).build());
@@ -762,7 +797,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
     var expected =
@@ -772,6 +809,440 @@ public class VectorSearchCommandTest {
     Assert.assertTrue(command.getCreatedCursorIds().isEmpty());
     Assert.assertEquals(
         1, mocks.metricsUpdater.getQueryingMetricsUpdater().getVectorCommandCounter().count(), 0);
+  }
+
+  @Test
+  public void testStoredSourceCursorPathReturnsErrorWhenBatchCannotFit() throws Exception {
+    var mocks = new Mocks();
+    long cursorId = 123L;
+    when(mocks.cursorManager.newCursor(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(CursorQuery.class),
+            any(),
+            any(),
+            any()))
+        .thenReturn(new SearchCursorInfo(cursorId, MetaResults.EMPTY));
+    when(mocks.cursorManager.getNextBatch(Mockito.eq(cursorId), any(), any()))
+        .thenThrow(new IllegalStateException("Search result output exceeds BSON size limit"));
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .returnStoredSource(true)
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    var result = command.run();
+
+    Assert.assertEquals(0, result.getInt32("ok").getValue());
+    Assert.assertTrue(
+        result
+            .getString("errmsg")
+            .getValue()
+            .contains("Search result output exceeds BSON size limit"));
+    assertThat(command.getCreatedCursorIds()).containsExactly(cursorId);
+    verify(mocks.cursorManager, times(1)).getNextBatch(Mockito.eq(cursorId), any(), any());
+    verify(mocks.reader, times(0)).query(any());
+  }
+
+  @Test
+  public void testStoredSourceCursorPathRetriesUponReaderClosedException() throws Exception {
+    var mocks = new Mocks();
+    long firstCursorId = 501L;
+    long secondCursorId = 502L;
+
+    when(mocks.cursorManager.newCursor(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(CursorQuery.class),
+            any(),
+            any(),
+            any()))
+        .thenReturn(new SearchCursorInfo(firstCursorId, MetaResults.EMPTY))
+        .thenReturn(new SearchCursorInfo(secondCursorId, MetaResults.EMPTY));
+    when(mocks.cursorManager.getIndexQueryBatchTimerRecorder(firstCursorId))
+        .thenReturn(sample -> {});
+    when(mocks.cursorManager.getIndexQueryBatchTimerRecorder(secondCursorId))
+        .thenReturn(sample -> {});
+    Mockito.doAnswer(
+            ignored -> {
+              throw ReaderClosedException.create("getNextBatch");
+            })
+        .when(mocks.cursorManager)
+        .getNextBatch(Mockito.eq(firstCursorId), any(), any());
+    when(mocks.cursorManager.getNextBatch(Mockito.eq(secondCursorId), any(), any()))
+        .thenReturn(new MongotCursorResultInfo(true, new BsonArray(), NAMESPACE));
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .returnStoredSource(true)
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    var result = command.run();
+
+    Assert.assertEquals(1, result.getInt32("ok").getValue());
+    assertThat(command.getCreatedCursorIds()).containsExactly(firstCursorId, secondCursorId);
+    verify(mocks.cursorManager, times(2))
+        .newCursor(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(CursorQuery.class),
+            any(),
+            any(),
+            any());
+    verify(mocks.cursorManager, times(1)).getNextBatch(Mockito.eq(firstCursorId), any(), any());
+    verify(mocks.cursorManager, times(1)).getNextBatch(Mockito.eq(secondCursorId), any(), any());
+    verify(mocks.reader, times(0)).query(any());
+  }
+
+  @Test
+  public void testStoredSourceCursorPathRetryCleansUpFailedAttemptCursor() throws Exception {
+    var mocks = new Mocks();
+    long firstCursorId = 601L;
+    long secondCursorId = 602L;
+
+    when(mocks.cursorManager.newCursor(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(CursorQuery.class),
+            any(),
+            any(),
+            any()))
+        .thenReturn(new SearchCursorInfo(firstCursorId, MetaResults.EMPTY))
+        .thenReturn(new SearchCursorInfo(secondCursorId, MetaResults.EMPTY));
+    when(mocks.cursorManager.getIndexQueryBatchTimerRecorder(firstCursorId))
+        .thenReturn(sample -> {});
+    when(mocks.cursorManager.getIndexQueryBatchTimerRecorder(secondCursorId))
+        .thenReturn(sample -> {});
+    Mockito.doAnswer(
+            ignored -> {
+              throw ReaderClosedException.create("getNextBatch");
+            })
+        .when(mocks.cursorManager)
+        .getNextBatch(Mockito.eq(firstCursorId), any(), any());
+    when(mocks.cursorManager.getNextBatch(Mockito.eq(secondCursorId), any(), any()))
+        .thenReturn(new MongotCursorResultInfo(true, new BsonArray(), NAMESPACE));
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .returnStoredSource(true)
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    var result = command.run();
+
+    Assert.assertEquals(1, result.getInt32("ok").getValue());
+    verify(mocks.cursorManager, times(1)).killCursor(firstCursorId);
+    verify(mocks.cursorManager, times(0)).killCursor(secondCursorId);
+  }
+
+  @Test
+  public void testStoredSourceExplainQueryPlannerReturnsNoCursor() throws Exception {
+    var mocks = new Mocks();
+    long cursorId = 701L;
+    var explainInformation =
+        SearchExplainInformationBuilder.newBuilder()
+            .queryExplainInfos(
+                List.of(
+                    QueryExplainInformationBuilder.builder()
+                        .type(LuceneQuerySpecification.Type.DEFAULT_QUERY)
+                        .args(DefaultQueryBuilder.builder().queryType("DocAndScoreQuery").build())
+                        .build()))
+            .build();
+
+    when(mocks.cursorManager.newCursor(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(CursorQuery.class),
+            any(),
+            any(),
+            any()))
+        .thenReturn(new SearchCursorInfo(cursorId, MetaResults.EMPTY));
+    when(mocks.cursorManager.getIndexQueryBatchTimerRecorder(cursorId)).thenReturn(sample -> {});
+    when(mocks.cursorManager.getNextBatch(Mockito.eq(cursorId), any(), any()))
+        .thenReturn(
+            new MongotCursorResultInfo(
+                true, new BsonArray(), Optional.of(explainInformation), NAMESPACE));
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .returnStoredSource(true)
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .explain(
+                    ExplainDefinitionBuilder.builder()
+                        .verbosity(Explain.Verbosity.QUERY_PLANNER)
+                        .build())
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    try (var ignored =
+        FakeExplain.setup(
+            Explain.Verbosity.QUERY_PLANNER,
+            NUM_PARTITIONS.getDefaultValue(),
+            explainInformation)) {
+      BsonDocument result = command.run();
+      MongotCursorBatch batch = MongotCursorBatch.fromBson(result);
+      Assert.assertTrue(batch.explain().isPresent());
+      Assert.assertTrue(batch.cursor().isEmpty());
+      Assert.assertEquals(batch.explain().get(), explainInformation);
+    }
+    verify(mocks.cursorManager, times(1)).killCursor(cursorId);
+  }
+
+  @Test
+  public void testStoredSourceCursorPathRecordsVectorMetrics() throws Exception {
+    var mocks = new Mocks();
+    long cursorId = 456L;
+    when(mocks.cursorManager.newCursor(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(CursorQuery.class),
+            any(),
+            any(),
+            any()))
+        .thenReturn(new SearchCursorInfo(cursorId, MetaResults.EMPTY));
+    when(mocks.cursorManager.getIndexQueryBatchTimerRecorder(cursorId)).thenReturn(sample -> {});
+    when(mocks.cursorManager.getNextBatch(Mockito.eq(cursorId), any(), any()))
+        .thenReturn(new MongotCursorResultInfo(true, new BsonArray(), NAMESPACE));
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .returnStoredSource(true)
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    var result = command.run();
+
+    Assert.assertEquals(1, result.getInt32("ok").getValue());
+    assertThat(command.getCreatedCursorIds()).containsExactly(cursorId);
+    verify(mocks.cursorManager, times(1)).getNextBatch(Mockito.eq(cursorId), any(), any());
+    verify(mocks.reader, times(0)).query(any());
+    Assert.assertEquals(
+        1, mocks.metricsUpdater.getQueryingMetricsUpdater().getVectorCommandCounter().count(), 0);
+    Assert.assertEquals(
+        1, mocks.metricsUpdater.getQueryingMetricsUpdater().getVectorResultLatencyTimer().count());
+  }
+
+  @Test
+  public void testVectorSearchCommandRejectsRequiresSequenceToken() throws Exception {
+    var mocks = new Mocks();
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .cursorOptions(
+                    CursorOptionsDefinitionBuilder.builder().requireSequenceTokens(true).build())
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    var result = command.run();
+
+    Assert.assertEquals(0, result.getInt32("ok").getValue());
+    Assert.assertTrue(
+        result
+            .getString("errmsg")
+            .getValue()
+            .contains("Pagination is not supported with the 'vectorSearch' command."));
+  }
+
+  @Test
+  public void testVectorSearchCommandRejectsCursorOptionsWithoutStoredSource() throws Exception {
+    var mocks = new Mocks();
+    var query =
+        VectorQueryBuilder.builder()
+            .index(INDEX_NAME)
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .limit(LIMIT)
+                    .numCandidates(NUM_CANDIDATES)
+                    .queryVector(QUERY_VECTOR)
+                    .path(PATH)
+                    .filter(getFilter())
+                    .build())
+            .returnStoredSource(false)
+            .build();
+
+    var command =
+        new VectorSearchCommand(
+            VectorSearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .vectorSearchQuery(query)
+                .cursorOptions(CursorOptionsDefinitionBuilder.builder().batchSize(5).build())
+                .build(),
+            mocks.catalog,
+            mocks.initializedIndexCatalog,
+            BOOTSTRAPPER_METADATA,
+            MOCK_EMBEDDING_SERVICE,
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    var result = command.run();
+
+    Assert.assertEquals(0, result.getInt32("ok").getValue());
+    Assert.assertTrue(
+        result
+            .getString("errmsg")
+            .getValue()
+            .contains(
+                "cursor options are only supported for "
+                    + "vector search when returnStoredSource is true"));
   }
 
   @Test
@@ -802,7 +1273,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -850,7 +1323,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -898,7 +1373,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -946,7 +1423,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -993,7 +1472,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory()));
+            new VectorSearchCommand.Metrics(mockMetricsFactory()),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -1038,7 +1519,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory));
+            new VectorSearchCommand.Metrics(mockMetricsFactory),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -1116,7 +1599,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(mockMetricsFactory));
+            new VectorSearchCommand.Metrics(mockMetricsFactory),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = CompletableFuture.supplyAsync(command::run, Executors.newSingleThreadExecutor());
 
@@ -1180,7 +1665,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(metricsFactory));
+            new VectorSearchCommand.Metrics(metricsFactory),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     Assert.assertThrows(AssertionError.class, command::run);
     assertThat(
@@ -1229,7 +1716,9 @@ public class VectorSearchCommandTest {
             mocks.initializedIndexCatalog,
             BOOTSTRAPPER_METADATA,
             MOCK_EMBEDDING_SERVICE,
-            new VectorSearchCommand.Metrics(metricsFactory));
+            new VectorSearchCommand.Metrics(metricsFactory),
+            mocks.cursorManager,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     var result = command.run();
 
@@ -1260,6 +1749,7 @@ public class VectorSearchCommandTest {
     private final IndexMetricsUpdater metricsUpdater;
     final LuceneVectorIndexReader reader;
     final BsonArray bsonResults;
+    final MongotCursorManager cursorManager;
 
     public Mocks()
         throws ReaderClosedException,
@@ -1306,6 +1796,8 @@ public class VectorSearchCommandTest {
               .indexMetricsSupplier(Mockito.mock(IndexMetricValuesSupplier.class))
               .build();
       when(initializedIndex.getMetricsUpdater()).thenReturn(this.metricsUpdater);
+
+      this.cursorManager = mock(MongotCursorManager.class);
     }
 
     void verifyEmptyBatchReturned(BsonDocument result, VectorSearchCommand command)

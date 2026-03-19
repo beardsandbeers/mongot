@@ -8,6 +8,7 @@ import com.xgen.mongot.index.query.operators.VectorSearchFilter;
 import com.xgen.mongot.index.query.operators.mql.MqlFilterOperator;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.Vector;
+import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import com.xgen.testing.BsonDeserializationTestSuite;
 import com.xgen.testing.mongot.index.query.ApproximateVectorQueryCriteriaBuilder;
@@ -15,11 +16,13 @@ import com.xgen.testing.mongot.index.query.VectorQueryBuilder;
 import com.xgen.testing.mongot.index.query.operators.mql.ClauseBuilder;
 import com.xgen.testing.mongot.index.query.operators.mql.MqlFilterOperatorBuilder;
 import com.xgen.testing.mongot.index.query.operators.mql.ValueBuilder;
+import com.xgen.testing.mongot.server.command.search.definition.request.CursorOptionsDefinitionBuilder;
 import com.xgen.testing.mongot.server.command.search.definition.request.ExplainDefinitionBuilder;
 import com.xgen.testing.mongot.server.command.search.definition.request.VectorSearchCommandDefinitionBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -58,6 +61,40 @@ public class VectorSearchCommandDefinitionTest {
   @Test
   public void runTest() throws Exception {
     TEST_SUITE.runTest(this.testSpec);
+  }
+
+  @Test
+  public void testCursorOptionsRoundTripThroughBson() throws Exception {
+    VectorSearchCommandDefinition definition =
+        VectorSearchCommandDefinitionBuilder.builder()
+            .collectionName("my-collection")
+            .db("my-database")
+            .collectionUuid(UUID.fromString("522cdf5e-54fc-4230-9d45-49da990e8ea7"))
+            .vectorSearchQuery(
+                VectorQueryBuilder.builder()
+                    .index("vecSearch")
+                    .criteria(
+                        ApproximateVectorQueryCriteriaBuilder.builder()
+                            .path(FieldPath.parse("vec"))
+                            .limit(100)
+                            .numCandidates(100)
+                            .queryVector(Vector.fromFloats(new float[] {1f, 2f, 3f}, NATIVE))
+                            .build())
+                    .build())
+            .cursorOptions(
+                CursorOptionsDefinitionBuilder.builder()
+                    .batchSize(25)
+                    .requireSequenceTokens(false)
+                    .build())
+            .build();
+
+    VectorSearchCommandDefinition roundTripped;
+    try (var parser = BsonDocumentParser.fromRoot(definition.toBson()).build()) {
+      roundTripped = VectorSearchCommandDefinition.fromBson(parser, true);
+    }
+
+    Assert.assertEquals(definition.cursorOptions(), roundTripped.cursorOptions());
+    Assert.assertEquals(definition.toBson(), roundTripped.toBson());
   }
 
   private static BsonDeserializationTestSuite.ValidSpec<VectorSearchCommandDefinition>
