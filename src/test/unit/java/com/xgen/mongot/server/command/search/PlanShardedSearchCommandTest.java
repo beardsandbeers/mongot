@@ -1,11 +1,19 @@
 package com.xgen.mongot.server.command.search;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags;
 import com.xgen.mongot.server.command.search.definition.PlanShardedSearchCommandResponseDefinition;
 import com.xgen.mongot.server.command.search.definition.request.PlanShardedSearchCommandDefinition;
+import com.xgen.mongot.util.mongodb.MongoDbServerInfo;
 import com.xgen.testing.mongot.server.command.search.definition.request.PlanShardedSearchCommandDefinitionBuilder;
 import java.util.List;
 import org.bson.BsonArray;
 import org.bson.BsonDocument;
+import org.bson.BsonInt32;
 import org.bson.BsonString;
 import org.junit.Assert;
 import org.junit.Test;
@@ -18,6 +26,14 @@ public class PlanShardedSearchCommandTest {
   private static final String DATABASE_NAME = "testDb";
   private static final String COLLECTION_NAME = "testCollection";
 
+  private static final SearchCommandsRegister.BootstrapperMetadata BOOTSTRAPPER_METADATA =
+      new SearchCommandsRegister.BootstrapperMetadata(
+          "testVersion",
+          "localhost",
+          () -> MongoDbServerInfo.EMPTY,
+          FeatureFlags.getDefault(),
+          DynamicFeatureFlagRegistry.empty());
+
   private static final BsonDocument VALID_OPERATOR_QUERY =
       new BsonDocument()
           .append(
@@ -25,6 +41,27 @@ public class PlanShardedSearchCommandTest {
               new BsonDocument()
                   .append("path", new BsonString("a"))
                   .append("query", new BsonString("b")));
+
+  private static final int STRING_FACET_NUM_BUCKETS_2000 = 2000;
+
+  /** String facet with numBuckets above the 1k cap unless ENABLE_10K_BUCKET_LIMIT DFF is on. */
+  private static final BsonDocument FACET_QUERY_NUM_BUCKETS_2000 =
+      new BsonDocument()
+          .append(
+              "facet",
+              new BsonDocument()
+                  .append("operator", VALID_OPERATOR_QUERY)
+                  .append(
+                      "facets",
+                      new BsonDocument()
+                          .append(
+                              "directorFacet",
+                              new BsonDocument()
+                                  .append("type", new BsonString("string"))
+                                  .append("path", new BsonString("director"))
+                                  .append(
+                                      "numBuckets",
+                                      new BsonInt32(STRING_FACET_NUM_BUCKETS_2000)))));
 
   private static PlanShardedSearchCommandDefinition getPlanShardedSearchCommandDefinition(
       BsonDocument query) {
@@ -38,7 +75,8 @@ public class PlanShardedSearchCommandTest {
   @Test
   public void testValidQuery() {
     PlanShardedSearchCommand command =
-        new PlanShardedSearchCommand(getPlanShardedSearchCommandDefinition(VALID_OPERATOR_QUERY));
+        new PlanShardedSearchCommand(
+            getPlanShardedSearchCommandDefinition(VALID_OPERATOR_QUERY), BOOTSTRAPPER_METADATA);
 
     List<BsonDocument> metaPipeline =
         List.of(
@@ -81,5 +119,46 @@ public class PlanShardedSearchCommandTest {
             .toBson();
     BsonDocument actual = command.run();
     Assert.assertEquals(expected, actual);
+  }
+
+  @Test
+  public void testStringFacetNumBucketsAbove1kFailsWhen10kDffOff() {
+    PlanShardedSearchCommand command =
+        new PlanShardedSearchCommand(
+            getPlanShardedSearchCommandDefinition(FACET_QUERY_NUM_BUCKETS_2000),
+            BOOTSTRAPPER_METADATA);
+
+    BsonDocument result = command.run();
+
+    Assert.assertEquals(0, result.getInt32("ok").getValue());
+    Assert.assertTrue(result.containsKey("errmsg"));
+  }
+
+  @Test
+  public void testStringFacetNumBucketsAbove1kPlansWhen10kDffOn() {
+    DynamicFeatureFlagRegistry registry = mock(DynamicFeatureFlagRegistry.class);
+    when(registry.evaluateClusterInvariant(DynamicFeatureFlags.ENABLE_10K_BUCKET_LIMIT))
+        .thenReturn(true);
+    SearchCommandsRegister.BootstrapperMetadata metadata =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            registry);
+
+    PlanShardedSearchCommand command =
+        new PlanShardedSearchCommand(
+            getPlanShardedSearchCommandDefinition(FACET_QUERY_NUM_BUCKETS_2000), metadata);
+
+    BsonDocument result = command.run();
+
+    Assert.assertEquals(1, result.getInt32("ok").getValue());
+    BsonArray metaPipeline = result.getArray("metaPipeline");
+    BsonDocument facetStage = metaPipeline.get(1).asDocument();
+    BsonArray directorPipeline = facetStage.getDocument("$facet").getArray("directorFacet");
+    BsonDocument limitStage = directorPipeline.get(2).asDocument();
+    Assert.assertEquals(
+        STRING_FACET_NUM_BUCKETS_2000, limitStage.getInt32("$limit").getValue());
   }
 }

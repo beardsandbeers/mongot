@@ -199,7 +199,11 @@ public class CommunityMongotBootstrapper {
         new MongoDbMetadataClient(Optional.of(syncSourceConfig), meterRegistry);
     var commandRegisterMetadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            mongotVersion, "mongot-community", mongoDbMetadataClient, mongotConfigs.featureFlags);
+            mongotVersion,
+            "mongot-community",
+            mongoDbMetadataClient,
+            mongotConfigs.featureFlags,
+            DynamicFeatureFlagRegistry.empty());
 
     // Initialize the community metadata service
     var metadataService = initializeMetadataService(syncSourceConfig, meterRegistry);
@@ -213,9 +217,7 @@ public class CommunityMongotBootstrapper {
     boolean isAutoEmbeddingViewWriter =
         config.embeddingConfig().map(ec -> ec.isAutoEmbeddingViewWriter()).orElse(false);
     // Community Edition doesn't have dynamic feature flags from a conf call, so use empty defaults
-    var dynamicFeatureFlagRegistry =
-        new DynamicFeatureFlagRegistry(
-            Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    var dynamicFeatureFlagRegistry = DynamicFeatureFlagRegistry.empty();
 
     var configManager =
         configManager(

@@ -31,7 +31,7 @@ public class CollectorTest {
         fromDocument(
             "src/test/unit/resources/index/query/collectors/",
             SUITE_NAME,
-            parser -> Collector.atMostOneFromBson(parser).orElseThrow());
+            parser -> Collector.atMostOneFromBson(parser, false).orElseThrow());
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<Collector> testSpec;
 

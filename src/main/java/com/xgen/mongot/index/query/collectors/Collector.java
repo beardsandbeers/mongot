@@ -22,6 +22,15 @@ public sealed interface Collector extends DocumentEncodable permits FacetCollect
             .disallowUnknownFields()
             .optional()
             .noDefault();
+            
+    public static final Field.Optional<FacetCollector> FACET_10K_ALLOWED =
+        Field.builder("facet")
+            .classField(
+                FacetCollector::fromBson10kAllowed,
+                FacetCollector::collectorToBson10kAllowed)
+            .disallowUnknownFields()
+            .optional()
+            .noDefault();
   }
 
   public static final String ALL_COLLECTORS =
@@ -70,14 +79,18 @@ public sealed interface Collector extends DocumentEncodable permits FacetCollect
     var builder = BsonDocumentBuilder.builder();
     return switch (this) {
       case FacetCollector facetCollector ->
-          builder.field(Fields.FACET, Optional.of(facetCollector)).build();
+          builder.field(Fields.FACET_10K_ALLOWED, Optional.of(facetCollector)).build();
     };
   }
 
   BsonValue collectorToBson();
 
-  static Optional<Collector> atMostOneFromBson(DocumentParser parser) throws BsonParseException {
-    return parser.getGroup().atMostOneOf(parser.getField(Fields.FACET));
+  static Optional<Collector> atMostOneFromBson(DocumentParser parser, boolean allow10k)
+      throws BsonParseException {
+    return parser
+        .getGroup()
+        .atMostOneOf(parser.getField(allow10k ? Fields.FACET_10K_ALLOWED : Fields.FACET))
+        .map(c -> (Collector) c);
   }
 
   Type getType();

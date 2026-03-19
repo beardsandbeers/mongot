@@ -113,6 +113,23 @@ public class DynamicFeatureFlagRegistry {
   }
 
   /**
+   * Registry with no flags configured; {@link #evaluateClusterInvariant(DynamicFeatureFlags)}
+   * returns each flag's defined fallback.
+   */
+  public static DynamicFeatureFlagRegistry empty() {
+    return new DynamicFeatureFlagRegistry(
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+  }
+
+  /**
+   * Evaluates a dynamic feature flag for a cluster-invariant scope (org, group, or mongot
+   * cluster), using the flag's name and default fallback when the flag is absent.
+   */
+  public boolean evaluateClusterInvariant(DynamicFeatureFlags featureFlag) {
+    return evaluateClusterInvariant(featureFlag.getName(), featureFlag.getFallback());
+  }
+
+  /**
    * Evaluates a dynamic feature flag for an cluster invariant entityId (eg. orgId). Introducing
    * this method to simplify evaluation of DFFs with ORG, MONGOT_CLUSTER and GROUP scopes.
    *

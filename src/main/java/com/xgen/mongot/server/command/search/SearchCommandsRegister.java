@@ -8,6 +8,7 @@ import com.xgen.mongot.config.manager.CachedIndexInfoProvider;
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.server.command.CommandFactoryMarker;
 import com.xgen.mongot.server.command.management.aic.AicManageSearchIndexCommandFactory;
@@ -33,7 +34,9 @@ public class SearchCommandsRegister {
       String mongotVersion,
       String mongotHostName,
       MongoDbServerInfoProvider mongoDbServerInfoProvider,
-      FeatureFlags featureFlags) {}
+      FeatureFlags featureFlags,
+      DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry) {
+  }
 
   public enum RegistrationMode {
     SECURE {
@@ -75,7 +78,7 @@ public class SearchCommandsRegister {
             metadata,
             searchMetrics);
     var getMore = new GetMoreCommand.Factory(cursorManager, bsonSizeSoftLimit, searchMetrics);
-    var planShardedSearch = new PlanShardedSearchCommand.Factory();
+    var planShardedSearch = new PlanShardedSearchCommand.Factory(metadata);
     var killCursors = new KillCursorsCommand.Factory(cursorManager);
     var vectorSearch =
         new VectorSearchCommand.Factory(

@@ -33,6 +33,8 @@ import com.xgen.mongot.cursor.serialization.MongotCursorBatch;
 import com.xgen.mongot.cursor.serialization.MongotCursorResult;
 import com.xgen.mongot.cursor.serialization.MongotIntermediateCursorBatch;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags;
 import com.xgen.mongot.index.CountResult;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.InitializedSearchIndex;
@@ -44,9 +46,12 @@ import com.xgen.mongot.index.lucene.explain.information.MetadataExplainInformati
 import com.xgen.mongot.index.lucene.explain.information.SearchExplainInformation;
 import com.xgen.mongot.index.lucene.explain.information.SearchExplainInformationBuilder;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
+import com.xgen.mongot.index.query.CollectorQuery;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.SearchQuery;
+import com.xgen.mongot.index.query.collectors.FacetCollector;
+import com.xgen.mongot.index.query.collectors.FacetDefinition;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.Check;
@@ -68,6 +73,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -90,7 +96,11 @@ public class SearchCommandTest {
   private static final String INDEX_NAME = "default";
   private static final SearchCommandsRegister.BootstrapperMetadata BOOTSTRAPPER_METADATA =
       new SearchCommandsRegister.BootstrapperMetadata(
-          "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+          "testVersion",
+          "localhost",
+          () -> MongoDbServerInfo.EMPTY,
+          FeatureFlags.getDefault(),
+          DynamicFeatureFlagRegistry.empty());
   private static final String RSID = "atlas-xyz";
 
   private static final BsonDocument VALID_OPERATOR_QUERY =
@@ -174,6 +184,23 @@ public class SearchCommandTest {
                           .append(
                               "testFacet",
                               new BsonDocument().append("path", new BsonString("test")))));
+
+  /** Collector query with string facet numBuckets 2000 (above 1k limit when DFF off). */
+  private static final BsonDocument COLLECTOR_QUERY_NUM_BUCKETS_2000 =
+      new BsonDocument()
+          .append(
+              "facet",
+              new BsonDocument()
+                  .append("operator", VALID_OPERATOR_QUERY)
+                  .append(
+                      "facets",
+                      new BsonDocument()
+                          .append(
+                              "directorFacet",
+                              new BsonDocument()
+                                  .append("type", new BsonString("string"))
+                                  .append("path", new BsonString("director"))
+                                  .append("numBuckets", new BsonInt32(2000)))));
 
   private static final BsonDocument INVALID_INDEX_RESPONSE =
       new BsonDocument()
@@ -276,7 +303,8 @@ public class SearchCommandTest {
                 "local",
                 "localhost",
                 () -> new MongoDbServerInfo(Optional.of(mdbVersion), Optional.of(RSID)),
-                FeatureFlags.getDefault()),
+                FeatureFlags.getDefault(),
+                DynamicFeatureFlagRegistry.empty()),
             CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var unused =
@@ -969,7 +997,8 @@ public class SearchCommandTest {
                 "local",
                 "localhost",
                 () -> new MongoDbServerInfo(Optional.of(mdbVersion), Optional.of(RSID)),
-                FeatureFlags.getDefault()),
+                FeatureFlags.getDefault(),
+                DynamicFeatureFlagRegistry.empty()),
             CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
 
     try (var unused = FakeExplain.setup(Explain.Verbosity.EXECUTION_STATS, 0, explainInformation)) {
@@ -1232,6 +1261,128 @@ public class SearchCommandTest {
     Assert.assertFalse(result.containsKey("errmsg"));
   }
 
+  /** When DFF is off, numBuckets > 1000 is rejected (same as old behavior: user gets error). */
+  @Test
+  public void testStringFacetNumBucketsRejectedWhenDffOff() throws Exception {
+    SearchCommand command =
+        new SearchCommand(
+            new SearchCommand.Metrics(mockMetricsFactory()),
+            getCursorManager(),
+            new DefaultIndexCatalog(),
+            new InitializedIndexCatalog(),
+            SearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .query(COLLECTOR_QUERY_NUM_BUCKETS_2000)
+                .build(),
+            BOOTSTRAPPER_METADATA,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    BsonDocument result = command.run();
+    Assert.assertEquals(0, result.getInt32("ok").getValue());
+    Assert.assertTrue(result.containsKey("errmsg"));
+    // When DFF is off, parser throws BsonParseException with "must be within bounds [1..1000]"
+    String errmsg = result.getString("errmsg").getValue();
+    Assert.assertTrue(
+        "errmsg should be BSON parse error mentioning 1000 limit; got: " + errmsg,
+        errmsg.contains("must be within bounds") && errmsg.contains("1000"));
+  }
+
+  @Test
+  public void testStringFacetNumBucketsUnchangedWhenDffOn() throws Exception {
+    DynamicFeatureFlagRegistry registry = mock(DynamicFeatureFlagRegistry.class);
+    when(registry.evaluateClusterInvariant(DynamicFeatureFlags.ENABLE_10K_BUCKET_LIMIT))
+        .thenReturn(true);
+
+    AtomicReference<SearchQuery> capturedQuery = new AtomicReference<>();
+    MongotCursorManager cursorManager = getCursorManagerCapturingQuery(capturedQuery);
+
+    SearchCommandsRegister.BootstrapperMetadata metadataWithDffOn =
+        new SearchCommandsRegister.BootstrapperMetadata(
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            registry);
+
+    SearchCommand command =
+        new SearchCommand(
+            new SearchCommand.Metrics(mockMetricsFactory()),
+            cursorManager,
+            new DefaultIndexCatalog(),
+            new InitializedIndexCatalog(),
+            SearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .query(COLLECTOR_QUERY_NUM_BUCKETS_2000)
+                .build(),
+            metadataWithDffOn,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    BsonDocument result = command.run();
+    Assert.assertEquals(1, result.getInt32("ok").getValue());
+    Assert.assertFalse(result.containsKey("errmsg"));
+
+    SearchQuery query = capturedQuery.get();
+    Assert.assertNotNull(query);
+    Assert.assertTrue(query instanceof CollectorQuery);
+    FacetCollector collector = (FacetCollector) ((CollectorQuery) query).collector();
+    FacetDefinition.StringFacetDefinition directorFacet =
+        (FacetDefinition.StringFacetDefinition) collector.facetDefinitions().get("directorFacet");
+    Assert.assertNotNull(directorFacet);
+    Assert.assertEquals(2000, directorFacet.numBuckets());
+  }
+
+  @Test
+  public void testStringFacetNumBucketsUnder1kUnchangedWhenDffOff() throws Exception {
+    AtomicReference<SearchQuery> capturedQuery = new AtomicReference<>();
+    MongotCursorManager cursorManager = getCursorManagerCapturingQuery(capturedQuery);
+
+    BsonDocument queryWith500Buckets =
+        new BsonDocument()
+            .append(
+                "facet",
+                new BsonDocument()
+                    .append("operator", VALID_OPERATOR_QUERY)
+                    .append(
+                        "facets",
+                        new BsonDocument()
+                            .append(
+                                "smallFacet",
+                                new BsonDocument()
+                                    .append("type", new BsonString("string"))
+                                    .append("path", new BsonString("genre"))
+                                    .append("numBuckets", new BsonInt32(500)))));
+
+    SearchCommand command =
+        new SearchCommand(
+            new SearchCommand.Metrics(mockMetricsFactory()),
+            cursorManager,
+            new DefaultIndexCatalog(),
+            new InitializedIndexCatalog(),
+            SearchCommandDefinitionBuilder.builder()
+                .db(DATABASE_NAME)
+                .collectionName(COLLECTION_NAME)
+                .collectionUuid(COLLECTION_UUID)
+                .query(queryWith500Buckets)
+                .build(),
+            BOOTSTRAPPER_METADATA,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT);
+
+    BsonDocument result = command.run();
+    Assert.assertEquals(1, result.getInt32("ok").getValue());
+
+    SearchQuery query = capturedQuery.get();
+    Assert.assertNotNull(query);
+    FacetCollector collector = (FacetCollector) ((CollectorQuery) query).collector();
+    FacetDefinition.StringFacetDefinition smallFacet =
+        (FacetDefinition.StringFacetDefinition) collector.facetDefinitions().get("smallFacet");
+    Assert.assertNotNull(smallFacet);
+    Assert.assertEquals(500, smallFacet.numBuckets());
+  }
+
   @Test
   public void testIndexNotInitializedReturnsErrorResponse() throws Exception {
     IndexCatalog catalog = mock(IndexCatalog.class);
@@ -1290,7 +1441,7 @@ public class SearchCommandTest {
   }
 
   /**
-   * Creates a MongotCursorManager that behaves in a way that can illicit the desired behavior from
+   * Creates a MongotCursorManager that behaves in a way that can elicit the desired behavior from
    * SearchCommand.
    */
   private static MongotCursorManager getCursorManager(
@@ -1323,8 +1474,9 @@ public class SearchCommandTest {
               return new SearchCursorInfo(
                   MOCK_SEARCH_CURSOR_ID, new MetaResults(CountResult.lowerBoundCount(1000)));
             });
+
     when(cursorManager.newIntermediateCursors(
-            any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
+        any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
         .then(
             invocation -> {
               String databaseName = invocation.getArgument(0);
@@ -1338,6 +1490,7 @@ public class SearchCommandTest {
 
               return new IntermediateSearchCursorInfo(MOCK_SEARCH_CURSOR_ID, MOCK_META_CURSOR_ID);
             });
+
     when(cursorManager.getNextBatch(anyLong(), any(), any()))
         .then(
             invocation -> {
@@ -1347,7 +1500,8 @@ public class SearchCommandTest {
               }
 
               return new MongotCursorResultInfo(
-                  batch.getCursorExpected().getCursorId() == MongotCursorResult.EXHAUSTED_CURSOR_ID,
+                  batch.getCursorExpected().getCursorId()
+                      == MongotCursorResult.EXHAUSTED_CURSOR_ID,
                   cursorId == MOCK_SEARCH_CURSOR_ID
                       ? batch.getCursorExpected().getBatch()
                       : metaBatch.getCursorExpected().getBatch(),
@@ -1356,6 +1510,72 @@ public class SearchCommandTest {
             });
 
     when(cursorManager.getIndexQueryBatchTimerRecorder(anyLong())).thenReturn(metricRecorder);
+
+    return cursorManager;
+  }
+
+  /**
+   * Like getCursorManager() but captures the SearchQuery passed to newCursor into {@code queryOut}.
+   */
+  private static MongotCursorManager getCursorManagerCapturingQuery(
+      AtomicReference<SearchQuery> queryOut) throws Exception {
+    MongotCursorManager cursorManager = mock(MongotCursorManager.class);
+    MongotIntermediateCursorBatch intermediateCursorBatch = mockIntermediateMongotCursorBatch();
+    MongotCursorBatch metaBatch = intermediateCursorBatch.cursors().get(0);
+    MongotCursorBatch batch = intermediateCursorBatch.cursors().get(1);
+
+    when(cursorManager.newCursor(
+            any(), any(), any(), any(), any(Query.class), any(), any(), any()))
+        .then(
+            invocation -> {
+              SearchQuery query = invocation.getArgument(4);
+              queryOut.set(query);
+              String databaseName = invocation.getArgument(0);
+              UUID collectionUuid = invocation.getArgument(2);
+              if (!databaseName.equals(DATABASE_NAME)
+                  || !collectionUuid.equals(COLLECTION_UUID)
+                  || !query.index().equals(INDEX_NAME)) {
+                throw new InvalidQueryException("invalid index");
+              }
+              return new SearchCursorInfo(
+                  MOCK_SEARCH_CURSOR_ID, new MetaResults(CountResult.lowerBoundCount(1000)));
+            });
+
+    when(cursorManager.newIntermediateCursors(
+        any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
+        .then(
+            invocation -> {
+              SearchQuery query = invocation.getArgument(4);
+              queryOut.set(query);
+              String databaseName = invocation.getArgument(0);
+              UUID collectionUuid = invocation.getArgument(2);
+              if (!databaseName.equals(DATABASE_NAME)
+                  || !collectionUuid.equals(COLLECTION_UUID)
+                  || !query.index().equals(INDEX_NAME)) {
+                throw new InvalidQueryException("invalid index");
+              }
+              return new IntermediateSearchCursorInfo(MOCK_SEARCH_CURSOR_ID, MOCK_META_CURSOR_ID);
+            });
+
+    when(cursorManager.getNextBatch(anyLong(), any(), any()))
+        .then(
+            invocation -> {
+              long cursorId = invocation.getArgument(0);
+              if (cursorId != MOCK_SEARCH_CURSOR_ID && cursorId != MOCK_META_CURSOR_ID) {
+                throw new MongotCursorNotFoundException(cursorId);
+              }
+              return new MongotCursorResultInfo(
+                  batch.getCursorExpected().getCursorId()
+                      == MongotCursorResult.EXHAUSTED_CURSOR_ID,
+                  cursorId == MOCK_SEARCH_CURSOR_ID
+                      ? batch.getCursorExpected().getBatch()
+                      : metaBatch.getCursorExpected().getBatch(),
+                  Optional.empty(),
+                  batch.getCursorExpected().getNamespace());
+            });
+
+    when(cursorManager.getIndexQueryBatchTimerRecorder(anyLong()))
+        .thenReturn((timer) -> {});
 
     return cursorManager;
   }
@@ -1369,11 +1589,14 @@ public class SearchCommandTest {
         .thenReturn(
             new SearchCursorInfo(
                 MOCK_SEARCH_CURSOR_ID, new MetaResults(CountResult.lowerBoundCount(1000))));
+
     when(cursorManager.newIntermediateCursors(
-            any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
+        any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
         .thenReturn(new IntermediateSearchCursorInfo(MOCK_SEARCH_CURSOR_ID, MOCK_META_CURSOR_ID));
 
-    when(cursorManager.getNextBatch(anyLong(), any(), any())).thenThrow(throwableSupplier.get());
+    when(cursorManager.getNextBatch(anyLong(), any(), any()))
+        .thenThrow(throwableSupplier.get());
+
     when(cursorManager.getIndexQueryBatchTimerRecorder(anyLong()))
         .thenReturn(
             (timer) -> {

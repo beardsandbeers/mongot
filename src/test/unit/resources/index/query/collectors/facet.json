@@ -274,7 +274,7 @@
       }
     },
     {
-      "description": "string numBuckets > 1000",
+      "description": "string numBuckets > 10000",
       "value": {
         "operator": {
           "text": {
@@ -286,7 +286,7 @@
           "directorFacet": {
             "type": "string",
             "path": "director",
-            "numBuckets": 1001
+            "numBuckets": 10001
           }
         }
       }

@@ -19,6 +19,7 @@ import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.IndexMetricValuesSupplier;
 import com.xgen.mongot.index.IndexMetricsUpdater;
@@ -252,7 +253,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchQuery vectorSearchQuery =
         VectorQueryBuilder.builder()
@@ -298,7 +303,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
     // Non-nested index definition (no nestedRoot)
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchQuery vectorSearchQuery =
         VectorQueryBuilder.builder()
@@ -357,7 +366,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchFilter filter = createMockClauseFilter();
 
@@ -431,7 +444,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchFilter parentFilter = createMockClauseFilter();
 
@@ -499,7 +516,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchFilter filter = createMockClauseFilter();
     VectorSearchFilter parentFilter = createMockClauseFilter();
@@ -570,7 +591,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchQuery vectorSearchQuery =
         VectorQueryBuilder.builder()
@@ -638,7 +663,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, featureFlagsEnabled);
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            featureFlagsEnabled,
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchQuery vectorSearchQuery =
         VectorQueryBuilder.builder()
@@ -706,7 +735,11 @@ public class VectorSearchCommandIndexSizeMetricsTest {
 
     SearchCommandsRegister.BootstrapperMetadata metadata =
         new SearchCommandsRegister.BootstrapperMetadata(
-            "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, featureFlags);
+            "testVersion",
+            "localhost",
+            () -> MongoDbServerInfo.EMPTY,
+            featureFlags,
+            DynamicFeatureFlagRegistry.empty());
 
     VectorSearchQuery vectorSearchQuery =
         VectorQueryBuilder.builder()

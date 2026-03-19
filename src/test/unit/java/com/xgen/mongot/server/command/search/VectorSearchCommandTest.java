@@ -26,6 +26,7 @@ import com.xgen.mongot.cursor.SearchCursorInfo;
 import com.xgen.mongot.cursor.serialization.MongotCursorBatch;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.EmptyExplainInformation;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.IndexMetricValuesSupplier;
@@ -105,7 +106,11 @@ public class VectorSearchCommandTest {
   private static final FieldPath PATH = FieldPath.parse("testPath");
   private static final SearchCommandsRegister.BootstrapperMetadata BOOTSTRAPPER_METADATA =
       new SearchCommandsRegister.BootstrapperMetadata(
-          "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+          "testVersion",
+          "localhost",
+          () -> MongoDbServerInfo.EMPTY,
+          FeatureFlags.getDefault(),
+          DynamicFeatureFlagRegistry.empty());
   // Simple mock - embedding service is never invoked for queryVector-based tests
   private static final Supplier<EmbeddingServiceManager> MOCK_EMBEDDING_SERVICE =
       VectorSearchCommandTest::mockEmbeddingService;

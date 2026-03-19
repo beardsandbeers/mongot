@@ -19,7 +19,7 @@ package com.xgen.mongot.featureflag.dynamic;
  * <pre>{@code
  * // Evaluate a cluster-invariant feature flag
  * DynamicFeatureFlags flag = DynamicFeatureFlags.DRILL_SIDEWAYS_CONCURRENCY;
- * boolean isEnabled = registry.evaluateClusterInvariant(flag.getName(), flag.getFallback());
+ * boolean isEnabled = registry.evaluateClusterInvariant(flag);
  *
  * // Evaluate a feature flag for a specific entity (index or query)
  * boolean isEnabled = registry.evaluate(flag.getName(), entityId, flag.getFallback());
@@ -32,7 +32,8 @@ public enum DynamicFeatureFlags {
   DRILL_SIDEWAYS_FACETING("mongot.featureFlag.enableDrillSidewaysFaceting", false),
   NUM_FIELDS_PER_DATATYPE_METRIC("mongot.featureFlag.enableNumFieldsPerDatatypeMetric", false),
   COLLECT_MULTI_PARTITION_EMPTY_SEARCH_PRODUCER(
-      "mongot.featureFlag.collectMultiPartitionEmptySearchProducer", false);
+      "mongot.featureFlag.collectMultiPartitionEmptySearchProducer", false),
+  ENABLE_10K_BUCKET_LIMIT("mongot.featureFlag.enable10kBucketLimit", false);
 
   private final String name;
   private final boolean fallback;

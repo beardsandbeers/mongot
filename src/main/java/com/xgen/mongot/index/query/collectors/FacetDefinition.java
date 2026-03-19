@@ -34,10 +34,21 @@ public sealed interface FacetDefinition extends DocumentEncodable
     DATE
   }
 
-  /** Deserializes definition from a BSON. */
+  /** Deserializes definition from a BSON (1k numBuckets limit for string facets). */
   static FacetDefinition fromBson(DocumentParser parser) throws BsonParseException {
+    return fromBson(parser, false);
+  }
+
+  /**
+   * Deserializes definition from a BSON.
+   *
+   * @param allow10k when true, string facet numBuckets may be 1–10_000; when false,
+   *     1–1000 (parser throws BsonParseException if exceeded).
+   */
+  static FacetDefinition fromBson(DocumentParser parser, boolean allow10k)
+      throws BsonParseException {
     return switch (parser.getField(Fields.TYPE).unwrap()) {
-      case STRING -> new StringFacetDefinition(parser);
+      case STRING -> new StringFacetDefinition(parser, allow10k);
       case NUMBER -> new NumericFacetDefinition(parser);
       case DATE -> new DateFacetDefinition(parser);
     };
@@ -49,10 +60,16 @@ public sealed interface FacetDefinition extends DocumentEncodable
 
   record StringFacetDefinition(String path, int numBuckets) implements FacetDefinition {
     private static class Fields {
-      private static final Field.WithDefault<Integer> NUM_BUCKETS =
+      private static final Field.WithDefault<Integer> NUM_BUCKETS_1K =
           Field.builder("numBuckets")
               .intField()
               .mustBeWithinBounds(Range.of(1, 1000))
+              .optional()
+              .withDefault(10);
+      private static final Field.WithDefault<Integer> NUM_BUCKETS_10K =
+          Field.builder("numBuckets")
+              .intField()
+              .mustBeWithinBounds(Range.of(1, 10_000))
               .optional()
               .withDefault(10);
     }
@@ -62,10 +79,13 @@ public sealed interface FacetDefinition extends DocumentEncodable
       return Type.STRING;
     }
 
-    private StringFacetDefinition(DocumentParser parser) throws BsonParseException {
+    private StringFacetDefinition(DocumentParser parser, boolean allow10k)
+        throws BsonParseException {
       this(
           parser.getField(FacetDefinition.Fields.PATH).unwrap(),
-          parser.getField(Fields.NUM_BUCKETS).unwrap());
+          parser
+              .getField(allow10k ? Fields.NUM_BUCKETS_10K : Fields.NUM_BUCKETS_1K)
+              .unwrap());
     }
 
     @Override
@@ -73,7 +93,7 @@ public sealed interface FacetDefinition extends DocumentEncodable
       return BsonDocumentBuilder.builder()
           .field(FacetDefinition.Fields.TYPE, this.getType())
           .field(FacetDefinition.Fields.PATH, this.path())
-          .field(Fields.NUM_BUCKETS, this.numBuckets())
+          .field(Fields.NUM_BUCKETS_10K, this.numBuckets())
           .build();
     }
   }

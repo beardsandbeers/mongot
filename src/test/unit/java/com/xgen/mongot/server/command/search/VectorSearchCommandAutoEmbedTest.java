@@ -26,6 +26,7 @@ import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.IndexMetricValuesSupplier;
 import com.xgen.mongot.index.IndexMetricsUpdater;
@@ -101,7 +102,11 @@ public class VectorSearchCommandAutoEmbedTest {
   private static final FieldPath PATH = FieldPath.parse("testPath");
   private static final SearchCommandsRegister.BootstrapperMetadata BOOTSTRAPPER_METADATA =
       new SearchCommandsRegister.BootstrapperMetadata(
-          "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+          "testVersion",
+          "localhost",
+          () -> MongoDbServerInfo.EMPTY,
+          FeatureFlags.getDefault(),
+          DynamicFeatureFlagRegistry.empty());
   private static final Supplier<EmbeddingServiceManager> MOCK_EMBEDDING_SERVICE =
       mockEmbeddingServiceManager(new VectorOrError(QUERY_VECTOR));
 

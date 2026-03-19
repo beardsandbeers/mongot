@@ -17,6 +17,7 @@ import com.xgen.mongot.cursor.batch.QueryCursorOptions;
 import com.xgen.mongot.cursor.serialization.MongotCursorBatch;
 import com.xgen.mongot.cursor.serialization.MongotCursorResult;
 import com.xgen.mongot.cursor.serialization.MongotIntermediateCursorBatch;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags;
 import com.xgen.mongot.index.DynamicFeatureFlagsMetricsRecorder;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.IndexUnavailableException;
@@ -133,8 +134,13 @@ public class SearchCommand implements Command {
               .optimizationFlags()
               .map(OptimizationFlagsDefinition::toQueryOptimizationFlags)
               .orElse(QueryOptimizationFlags.DEFAULT_OPTIONS);
+      boolean allow10k =
+          this.metadata
+              .dynamicFeatureFlagRegistry()
+              .evaluateClusterInvariant(DynamicFeatureFlags.ENABLE_10K_BUCKET_LIMIT);
       SearchQuery queryDefinition =
-          SearchQuery.fromBson(this.definition.queryDocument(), queryOptimizationFlags);
+          SearchQuery.fromBson(
+              this.definition.queryDocument(), queryOptimizationFlags, allow10k);
       Optional<InitializedIndex> index = getIndexFromCatalog(queryDefinition);
       QueryCursorOptions queryCursorOptions =
           this.definition

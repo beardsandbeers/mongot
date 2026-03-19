@@ -29,6 +29,7 @@ import com.xgen.mongot.cursor.SearchCursorInfo;
 import com.xgen.mongot.cursor.serialization.MongotCursorBatch;
 import com.xgen.mongot.cursor.serialization.MongotCursorResult;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.CountResult;
 import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.IndexMetricValuesSupplier;
@@ -95,7 +96,11 @@ public class DeprecatedVectorSearchCommandTest {
   private static final FieldPath PATH = FieldPath.parse("testPath");
   private static final SearchCommandsRegister.BootstrapperMetadata BOOTSTRAPPER_METADATA =
       new SearchCommandsRegister.BootstrapperMetadata(
-          "testVersion", "localhost", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault());
+          "testVersion",
+          "localhost",
+          () -> MongoDbServerInfo.EMPTY,
+          FeatureFlags.getDefault(),
+          DynamicFeatureFlagRegistry.empty());
   private static final String RSID = "atlas-xyz";
 
   private static final double COUNTER_TOL = 1e-5;
@@ -310,7 +315,8 @@ public class DeprecatedVectorSearchCommandTest {
                 "local",
                 "localhost",
                 () -> new MongoDbServerInfo(Optional.of(mdbVersion), Optional.of(RSID)),
-                FeatureFlags.getDefault()));
+                FeatureFlags.getDefault(),
+                DynamicFeatureFlagRegistry.empty()));
 
     try (var unused =
         FakeExplain.setup(
@@ -424,7 +430,11 @@ public class DeprecatedVectorSearchCommandTest {
             getInitializedIndexCatalog(),
             mock(VectorSearchCommand.Factory.class),
             new SearchCommandsRegister.BootstrapperMetadata(
-                "1.0", "foo", () -> MongoDbServerInfo.EMPTY, FeatureFlags.getDefault()));
+                "1.0",
+                "foo",
+                () -> MongoDbServerInfo.EMPTY,
+                FeatureFlags.getDefault(),
+                DynamicFeatureFlagRegistry.empty()));
 
     try (var unused =
         Explain.setup(

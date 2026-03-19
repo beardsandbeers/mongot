@@ -405,5 +405,76 @@ public class FacetCollectorTest {
           BsonParseException.class,
           () -> FacetDefinition.fromBson(parser));
     }
+
+    /** When allow10k is false (DFF off), string facet numBuckets 2000 throws BsonParseException. */
+    @Test
+    public void stringFacetNumBuckets2000_fromBsonWithAllow10kFalse_throwsBsonParseException() {
+      var definition =
+          FacetDefinitionBuilder.string().numBuckets(2000).path("director").build();
+
+      var parser = BsonDocumentParser.fromRoot(definition.toBson().asDocument()).build();
+      TestUtils.assertThrows(
+          "must be within bounds",
+          BsonParseException.class,
+          () -> FacetDefinition.fromBson(parser, false));
+    }
+
+    /** When allow10k is true (DFF on), string facet numBuckets 2000 parses successfully. */
+    @Test
+    public void stringFacetNumBuckets2000_fromBsonWithAllow10kTrue_succeeds()
+        throws BsonParseException {
+      var definition =
+          FacetDefinitionBuilder.string().numBuckets(2000).path("director").build();
+
+      var parser = BsonDocumentParser.fromRoot(definition.toBson().asDocument()).build();
+      FacetDefinition result = FacetDefinition.fromBson(parser, true);
+
+      assertThat(result).isInstanceOf(FacetDefinition.StringFacetDefinition.class);
+      assertThat(((FacetDefinition.StringFacetDefinition) result).numBuckets()).isEqualTo(2000);
+      assertThat(result.path()).isEqualTo("director");
+    }
+
+    /** FacetCollector.fromBson (1k limit) rejects numBuckets 2000 with BsonParseException. */
+    @Test
+    public void facetCollectorNumBuckets2000_fromBson_throwsBsonParseException() {
+      var facetCollector =
+          CollectorBuilder.facet()
+              .operator(OperatorBuilder.text().path("review").query("good").build())
+              .facetDefinitions(
+                  Map.of(
+                      "directorFacet",
+                      FacetDefinitionBuilder.string().numBuckets(2000).path("director").build()))
+              .build();
+
+      var parser =
+          BsonDocumentParser.fromRoot(facetCollector.collectorToBson().asDocument()).build();
+      TestUtils.assertThrows(
+          "must be within bounds",
+          BsonParseException.class,
+          () -> FacetCollector.fromBson(parser));
+    }
+
+    /** FacetCollector.fromBson10kAllowed accepts numBuckets 2000. */
+    @Test
+    public void facetCollectorNumBuckets2000_fromBson10kAllowed_succeeds()
+        throws BsonParseException {
+      var facetCollector =
+          CollectorBuilder.facet()
+              .operator(OperatorBuilder.text().path("review").query("good").build())
+              .facetDefinitions(
+                  Map.of(
+                      "directorFacet",
+                      FacetDefinitionBuilder.string().numBuckets(2000).path("director").build()))
+              .build();
+
+      var parser =
+          BsonDocumentParser.fromRoot(facetCollector.collectorToBson().asDocument()).build();
+      FacetCollector result = FacetCollector.fromBson10kAllowed(parser);
+
+      FacetDefinition.StringFacetDefinition directorFacet =
+          (FacetDefinition.StringFacetDefinition) result.facetDefinitions().get("directorFacet");
+      assertThat(directorFacet).isNotNull();
+      assertThat(directorFacet.numBuckets()).isEqualTo(2000);
+    }
   }
 }
