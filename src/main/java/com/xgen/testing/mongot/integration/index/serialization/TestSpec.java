@@ -14,6 +14,7 @@ import java.util.Optional;
 import org.bson.BsonDocument;
 
 public abstract class TestSpec implements DocumentEncodable {
+
   static class Fields {
     static final Field.Required<String> NAME = Field.builder("name").stringField().required();
 
@@ -306,6 +307,8 @@ public abstract class TestSpec implements DocumentEncodable {
     return this.isQueryTestSpec()
         && this.query.map(document -> document.containsKey("vectorSearch")).orElse(false);
   }
+
+  public abstract boolean usesStoredSource();
 
   abstract BsonDocument testSpecToBson();
 

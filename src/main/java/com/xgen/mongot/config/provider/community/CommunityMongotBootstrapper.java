@@ -197,6 +197,8 @@ public class CommunityMongotBootstrapper {
 
     var mongoDbMetadataClient =
         new MongoDbMetadataClient(Optional.of(syncSourceConfig), meterRegistry);
+    mongoDbMetadataClient.refreshServerInfo();
+
     var commandRegisterMetadata =
         new SearchCommandsRegister.BootstrapperMetadata(
             mongotVersion,

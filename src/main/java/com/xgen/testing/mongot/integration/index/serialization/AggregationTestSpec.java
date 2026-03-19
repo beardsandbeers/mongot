@@ -74,6 +74,11 @@ public class AggregationTestSpec extends TestSpec {
         parser.getField(TestSpec.Fields.SKIP_ON_ATLAS).unwrap());
   }
 
+  @Override
+  public boolean usesStoredSource() {
+    return false;
+  }
+
   public Map<String, List<BsonDocument>> getCollections() {
     return this.collections;
   }

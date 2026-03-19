@@ -125,6 +125,7 @@ public class MongoDbMetadataClient implements MongoDbServerInfoProvider, Closeab
     if (this.previousVersionString.filter(versionString::equals).isPresent()) {
       return;
     }
+    LOG.atInfo().addKeyValue("mongoDbVersion", versionString).log("Updated Mongod version info");
 
     // If the version has changed, set the previous version gauge to 0
     this.previousMongodbVersionGauge.ifPresent(gauge -> gauge.set(0));

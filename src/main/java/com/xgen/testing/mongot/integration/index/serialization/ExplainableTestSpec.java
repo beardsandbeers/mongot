@@ -4,6 +4,7 @@ import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagConfig;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
 
@@ -42,6 +43,11 @@ public abstract class ExplainableTestSpec extends TestSpec {
         skipOnAtlas);
     this.explain = explain;
     this.documents = documents;
+  }
+
+  @Override
+  public boolean usesStoredSource() {
+    return getQuery().getBoolean("returnStoredSource", BsonBoolean.FALSE).getValue();
   }
 
   public BsonDocument getExplain() {
