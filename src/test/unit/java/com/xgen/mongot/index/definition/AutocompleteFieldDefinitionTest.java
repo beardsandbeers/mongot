@@ -17,14 +17,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      AutocompleteFieldDefinitionTest.TestDeserialization.class,
-      AutocompleteFieldDefinitionTest.TestSerialization.class,
-      AutocompleteFieldDefinitionTest.TestDefinition.class,
+      AutocompleteFieldDefinitionTest.DeserializationTest.class,
+      AutocompleteFieldDefinitionTest.SerializationTest.class,
+      AutocompleteFieldDefinitionTest.DefinitionTest.class,
     })
 public class AutocompleteFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "autocomplete-deserialization";
     private static final BsonDeserializationTestSuite<AutocompleteFieldDefinition> TEST_SUITE =
@@ -34,7 +34,7 @@ public class AutocompleteFieldDefinitionTest {
     private final BsonDeserializationTestSuite.TestSpecWrapper<AutocompleteFieldDefinition>
         testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<AutocompleteFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -129,7 +129,7 @@ public class AutocompleteFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "autocomplete-serialization";
     private static final BsonSerializationTestSuite<AutocompleteFieldDefinition> TEST_SUITE =
@@ -140,7 +140,7 @@ public class AutocompleteFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<AutocompleteFieldDefinition> testSpec;
 
-    public TestSerialization(
+    public SerializationTest(
         BsonSerializationTestSuite.TestSpec<AutocompleteFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -182,7 +182,7 @@ public class AutocompleteFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetType() {

@@ -35,14 +35,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      FieldDefinitionTest.TestDeserialization.class,
-      FieldDefinitionTest.TestSerialization.class,
-      FieldDefinitionTest.TestDefinition.class,
+      FieldDefinitionTest.DeserializationTest.class,
+      FieldDefinitionTest.SerializationTest.class,
+      FieldDefinitionTest.DefinitionTest.class,
     })
 public class FieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "field-deserialization";
     private static final BsonDeserializationTestSuite<FieldDefinition> TEST_SUITE =
@@ -50,7 +50,7 @@ public class FieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<FieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<FieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -282,7 +282,7 @@ public class FieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "field-serialization";
     private static final BsonSerializationTestSuite<FieldDefinition> TEST_SUITE =
@@ -290,7 +290,7 @@ public class FieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<FieldDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<FieldDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<FieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -495,7 +495,7 @@ public class FieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetAutocompleteDefinition() {

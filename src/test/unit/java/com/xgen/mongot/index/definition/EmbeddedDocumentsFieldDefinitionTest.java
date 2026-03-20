@@ -30,13 +30,13 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      EmbeddedDocumentsFieldDefinitionTest.TestDefinition.class,
-      EmbeddedDocumentsFieldDefinitionTest.TestDeserialization.class,
-      EmbeddedDocumentsFieldDefinitionTest.TestSerialization.class,
+      EmbeddedDocumentsFieldDefinitionTest.DefinitionTest.class,
+      EmbeddedDocumentsFieldDefinitionTest.DeserializationTest.class,
+      EmbeddedDocumentsFieldDefinitionTest.SerializationTest.class,
     })
 public class EmbeddedDocumentsFieldDefinitionTest {
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
     @Test
     public void testGetType() {
       EmbeddedDocumentsFieldDefinition definition =
@@ -223,7 +223,7 @@ public class EmbeddedDocumentsFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
     private static final String SUITE_NAME = "embeddedDocuments-deserialization";
     private static final BsonDeserializationTestSuite<EmbeddedDocumentsFieldDefinition> TEST_SUITE =
         fromDocument(
@@ -232,7 +232,7 @@ public class EmbeddedDocumentsFieldDefinitionTest {
     private final BsonDeserializationTestSuite.TestSpecWrapper<EmbeddedDocumentsFieldDefinition>
         testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<EmbeddedDocumentsFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -317,7 +317,7 @@ public class EmbeddedDocumentsFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
     private static final String SUITE_NAME = "embeddedDocuments-serialization";
     private static final BsonSerializationTestSuite<EmbeddedDocumentsFieldDefinition> TEST_SUITE =
         load(
@@ -327,7 +327,7 @@ public class EmbeddedDocumentsFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<EmbeddedDocumentsFieldDefinition> testSpec;
 
-    public TestSerialization(
+    public SerializationTest(
         BsonSerializationTestSuite.TestSpec<EmbeddedDocumentsFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }

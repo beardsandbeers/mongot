@@ -17,14 +17,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      GeoFieldDefinitionTest.TestDeserialization.class,
-      GeoFieldDefinitionTest.TestSerialization.class,
-      GeoFieldDefinitionTest.TestDefinition.class,
+      GeoFieldDefinitionTest.DeserializationTest.class,
+      GeoFieldDefinitionTest.SerializationTest.class,
+      GeoFieldDefinitionTest.DefinitionTest.class,
     })
 public class GeoFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "geo-deserialization";
     private static final BsonDeserializationTestSuite<GeoFieldDefinition> TEST_SUITE =
@@ -32,7 +32,7 @@ public class GeoFieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<GeoFieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<GeoFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -62,7 +62,7 @@ public class GeoFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "geo-serialization";
     private static final BsonSerializationTestSuite<GeoFieldDefinition> TEST_SUITE =
@@ -70,7 +70,7 @@ public class GeoFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<GeoFieldDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<GeoFieldDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<GeoFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -91,7 +91,7 @@ public class GeoFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetType() {

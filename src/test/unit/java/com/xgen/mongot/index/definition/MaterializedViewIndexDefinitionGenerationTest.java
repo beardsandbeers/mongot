@@ -21,14 +21,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      MaterializedViewIndexDefinitionGenerationTest.TestDeserialization.class,
-      MaterializedViewIndexDefinitionGenerationTest.TestSerialization.class,
-      MaterializedViewIndexDefinitionGenerationTest.TestClass.class,
+      MaterializedViewIndexDefinitionGenerationTest.DeserializationTest.class,
+      MaterializedViewIndexDefinitionGenerationTest.SerializationTest.class,
+      MaterializedViewIndexDefinitionGenerationTest.ClassTest.class,
     })
 public class MaterializedViewIndexDefinitionGenerationTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME =
         "materialized-view-index-definition-generation-deserialization";
@@ -40,7 +40,7 @@ public class MaterializedViewIndexDefinitionGenerationTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<IndexDefinitionGeneration> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<IndexDefinitionGeneration> testSpec) {
       this.testSpec = testSpec;
     }
@@ -64,7 +64,7 @@ public class MaterializedViewIndexDefinitionGenerationTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME =
         "materialized-view-index-definition-generation-serialization";
@@ -73,7 +73,7 @@ public class MaterializedViewIndexDefinitionGenerationTest {
 
     private final BsonSerializationTestSuite.TestSpec<IndexDefinitionGeneration> testSpec;
 
-    public TestSerialization(
+    public SerializationTest(
         BsonSerializationTestSuite.TestSpec<IndexDefinitionGeneration> testSpec) {
       this.testSpec = testSpec;
     }
@@ -110,7 +110,7 @@ public class MaterializedViewIndexDefinitionGenerationTest {
         definition, new MaterializedViewGeneration(Generation.CURRENT.incrementUser()));
   }
 
-  public static class TestClass {
+  public static class ClassTest {
     @Test
     public void testUpgradeToCurrentFormatVersion_throwException() {
       var definitionGeneration = simple();

@@ -31,14 +31,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      FieldTypeDefinitionTest.TestDeserialization.class,
-      FieldTypeDefinitionTest.TestSerialization.class,
-      FieldTypeDefinitionTest.TestDefinition.class,
+      FieldTypeDefinitionTest.DeserializationTest.class,
+      FieldTypeDefinitionTest.SerializationTest.class,
+      FieldTypeDefinitionTest.DefinitionTest.class,
     })
 public class FieldTypeDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "field-type-deserialization";
     private static final BsonDeserializationTestSuite<FieldTypeDefinition> TEST_SUITE =
@@ -46,7 +46,7 @@ public class FieldTypeDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<FieldTypeDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<FieldTypeDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -175,7 +175,7 @@ public class FieldTypeDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "field-type-serialization";
     private static final BsonSerializationTestSuite<FieldTypeDefinition> TEST_SUITE =
@@ -183,7 +183,7 @@ public class FieldTypeDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<FieldTypeDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<FieldTypeDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<FieldTypeDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -310,7 +310,7 @@ public class FieldTypeDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testEquality() {

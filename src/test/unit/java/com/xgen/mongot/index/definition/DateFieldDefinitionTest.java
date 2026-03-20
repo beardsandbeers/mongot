@@ -17,14 +17,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      DateFieldDefinitionTest.TestDeserialization.class,
-      DateFieldDefinitionTest.TestSerialization.class,
-      DateFieldDefinitionTest.TestDefinition.class
+      DateFieldDefinitionTest.DeserializationTest.class,
+      DateFieldDefinitionTest.SerializationTest.class,
+      DateFieldDefinitionTest.DefinitionTest.class
     })
 public class DateFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "date-deserialization";
     private static final BsonDeserializationTestSuite<DateFieldDefinition> TEST_SUITE =
@@ -32,7 +32,7 @@ public class DateFieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<DateFieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<DateFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -56,7 +56,7 @@ public class DateFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "date-serialization";
     private static final BsonSerializationTestSuite<DateFieldDefinition> TEST_SUITE =
@@ -64,7 +64,7 @@ public class DateFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<DateFieldDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<DateFieldDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<DateFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -85,7 +85,7 @@ public class DateFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetType() {

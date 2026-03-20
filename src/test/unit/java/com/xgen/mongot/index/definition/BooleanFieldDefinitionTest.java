@@ -17,14 +17,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      BooleanFieldDefinitionTest.TestDeserialization.class,
-      BooleanFieldDefinitionTest.TestSerialization.class,
-      BooleanFieldDefinitionTest.TestDefinition.class
+      BooleanFieldDefinitionTest.DeserializationTest.class,
+      BooleanFieldDefinitionTest.SerializationTest.class,
+      BooleanFieldDefinitionTest.DefinitionTest.class
     })
 public class BooleanFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "boolean-deserialization";
     private static final BsonDeserializationTestSuite<BooleanFieldDefinition> TEST_SUITE =
@@ -32,7 +32,7 @@ public class BooleanFieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<BooleanFieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<BooleanFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -56,7 +56,7 @@ public class BooleanFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "boolean-serialization";
     private static final BsonSerializationTestSuite<BooleanFieldDefinition> TEST_SUITE =
@@ -64,7 +64,7 @@ public class BooleanFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<BooleanFieldDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<BooleanFieldDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<BooleanFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -85,7 +85,7 @@ public class BooleanFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
     @Test
     public void testGetType() {
       BooleanFieldDefinition definition = BooleanFieldDefinitionBuilder.builder().build();

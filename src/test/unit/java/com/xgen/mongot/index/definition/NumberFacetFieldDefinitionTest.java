@@ -17,14 +17,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      NumberFacetFieldDefinitionTest.TestDeserialization.class,
-      NumberFacetFieldDefinitionTest.TestSerialization.class,
-      NumberFacetFieldDefinitionTest.TestDefinition.class,
+      NumberFacetFieldDefinitionTest.DeserializationTest.class,
+      NumberFacetFieldDefinitionTest.SerializationTest.class,
+      NumberFacetFieldDefinitionTest.DefinitionTest.class,
     })
 public class NumberFacetFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "number-facet-deserialization";
     private static final BsonDeserializationTestSuite<NumberFacetFieldDefinition> TEST_SUITE =
@@ -33,7 +33,7 @@ public class NumberFacetFieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<NumberFacetFieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<NumberFacetFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -94,7 +94,7 @@ public class NumberFacetFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "number-facet-serialization";
     private static final BsonSerializationTestSuite<NumberFacetFieldDefinition> TEST_SUITE =
@@ -105,7 +105,7 @@ public class NumberFacetFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<NumberFacetFieldDefinition> testSpec;
 
-    public TestSerialization(
+    public SerializationTest(
         BsonSerializationTestSuite.TestSpec<NumberFacetFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -140,7 +140,7 @@ public class NumberFacetFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetType() {

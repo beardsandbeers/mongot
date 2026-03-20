@@ -24,14 +24,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      DocumentFieldDefinitionTest.TestDeserialization.class,
-      DocumentFieldDefinitionTest.TestSerialization.class,
-      DocumentFieldDefinitionTest.TestDefinition.class,
+      DocumentFieldDefinitionTest.DeserializationTest.class,
+      DocumentFieldDefinitionTest.SerializationTest.class,
+      DocumentFieldDefinitionTest.DefinitionTest.class,
     })
 public class DocumentFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "document-deserialization";
     private static final BsonDeserializationTestSuite<DocumentFieldDefinition> TEST_SUITE =
@@ -39,7 +39,7 @@ public class DocumentFieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<DocumentFieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<DocumentFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -108,7 +108,7 @@ public class DocumentFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "document-serialization";
     private static final BsonSerializationTestSuite<DocumentFieldDefinition> TEST_SUITE =
@@ -116,7 +116,7 @@ public class DocumentFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<DocumentFieldDefinition> testSpec;
 
-    public TestSerialization(
+    public SerializationTest(
         BsonSerializationTestSuite.TestSpec<DocumentFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -156,7 +156,7 @@ public class DocumentFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetType() {

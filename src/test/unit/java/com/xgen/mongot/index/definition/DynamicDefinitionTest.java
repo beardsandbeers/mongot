@@ -15,20 +15,20 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      DynamicDefinitionTest.TestDeserialization.class,
-      DynamicDefinitionTest.TestSerialization.class,
-      DynamicDefinitionTest.TestDefinition.class,
+      DynamicDefinitionTest.DeserializationTest.class,
+      DynamicDefinitionTest.SerializationTest.class,
+      DynamicDefinitionTest.DefinitionTest.class,
     })
 public class DynamicDefinitionTest {
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
     private static final String SUITE_NAME = "dynamic-deserialization";
     private static final BsonDeserializationTestSuite<DynamicDefinition> TEST_SUITE =
         fromValue(DefinitionTests.RESOURCES_PATH, SUITE_NAME, DynamicDefinition::fromBson);
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<DynamicDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<DynamicDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -56,14 +56,14 @@ public class DynamicDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
     private static final String SUITE_NAME = "dynamic-serialization";
     private static final BsonSerializationTestSuite<DynamicDefinition> TEST_SUITE =
         load(DefinitionTests.RESOURCES_PATH, SUITE_NAME, DynamicDefinition::toBson);
 
     private final BsonSerializationTestSuite.TestSpec<DynamicDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<DynamicDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<DynamicDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -89,7 +89,7 @@ public class DynamicDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
     @Test
     public void isEnabled_equalityChecks_passes() {
       Truth.assertThat(new DynamicDefinition.Boolean(true).isEnabled()).isTrue();

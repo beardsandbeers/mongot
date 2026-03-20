@@ -17,14 +17,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      NumberFieldDefinitionTest.TestDeserialization.class,
-      NumberFieldDefinitionTest.TestSerialization.class,
-      NumberFieldDefinitionTest.TestDefinition.class,
+      NumberFieldDefinitionTest.DeserializationTest.class,
+      NumberFieldDefinitionTest.SerializationTest.class,
+      NumberFieldDefinitionTest.DefinitionTest.class,
     })
 public class NumberFieldDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "number-deserialization";
     private static final BsonDeserializationTestSuite<NumberFieldDefinition> TEST_SUITE =
@@ -32,7 +32,7 @@ public class NumberFieldDefinitionTest {
 
     private final BsonDeserializationTestSuite.TestSpecWrapper<NumberFieldDefinition> testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<NumberFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -93,7 +93,7 @@ public class NumberFieldDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "number-serialization";
     private static final BsonSerializationTestSuite<NumberFieldDefinition> TEST_SUITE =
@@ -101,7 +101,7 @@ public class NumberFieldDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<NumberFieldDefinition> testSpec;
 
-    public TestSerialization(BsonSerializationTestSuite.TestSpec<NumberFieldDefinition> testSpec) {
+    public SerializationTest(BsonSerializationTestSuite.TestSpec<NumberFieldDefinition> testSpec) {
       this.testSpec = testSpec;
     }
 
@@ -135,7 +135,7 @@ public class NumberFieldDefinitionTest {
     }
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
 
     @Test
     public void testGetType() {

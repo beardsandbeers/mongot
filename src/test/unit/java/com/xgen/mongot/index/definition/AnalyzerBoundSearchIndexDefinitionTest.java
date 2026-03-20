@@ -26,14 +26,14 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses(
     value = {
-      AnalyzerBoundSearchIndexDefinitionTest.TestDeserialization.class,
-      AnalyzerBoundSearchIndexDefinitionTest.TestSerialization.class,
-      AnalyzerBoundSearchIndexDefinitionTest.TestDefinition.class,
+      AnalyzerBoundSearchIndexDefinitionTest.DeserializationTest.class,
+      AnalyzerBoundSearchIndexDefinitionTest.SerializationTest.class,
+      AnalyzerBoundSearchIndexDefinitionTest.DefinitionTest.class,
     })
 public class AnalyzerBoundSearchIndexDefinitionTest {
 
   @RunWith(Parameterized.class)
-  public static class TestDeserialization {
+  public static class DeserializationTest {
 
     private static final String SUITE_NAME = "analyzer-bound-index-deserialization";
     private static final BsonDeserializationTestSuite<AnalyzerBoundSearchIndexDefinition>
@@ -46,7 +46,7 @@ public class AnalyzerBoundSearchIndexDefinitionTest {
     private final BsonDeserializationTestSuite.TestSpecWrapper<AnalyzerBoundSearchIndexDefinition>
         testSpec;
 
-    public TestDeserialization(
+    public DeserializationTest(
         BsonDeserializationTestSuite.TestSpecWrapper<AnalyzerBoundSearchIndexDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -82,7 +82,7 @@ public class AnalyzerBoundSearchIndexDefinitionTest {
   }
 
   @RunWith(Parameterized.class)
-  public static class TestSerialization {
+  public static class SerializationTest {
 
     private static final String SUITE_NAME = "analyzer-bound-index-serialization";
     private static final BsonSerializationTestSuite<AnalyzerBoundSearchIndexDefinition> TEST_SUITE =
@@ -90,7 +90,7 @@ public class AnalyzerBoundSearchIndexDefinitionTest {
 
     private final BsonSerializationTestSuite.TestSpec<AnalyzerBoundSearchIndexDefinition> testSpec;
 
-    public TestSerialization(
+    public SerializationTest(
         BsonSerializationTestSuite.TestSpec<AnalyzerBoundSearchIndexDefinition> testSpec) {
       this.testSpec = testSpec;
     }
@@ -186,7 +186,7 @@ public class AnalyzerBoundSearchIndexDefinitionTest {
         .build();
   }
 
-  public static class TestDefinition {
+  public static class DefinitionTest {
     @Test
     public void testDefaultRequiresNoAnalyzers() {
       var index = SearchIndexDefinitionBuilder.builder().defaultMetadata().dynamicMapping().build();
