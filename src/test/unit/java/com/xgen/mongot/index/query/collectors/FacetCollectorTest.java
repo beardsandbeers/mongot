@@ -476,5 +476,50 @@ public class FacetCollectorTest {
       assertThat(directorFacet).isNotNull();
       assertThat(directorFacet.numBuckets()).isEqualTo(2000);
     }
+
+    @Test
+    public void getTotalRequestedStringFacetBuckets_sumsOnlyStringFacetNumBuckets() {
+      // One string facet: 100
+      FacetCollector oneString =
+          CollectorBuilder.facet()
+              .operator(OperatorBuilder.text().path("q").query("x").build())
+              .facetDefinitions(
+                  Map.of(
+                      "a",
+                      FacetDefinitionBuilder.string().numBuckets(100).path("f1").build()))
+              .build();
+      assertThat(oneString.getTotalRequestedStringFacetBuckets()).isEqualTo(100);
+
+      // String + numeric: only string counts
+      FacetCollector stringAndNumeric =
+          CollectorBuilder.facet()
+              .operator(OperatorBuilder.text().path("q").query("x").build())
+              .facetDefinitions(
+                  Map.of(
+                      "s",
+                      FacetDefinitionBuilder.string().numBuckets(50).path("f1").build(),
+                      "n",
+                      FacetDefinitionBuilder.numeric()
+                          .boundaries(List.of(new BsonInt32(1), new BsonInt32(2)))
+                          .path("f2")
+                          .build()))
+              .build();
+      assertThat(stringAndNumeric.getTotalRequestedStringFacetBuckets()).isEqualTo(50);
+
+      // Multiple string facets: sum
+      FacetCollector multipleString =
+          CollectorBuilder.facet()
+              .operator(OperatorBuilder.text().path("q").query("x").build())
+              .facetDefinitions(
+                  Map.of(
+                      "a",
+                      FacetDefinitionBuilder.string().numBuckets(10).path("f1").build(),
+                      "b",
+                      FacetDefinitionBuilder.string().numBuckets(20).path("f2").build(),
+                      "c",
+                      FacetDefinitionBuilder.string().numBuckets(5).path("f3").build()))
+              .build();
+      assertThat(multipleString.getTotalRequestedStringFacetBuckets()).isEqualTo(35);
+    }
   }
 }

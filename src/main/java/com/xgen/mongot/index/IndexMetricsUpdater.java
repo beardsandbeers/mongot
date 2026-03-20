@@ -8,9 +8,12 @@ import com.google.common.flogger.FluentLogger;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.SearchIndexCapabilities;
 import com.xgen.mongot.index.definition.VectorIndexCapabilities;
+import com.xgen.mongot.index.query.CollectorQuery;
 import com.xgen.mongot.index.query.InvalidQueryException;
+import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.collectors.Collector;
 import com.xgen.mongot.index.query.collectors.DrillSidewaysInfoBuilder.DrillSidewaysInfo.QueryOptimizationStatus;
+import com.xgen.mongot.index.query.collectors.FacetCollector;
 import com.xgen.mongot.index.query.operators.Operator;
 import com.xgen.mongot.index.query.operators.TextOperator;
 import com.xgen.mongot.index.query.operators.VectorSearchCriteria;
@@ -30,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import org.apache.lucene.search.TotalHits;
 import org.jetbrains.annotations.TestOnly;
 
@@ -42,8 +46,17 @@ public class IndexMetricsUpdater implements Closeable {
   public static final String NAMESPACE = "index.stats";
   private static final double[] NUM_CANDIDATES_BUCKETS = {100, 500, 1000, 2000, 5000, 10_000};
   private static final double[] LIMIT_BUCKETS = {10, 50, 100, 200, 500, 1000};
-  private static final double[] VISITED_NODES_BUCKETS =
-      {100, 500, 1000, 2000, 5000, 10_000, 50_000};
+  private static final double[] VISITED_NODES_BUCKETS = {
+    100, 500, 1000, 2000, 5000, 10_000, 50_000
+  };
+
+  /**
+   * Upper bounds for {@code totalFacetBucketsPerQuery} (string facet bucket demand per query).
+   *
+   * <p>Kept coarse (vs finer histograms) to limit Prometheus series: tail-focused bands around the
+   * 10k bucket-limit context; use {@code sum}/{@code count} on export for mean demand.
+   */
+  private static final double[] TOTAL_FACET_BUCKETS_BUCKETS = {1000, 10_000, 50_000};
 
   private final IndexDefinition indexDefinition;
   private final PerIndexMetricsFactory metricsFactory;
@@ -427,6 +440,7 @@ public class IndexMetricsUpdater implements Closeable {
 
     /** Counters for full scan experiment stats. These should be removed by 6/1/2026. */
     private final Counter fallBackHeuristicSuccessCounter;
+
     private final Counter fallBackHeuristicFailureCounter;
 
     /**
@@ -484,6 +498,9 @@ public class IndexMetricsUpdater implements Closeable {
     private final DistributionSummary numCandidatesBinaryQuantized;
     private final DistributionSummary limitPerQuery;
 
+    /** Distribution of total requested string facet buckets per facet query. */
+    private final DistributionSummary totalFacetBucketsPerQuery;
+
     /** Number of times a phantom LuceneIndexSearcherReference is not closed. */
     private final Counter phantomSearcherCleanupCounter;
 
@@ -498,12 +515,14 @@ public class IndexMetricsUpdater implements Closeable {
 
     /** Counters for visited nodes in KNN queries, indexed by filter and mode. */
     private final Counter vectorSearchVisitedNodesUnfilteredApproximateCounter;
+
     private final Counter vectorSearchVisitedNodesUnfilteredExactCounter;
     private final Counter vectorSearchVisitedNodesFilteredApproximateCounter;
     private final Counter vectorSearchVisitedNodesFilteredExactCounter;
 
     /** Histograms for visited nodes per segment in KNN queries, indexed by filter and mode. */
     private final DistributionSummary vectorSearchVisitedNodesPerSegmentUnfilteredApproximate;
+
     private final DistributionSummary vectorSearchVisitedNodesPerSegmentFilteredApproximate;
     private final DistributionSummary vectorSearchVisitedNodesPerSegmentUnfilteredExact;
     private final DistributionSummary vectorSearchVisitedNodesPerSegmentFilteredExact;
@@ -612,6 +631,9 @@ public class IndexMetricsUpdater implements Closeable {
               KnnSearchMode.class,
               (String s) -> metricsFactory.counter("knnSearchMode", Tags.of("mode", s)));
       this.limitPerQuery = metricsFactory.histogram("limitPerQuery", LIMIT_BUCKETS);
+      this.totalFacetBucketsPerQuery =
+          metricsFactory.histogram(
+              "totalFacetBucketsPerQuery", Tags.empty(), TOTAL_FACET_BUCKETS_BUCKETS);
       this.phantomSearcherCleanupCounter = metricsFactory.counter("phantomSearcherCleanupCount");
       this.benefitFromIndexSortCounter = metricsFactory.counter("benefitFromIndexSortCount");
       this.vectorSearchVisitedNodesUnfilteredApproximateCounter =
@@ -717,6 +739,29 @@ public class IndexMetricsUpdater implements Closeable {
                 : this.vectorSearchVisitedNodesPerSegmentUnfilteredExact;
       }
       histogram.record(visitedNodes);
+    }
+
+    /**
+     * Records total requested string facet buckets for facet queries when {@code enabled} returns
+     * true and the query has positive string bucket demand (numeric-only facet queries are
+     * skipped). Called from the search execution path after a successful query (e.g. {@link
+     * MeteredSearchIndexReader}), consistent with other query-time distribution metrics.
+     *
+     * <p>{@code enabled} is consulted only for {@link CollectorQuery} with a {@link
+     * FacetCollector} so dynamic flag evaluation stays off the hot path for non-facet queries.
+     */
+    public void recordTotalStringFacetBucketsIfApplicable(Query query, BooleanSupplier enabled) {
+      if (!(query instanceof CollectorQuery collectorQuery)
+          || !(collectorQuery.collector() instanceof FacetCollector facetCollector)) {
+        return;
+      }
+      if (!enabled.getAsBoolean()) {
+        return;
+      }
+      int totalStringBuckets = facetCollector.getTotalRequestedStringFacetBuckets();
+      if (totalStringBuckets > 0) {
+        this.totalFacetBucketsPerQuery.record(totalStringBuckets);
+      }
     }
 
     @VisibleForTesting

@@ -9,18 +9,22 @@ import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.index.query.SearchQuery;
 import java.io.IOException;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import org.apache.lucene.index.FieldInfos;
 
 public class MeteredSearchIndexReader implements SearchIndexReader {
   private final SearchIndexReader indexReader;
   private final IndexMetricsUpdater.QueryingMetricsUpdater queryingMetricsUpdater;
   private final QueryMetricsRecorder queryMetricsRecorder;
+  private final BooleanSupplier recordTotalStringFacetBucketsMetric;
 
   public MeteredSearchIndexReader(
       SearchIndexReader indexReader,
-      IndexMetricsUpdater.QueryingMetricsUpdater queryingMetricsUpdater) {
+      IndexMetricsUpdater.QueryingMetricsUpdater queryingMetricsUpdater,
+      BooleanSupplier recordTotalStringFacetBucketsMetric) {
     this.indexReader = indexReader;
     this.queryingMetricsUpdater = queryingMetricsUpdater;
+    this.recordTotalStringFacetBucketsMetric = recordTotalStringFacetBucketsMetric;
     this.queryMetricsRecorder =
         new QueryMetricsRecorder(queryingMetricsUpdater.getQueryFeaturesMetricsUpdater());
   }
@@ -37,6 +41,8 @@ public class MeteredSearchIndexReader implements SearchIndexReader {
       SearchProducerAndMetaResults result =
           this.indexReader.query(
               query, queryCursorOptions, batchSizeStrategy, queryOptimizationFlags);
+      this.queryingMetricsUpdater.recordTotalStringFacetBucketsIfApplicable(
+          query, this.recordTotalStringFacetBucketsMetric);
       this.queryMetricsRecorder.record(query, queryCursorOptions);
       return result;
     } catch (Exception e) {
@@ -57,6 +63,8 @@ public class MeteredSearchIndexReader implements SearchIndexReader {
       SearchProducerAndMetaProducer result =
           this.indexReader.intermediateQuery(
               query, queryCursorOptions, batchSizeStrategy, queryOptimizationFlags);
+      this.queryingMetricsUpdater.recordTotalStringFacetBucketsIfApplicable(
+          query, this.recordTotalStringFacetBucketsMetric);
       this.queryMetricsRecorder.record(query, queryCursorOptions);
       return result;
     } catch (Exception e) {

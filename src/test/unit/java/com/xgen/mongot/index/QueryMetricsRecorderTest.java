@@ -21,7 +21,6 @@ import com.xgen.mongot.index.query.collectors.FacetCollector;
 import com.xgen.mongot.index.query.collectors.FacetDefinition;
 import com.xgen.mongot.index.query.operators.CompoundOperator;
 import com.xgen.mongot.index.query.operators.Operator;
-import com.xgen.mongot.index.query.operators.Operator;
 import com.xgen.mongot.index.query.operators.TextOperator;
 import com.xgen.mongot.index.query.operators.VectorSearchCriteria;
 import com.xgen.mongot.index.query.operators.mql.MqlFilterOperator;
@@ -113,7 +112,8 @@ public class QueryMetricsRecorderTest {
     QueryFeaturesMetricsUpdater queryFeaturesStatsUpdater =
         IndexMetricsUpdaterBuilder.QueryingMetricsUpdaterBuilder.QueryFeaturesMetricsUpdaterBuilder
             .empty();
-    QueryMetricsRecorder queryMetricsRecorder = new QueryMetricsRecorder(queryFeaturesStatsUpdater);
+    QueryMetricsRecorder queryMetricsRecorder =
+        new QueryMetricsRecorder(queryFeaturesStatsUpdater);
 
     Operator operator = OperatorBuilder.text().path("path").query("empty").build();
     Map<String, FacetDefinition> facetDefinitions =
@@ -157,7 +157,8 @@ public class QueryMetricsRecorderTest {
     QueryFeaturesMetricsUpdater queryFeaturesStatsUpdater =
         IndexMetricsUpdaterBuilder.QueryingMetricsUpdaterBuilder.QueryFeaturesMetricsUpdaterBuilder
             .empty();
-    QueryMetricsRecorder queryMetricsRecorder = new QueryMetricsRecorder(queryFeaturesStatsUpdater);
+    QueryMetricsRecorder queryMetricsRecorder =
+        new QueryMetricsRecorder(queryFeaturesStatsUpdater);
 
     Operator operator = OperatorBuilder.text().path("path").query("empty").build();
     Map<String, FacetDefinition> facetDefinitions =
@@ -201,7 +202,8 @@ public class QueryMetricsRecorderTest {
     QueryFeaturesMetricsUpdater queryFeaturesStatsUpdater =
         IndexMetricsUpdaterBuilder.QueryingMetricsUpdaterBuilder.QueryFeaturesMetricsUpdaterBuilder
             .empty();
-    QueryMetricsRecorder queryMetricsRecorder = new QueryMetricsRecorder(queryFeaturesStatsUpdater);
+    QueryMetricsRecorder queryMetricsRecorder =
+        new QueryMetricsRecorder(queryFeaturesStatsUpdater);
 
     // FacetCollector built without withDrillSideways() has empty drillSidewaysInfo
     SearchQuery query =

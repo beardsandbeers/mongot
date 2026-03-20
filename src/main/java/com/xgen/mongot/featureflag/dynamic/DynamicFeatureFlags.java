@@ -33,7 +33,8 @@ public enum DynamicFeatureFlags {
   NUM_FIELDS_PER_DATATYPE_METRIC("mongot.featureFlag.enableNumFieldsPerDatatypeMetric", false),
   COLLECT_MULTI_PARTITION_EMPTY_SEARCH_PRODUCER(
       "mongot.featureFlag.collectMultiPartitionEmptySearchProducer", false),
-  ENABLE_10K_BUCKET_LIMIT("mongot.featureFlag.enable10kBucketLimit", false);
+  ENABLE_10K_BUCKET_LIMIT("mongot.featureFlag.enable10kBucketLimit", false),
+  ENABLE_TOTAL_STRING_FACET_BUCKETS("mongot.featureFlag.enableTotalStringFacetBuckets", false);
 
   private final String name;
   private final boolean fallback;

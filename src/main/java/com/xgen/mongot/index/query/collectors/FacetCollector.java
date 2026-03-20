@@ -1,5 +1,6 @@
 package com.xgen.mongot.index.query.collectors;
 
+import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.index.query.collectors.DrillSidewaysInfoBuilder.DrillSidewaysInfo;
 import com.xgen.mongot.index.query.operators.AllDocumentsOperator;
 import com.xgen.mongot.index.query.operators.AutocompleteOperator;
@@ -151,6 +152,27 @@ public record FacetCollector(
   /** Encodes this collector to BSON (same as collectorToBson; used for FACET_10K_ALLOWED field). */
   public BsonValue collectorToBson10kAllowed() {
     return collectorToBson();
+  }
+
+  /**
+   * Returns the sum of {@code numBuckets} across all string facets (e.g. for tests and callers that
+   * need the value in-process).
+   *
+   * <p>Emitting {@code totalFacetBucketsPerQuery} is gated by {@link
+   * com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags#ENABLE_TOTAL_STRING_FACET_BUCKETS}
+   * (wired through {@link com.xgen.mongot.index.MeteredSearchIndexReader} into {@link
+   * com.xgen.mongot.index.IndexMetricsUpdater.QueryingMetricsUpdater
+   * #recordTotalStringFacetBucketsIfApplicable}, which records {@code totalFacetBucketsPerQuery}
+   * when this sum is positive (numeric-only facet queries are omitted from the histogram).
+   */
+  public int getTotalRequestedStringFacetBuckets() {
+    @Var int total = 0;
+    for (FacetDefinition def : this.facetDefinitions.values()) {
+      if (def instanceof FacetDefinition.StringFacetDefinition stringFacet) {
+        total += stringFacet.numBuckets();
+      }
+    }
+    return total;
   }
 
   /** Returns facet definitions of the given type. */

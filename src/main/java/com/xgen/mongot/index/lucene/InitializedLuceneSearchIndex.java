@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableList;
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.IndexClosedException;
 import com.xgen.mongot.index.IndexMetricValuesSupplier;
@@ -225,7 +226,11 @@ class InitializedLuceneSearchIndex implements InitializedSearchIndex {
 
     SearchIndexReader reader =
         new MeteredSearchIndexReader(
-            searchIndexReader, indexMetricsUpdater.getQueryingMetricsUpdater());
+            searchIndexReader,
+            indexMetricsUpdater.getQueryingMetricsUpdater(),
+            () ->
+                dynamicFeatureFlagRegistry.evaluateClusterInvariant(
+                    DynamicFeatureFlags.ENABLE_TOTAL_STRING_FACET_BUCKETS));
 
     IndexWriter writer =
         new MeteredIndexWriter(

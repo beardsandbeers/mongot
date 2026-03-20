@@ -7,6 +7,7 @@ import static com.xgen.mongot.index.IndexMetricsUpdater.QueryingMetricsUpdater.Q
 import static com.xgen.mongot.index.IndexTypeData.INDEX_TYPE_TAG_NAME;
 import static com.xgen.mongot.index.IndexTypeData.IndexTypeTag.TAG_VECTOR_SEARCH_AUTO_EMBEDDING;
 import static com.xgen.testing.TestUtils.assertThrows;
+import static com.xgen.testing.mongot.mock.index.SearchIndex.MOCK_INDEX_NAME;
 import static com.xgen.testing.mongot.mock.index.SearchIndex.mockAutoEmbeddingVectorSearchDefinition;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -16,6 +17,7 @@ import com.xgen.mongot.index.IndexMetricsUpdater.IndexingMetricsUpdater;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.SearchIndexCapabilities;
 import com.xgen.mongot.index.definition.VectorIndexCapabilities;
+import com.xgen.mongot.index.query.SearchQuery;
 import com.xgen.mongot.index.query.collectors.Collector;
 import com.xgen.mongot.index.query.operators.Operator;
 import com.xgen.mongot.index.query.operators.TextOperator;
@@ -29,6 +31,12 @@ import com.xgen.mongot.util.Enums;
 import com.xgen.testing.mongot.index.IndexMetricsBuilder;
 import com.xgen.testing.mongot.index.IndexMetricsUpdaterBuilder;
 import com.xgen.testing.mongot.index.definition.SearchIndexDefinitionBuilder;
+import com.xgen.testing.mongot.index.query.CollectorQueryBuilder;
+import com.xgen.testing.mongot.index.query.OperatorQueryBuilder;
+import com.xgen.testing.mongot.index.query.collectors.CollectorBuilder;
+import com.xgen.testing.mongot.index.query.collectors.FacetDefinitionBuilder;
+import com.xgen.testing.mongot.index.query.operators.OperatorBuilder;
+import com.xgen.testing.mongot.index.query.scores.ScoreBuilder;
 import com.xgen.testing.mongot.index.version.GenerationIdBuilder;
 import com.xgen.testing.mongot.metrics.micrometer.PercentilesBuilder;
 import com.xgen.testing.mongot.metrics.micrometer.SerializableTimerBuilder;
@@ -38,8 +46,11 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.search.MeterNotFoundException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import org.bson.BsonInt32;
 import org.bson.BsonTimestamp;
 import org.bson.types.ObjectId;
 import org.junit.Assert;
@@ -357,6 +368,123 @@ public class IndexMetricsUpdaterTest {
             IndexMetricsBuilder.QueryingMetricsBuilder.builder().failedQueryCount(1).build();
 
         Assert.assertEquals(expected, result);
+      }
+
+      @Test
+      public void recordTotalStringFacetBucketsIfApplicable_skippedWhenDisabled() {
+        var metricsFactory =
+            SearchIndex.mockMetricsFactory()
+                .childMetricsFactory(IndexMetricsUpdater.QueryingMetricsUpdater.NAMESPACE);
+        var queryingMetricsUpdater = new IndexMetricsUpdater.QueryingMetricsUpdater(metricsFactory);
+        SearchQuery query =
+            CollectorQueryBuilder.builder()
+                .collector(
+                    CollectorBuilder.facet()
+                        .facetDefinitions(
+                            Map.of(
+                                "stringFacet",
+                                FacetDefinitionBuilder.string()
+                                    .numBuckets(10)
+                                    .path("path")
+                                    .build()))
+                        .operator(OperatorBuilder.text().path("path").query("q").build())
+                        .build())
+                .returnStoredSource(false)
+                .build();
+        long countBefore =
+            metricsFactory.get("totalFacetBucketsPerQuery").summary().count();
+        queryingMetricsUpdater.recordTotalStringFacetBucketsIfApplicable(query, () -> false);
+        assertThat(metricsFactory.get("totalFacetBucketsPerQuery").summary().count())
+            .isEqualTo(countBefore);
+      }
+
+      @Test
+      public void recordTotalStringFacetBucketsIfApplicable_skipsEnabledWhenOperatorQuery() {
+        var metricsFactory =
+            SearchIndex.mockMetricsFactory()
+                .childMetricsFactory(IndexMetricsUpdater.QueryingMetricsUpdater.NAMESPACE);
+        var queryingMetricsUpdater = new IndexMetricsUpdater.QueryingMetricsUpdater(metricsFactory);
+        SearchQuery operatorQuery =
+            OperatorQueryBuilder.builder()
+                .operator(
+                    OperatorBuilder.exists()
+                        .path("foo")
+                        .score(ScoreBuilder.constant().value(1).build())
+                        .build())
+                .index(MOCK_INDEX_NAME)
+                .returnStoredSource(false)
+                .build();
+        AtomicBoolean enabledInvoked = new AtomicBoolean(false);
+        queryingMetricsUpdater.recordTotalStringFacetBucketsIfApplicable(
+            operatorQuery,
+            () -> {
+              enabledInvoked.set(true);
+              return true;
+            });
+        assertThat(enabledInvoked.get()).isFalse();
+      }
+
+      /**
+       * Uses a total in the (1000, 10_000] band to match coarse {@code totalFacetBucketsPerQuery}
+       * histogram bounds — not the number of Prometheus bucket series.
+       */
+      @Test
+      public void recordTotalStringFacetBucketsIfApplicable_recordsWhenEnabled() {
+        int requestedStringFacetBuckets = 5000;
+        var metricsFactory =
+            SearchIndex.mockMetricsFactory()
+                .childMetricsFactory(IndexMetricsUpdater.QueryingMetricsUpdater.NAMESPACE);
+        var queryingMetricsUpdater = new IndexMetricsUpdater.QueryingMetricsUpdater(metricsFactory);
+        SearchQuery query =
+            CollectorQueryBuilder.builder()
+                .collector(
+                    CollectorBuilder.facet()
+                        .facetDefinitions(
+                            Map.of(
+                                "stringFacet",
+                                FacetDefinitionBuilder.string()
+                                    .numBuckets(requestedStringFacetBuckets)
+                                    .path("path")
+                                    .build()))
+                        .operator(OperatorBuilder.text().path("path").query("q").build())
+                        .build())
+                .returnStoredSource(false)
+                .build();
+        long countBefore =
+            metricsFactory.get("totalFacetBucketsPerQuery").summary().count();
+        queryingMetricsUpdater.recordTotalStringFacetBucketsIfApplicable(query, () -> true);
+        assertThat(metricsFactory.get("totalFacetBucketsPerQuery").summary().count())
+            .isEqualTo(countBefore + 1L);
+        assertThat(metricsFactory.get("totalFacetBucketsPerQuery").summary().totalAmount())
+            .isEqualTo((double) requestedStringFacetBuckets);
+      }
+
+      @Test
+      public void recordTotalStringFacetBucketsIfApplicable_skippedWhenNumericOnlyFacets() {
+        var metricsFactory =
+            SearchIndex.mockMetricsFactory()
+                .childMetricsFactory(IndexMetricsUpdater.QueryingMetricsUpdater.NAMESPACE);
+        var queryingMetricsUpdater = new IndexMetricsUpdater.QueryingMetricsUpdater(metricsFactory);
+        SearchQuery query =
+            CollectorQueryBuilder.builder()
+                .collector(
+                    CollectorBuilder.facet()
+                        .facetDefinitions(
+                            Map.of(
+                                "numericFacet",
+                                FacetDefinitionBuilder.numeric()
+                                    .boundaries(List.of(new BsonInt32(1), new BsonInt32(2)))
+                                    .path("path")
+                                    .build()))
+                        .operator(OperatorBuilder.text().path("path").query("q").build())
+                        .build())
+                .returnStoredSource(false)
+                .build();
+        long countBefore =
+            metricsFactory.get("totalFacetBucketsPerQuery").summary().count();
+        queryingMetricsUpdater.recordTotalStringFacetBucketsIfApplicable(query, () -> true);
+        assertThat(metricsFactory.get("totalFacetBucketsPerQuery").summary().count())
+            .isEqualTo(countBefore);
       }
 
       @Test
