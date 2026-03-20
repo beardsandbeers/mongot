@@ -61,7 +61,10 @@ public class EmbeddingServiceConfigTest {
     @Parameterized.Parameters(name = "{0}")
     public static Iterable<TestSpecWrapper<EmbeddingServiceConfig>> data() {
       return TEST_SUITE.withExamples(
-          fullConfig(), configsWithOptionalFields(), configWithDedicatedClusterFalse());
+          fullConfig(),
+          configsWithOptionalFields(),
+          configWithDedicatedClusterFalse(),
+          configWithUseFlexTierFalse());
     }
 
     @Test
@@ -169,6 +172,27 @@ public class EmbeddingServiceConfigTest {
                   false,
                   Optional.empty())));
     }
+
+    private static BsonDeserializationTestSuite.ValidSpec<EmbeddingServiceConfig>
+        configWithUseFlexTierFalse() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "voyage-3.5 with useFlexTier false",
+          new EmbeddingServiceConfig(
+              VOYAGE,
+              "voyage-3.5",
+              new EmbeddingConfig(
+                  Optional.empty(),
+                  MODEL_CONFIG,
+                  ERROR_HANDLING_CONFIG,
+                  CREDENTIALS,
+                  Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
+                  true,
+                  Optional.empty(),
+                  false)));
+    }
   }
 
   @RunWith(Parameterized.class)
@@ -187,7 +211,11 @@ public class EmbeddingServiceConfigTest {
     @Parameterized.Parameters(name = "{0}")
     public static Iterable<BsonSerializationTestSuite.TestSpec<EmbeddingServiceConfig>> data() {
       return List.of(
-          sanitizedConfig(), fullConfig(), defaultConfig(), configWithDedicatedClusterFalse());
+          sanitizedConfig(),
+          fullConfig(),
+          defaultConfig(),
+          configWithDedicatedClusterFalse(),
+          configWithUseFlexTierFalse());
     }
 
     @Test
@@ -327,6 +355,27 @@ public class EmbeddingServiceConfigTest {
                   Optional.empty(),
                   false,
                   Optional.empty())));
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<EmbeddingServiceConfig>
+        configWithUseFlexTierFalse() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "voyage-3.5 with useFlexTier false",
+          new EmbeddingServiceConfig(
+              VOYAGE,
+              "voyage-3.5",
+              new EmbeddingConfig(
+                  Optional.empty(),
+                  MODEL_CONFIG,
+                  ERROR_HANDLING_CONFIG,
+                  CREDENTIALS,
+                  Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
+                  true,
+                  Optional.empty(),
+                  false)));
     }
   }
 }

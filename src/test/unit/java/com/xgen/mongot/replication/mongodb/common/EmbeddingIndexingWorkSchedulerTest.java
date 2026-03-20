@@ -113,7 +113,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                     List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
                     new FakeEmbeddingClientFactory(),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)));
+                    meterRegistry,
+                    Optional.empty())));
 
     ObjectId indexId = new ObjectId();
     VectorIndexDefinition vectorIndexDefinition =
@@ -158,7 +159,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                         ImmutableSet.of(),
                         ImmutableSet.of("aString")),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)));
+                    meterRegistry,
+                    Optional.empty())));
 
     ObjectId indexId = new ObjectId();
     VectorIndexDefinition vectorIndexDefinition =
@@ -202,7 +204,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                         ImmutableSet.of("aString"),
                         ImmutableSet.of()),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)));
+                    meterRegistry,
+                    Optional.empty())));
 
     ObjectId indexId = new ObjectId();
     VectorIndexDefinition vectorIndexDefinition =
@@ -243,7 +246,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                     List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
                     new FakeEmbeddingClientFactory(),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)));
+                    meterRegistry,
+                    Optional.empty())));
 
     ObjectId indexId = new ObjectId();
     VectorIndexDefinition vectorIndexDefinition =
@@ -295,7 +299,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                     List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
                     new FakeEmbeddingClientFactory(),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)),
+                    meterRegistry,
+                    Optional.empty())),
             generationId);
 
     VectorIndexDefinition vectorIndexDefinition =
@@ -342,7 +347,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                     new FakeEmbeddingClientFactory(
                         meterRegistry, ImmutableSet.of(), ImmutableSet.of(), ImmutableSet.of()),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)),
+                    meterRegistry,
+                    Optional.empty())),
             generationId);
 
     VectorIndexDefinition vectorIndexDefinition =
@@ -394,7 +400,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                     List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
                     new FakeEmbeddingClientFactory(),
                     Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                    meterRegistry)),
+                    meterRegistry,
+                    Optional.empty())),
             matViewCollectionMetadataCatalog);
 
     VectorIndexDefinition vectorIndexDefinition =
@@ -440,7 +447,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                 List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
                 new FakeEmbeddingClientFactory(),
                 Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                meterRegistry));
+                meterRegistry,
+                Optional.empty()));
     EmbeddingIndexingWorkScheduler scheduler =
         schedulerForMaterializedViewIndex(
             Suppliers.ofInstance(embeddingServiceManager), generationId);
@@ -503,7 +511,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                 List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
                 new FakeEmbeddingClientFactory(),
                 Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                meterRegistry));
+                meterRegistry,
+                Optional.empty()));
     EmbeddingIndexingWorkScheduler scheduler =
         schedulerForMaterializedViewIndex(
             Suppliers.ofInstance(embeddingServiceManager), generationId);
@@ -570,7 +579,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
                 List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
                 new FakeEmbeddingClientFactory(),
                 Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-                meterRegistry));
+                meterRegistry,
+                Optional.empty()));
     EmbeddingIndexingWorkScheduler scheduler =
         schedulerForMaterializedViewIndex(
             Suppliers.ofInstance(embeddingServiceManager), generationId);
@@ -636,7 +646,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
         List.of(TEST_EMBEDDING_CONFIG_V3_LARGE, TEST_EMBEDDING_CONFIG_V3_LITE),
         new FakeEmbeddingClientFactory(),
         Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
-        meterRegistry);
+        meterRegistry,
+        Optional.empty());
 
     // Create field mapping with two fields using different models
     ObjectId indexId = new ObjectId();

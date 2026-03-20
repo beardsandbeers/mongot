@@ -100,6 +100,7 @@ public class VectorTextFieldDefinition extends VectorIndexVectorFieldDefinition 
         : new EmbeddingModelConfig(
             modelName,
             DEFAULT_EMBEDDING_MODEL_CONFIG.provider(),
+            DEFAULT_EMBEDDING_MODEL_CONFIG.useFlexTier(),
             DEFAULT_EMBEDDING_MODEL_CONFIG.query(),
             DEFAULT_EMBEDDING_MODEL_CONFIG.changeStream(),
             DEFAULT_EMBEDDING_MODEL_CONFIG.collectionScan());

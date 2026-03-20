@@ -235,7 +235,9 @@ public class CommonUtilsTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.of(100));
+            Optional.of(100),
+            Optional.empty(),
+            Optional.empty());
 
     MaterializedViewIndexFactory factory =
         CommonUtils.getMaterializedViewIndexFactory(
@@ -300,7 +302,9 @@ public class CommonUtilsTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.of(100));
+            Optional.of(100),
+            Optional.empty(),
+            Optional.empty());
 
     MongotConfigs withOverride = MongotConfigs.getDefault(dataPath, customMvConfig);
     Assert.assertEquals(

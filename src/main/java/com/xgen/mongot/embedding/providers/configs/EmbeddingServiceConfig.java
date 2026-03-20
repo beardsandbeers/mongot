@@ -202,6 +202,12 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
   }
 
   public static class EmbeddingConfig implements DocumentEncodable {
+    /**
+     * Default for {@link #useFlexTier} when absent from BSON or when using the constructor without
+     * an explicit {@code useFlexTier} argument.
+     */
+    public static final boolean DEFAULT_USE_FLEX_TIER = true;
+
     public static class Fields {
       static final Field.Optional<String> REGION =
           Field.builder("region").stringField().optional().noDefault();
@@ -251,6 +257,11 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           Field.builder("isDedicatedCluster").booleanField().optional().withDefault(true);
       static final Field.Optional<String> PROVIDER_ENDPOINT =
           Field.builder("providerEndpoint").stringField().optional().noDefault();
+      static final Field.WithDefault<Boolean> USE_FLEX_TIER =
+          Field.builder("useFlexTier")
+              .booleanField()
+              .optional()
+              .withDefault(DEFAULT_USE_FLEX_TIER);
     }
 
     public static EmbeddingConfig fromBson(DocumentParser parser) throws BsonParseException {
@@ -264,7 +275,8 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           parser.getField(Fields.CHANGE_STREAM_PARAMS).unwrap(),
           parser.getField(Fields.TENANT_CREDENTIALS).unwrap(),
           parser.getField(Fields.IS_DEDICATED_CLUSTER).unwrap(),
-          parser.getField(Fields.PROVIDER_ENDPOINT).unwrap());
+          parser.getField(Fields.PROVIDER_ENDPOINT).unwrap(),
+          parser.getField(Fields.USE_FLEX_TIER).unwrap());
     }
 
     @Override
@@ -280,6 +292,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           .field(Fields.TENANT_CREDENTIALS, this.tenantCredentials)
           .field(Fields.IS_DEDICATED_CLUSTER, this.isDedicatedCluster)
           .field(Fields.PROVIDER_ENDPOINT, this.providerEndpoint)
+          .fieldOmitDefaultValue(Fields.USE_FLEX_TIER, this.useFlexTier)
           .build();
     }
 
@@ -293,6 +306,12 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
     public final Optional<Map<String, TenantWorkloadCredentials>> tenantCredentials;
     public final Boolean isDedicatedCluster;
     public final Optional<String> providerEndpoint;
+    /**
+     * When true ({@link #DEFAULT_USE_FLEX_TIER}), Voyage flex tier may be used on Atlas for
+     * workloads in the deployment flex-tier set. When false, flex tier is never used for this
+     * model.
+     */
+    public final boolean useFlexTier;
 
     public EmbeddingConfig(
         Optional<String> region,
@@ -305,6 +324,32 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
         Optional<Map<String, TenantWorkloadCredentials>> tenantCredentials,
         Boolean isDedicatedCluster,
         Optional<String> providerEndpoint) {
+      this(
+          region,
+          modelConfig,
+          errorHandlingConfig,
+          credentials,
+          queryParams,
+          collectionScanParams,
+          changeStreamParams,
+          tenantCredentials,
+          isDedicatedCluster,
+          providerEndpoint,
+          DEFAULT_USE_FLEX_TIER);
+    }
+
+    public EmbeddingConfig(
+        Optional<String> region,
+        ModelConfig modelConfig,
+        ErrorHandlingConfig errorHandlingConfig,
+        EmbeddingCredentials credentials,
+        Optional<WorkloadParams> queryParams,
+        Optional<WorkloadParams> collectionScanParams,
+        Optional<WorkloadParams> changeStreamParams,
+        Optional<Map<String, TenantWorkloadCredentials>> tenantCredentials,
+        Boolean isDedicatedCluster,
+        Optional<String> providerEndpoint,
+        boolean useFlexTier) {
       this.region = region;
       this.modelConfigBase = modelConfig;
       this.errorHandlingConfigBase = errorHandlingConfig;
@@ -315,6 +360,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
       this.tenantCredentials = tenantCredentials;
       this.isDedicatedCluster = isDedicatedCluster;
       this.providerEndpoint = providerEndpoint;
+      this.useFlexTier = useFlexTier;
     }
 
     public ModelConfig getModelConfigBase() {
@@ -370,7 +416,8 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           && Objects.equals(
               this.tenantCredentials.orElse(null), that.tenantCredentials.orElse(null))
           && Objects.equals(this.isDedicatedCluster, that.isDedicatedCluster)
-          && Objects.equals(this.providerEndpoint.orElse(null), that.providerEndpoint.orElse(null));
+          && Objects.equals(this.providerEndpoint.orElse(null), that.providerEndpoint.orElse(null))
+          && this.useFlexTier == that.useFlexTier;
     }
 
     @Override
@@ -385,7 +432,8 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           this.changeStreamParams.orElse(null),
           this.tenantCredentials.orElse(null),
           this.isDedicatedCluster,
-          this.providerEndpoint.orElse(null));
+          this.providerEndpoint.orElse(null),
+          this.useFlexTier);
     }
 
     /**
@@ -416,7 +464,8 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
                 return sanitizedMap;
               }),
           this.isDedicatedCluster,
-          this.providerEndpoint);
+          this.providerEndpoint,
+          this.useFlexTier);
     }
   }
 

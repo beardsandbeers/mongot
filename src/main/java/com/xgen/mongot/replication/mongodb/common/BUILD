@@ -90,6 +90,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
         "//src/main/java/com/xgen/mongot/embedding/providers",
         "//src/main/java/com/xgen/mongot/embedding/providers/configs",
+        "//src/main/java/com/xgen/mongot/embedding/providers/congestion",
         "//src/main/java/com/xgen/mongot/embedding/utils",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/definition",

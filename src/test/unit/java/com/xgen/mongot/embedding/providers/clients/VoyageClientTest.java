@@ -133,7 +133,8 @@ public class VoyageClientTest {
             modelConfig.query(),
             METRICS_FACTORY,
             Optional.empty(),
-            attachBillingMetadata);
+            attachBillingMetadata,
+            false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
     return voyageClient;
   }
@@ -193,6 +194,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
 
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
@@ -226,6 +228,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
     EmbeddingProviderTransientException ex =
@@ -263,6 +266,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
@@ -302,6 +306,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
@@ -361,6 +366,7 @@ public class VoyageClientTest {
             customConfig.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
@@ -397,6 +403,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
@@ -434,6 +441,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
@@ -614,7 +622,8 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.collectionScan(),
             METRICS_FACTORY,
             Optional.empty(),
-            false);
+            false,
+            true);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
     voyageClient.embed(List.of("test"), dummyContext());
@@ -654,6 +663,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.query(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(queryClient, mockClient);
 
@@ -675,6 +685,7 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.changeStream(),
             METRICS_FACTORY,
             Optional.empty(),
+            false,
             false);
     VoyageClient.injectVoyageClient(changeStreamClient, mockClient);
 
@@ -823,7 +834,8 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.collectionScan(),
             metricsFactory,
             Optional.empty(),
-            false);
+            false,
+            true);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
     AimdCongestionControl aimd = new AimdCongestionControl();
@@ -856,7 +868,8 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.collectionScan(),
             metricsFactory,
             Optional.empty(),
-            false);
+            false,
+            true);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
     AimdCongestionControl aimd = new AimdCongestionControl();
@@ -881,7 +894,8 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.collectionScan(),
             METRICS_FACTORY,
             Optional.empty(),
-            false);
+            false,
+            true);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
     List<VectorOrError> result = voyageClient.embed(List.of("test"), dummyContext());
@@ -906,7 +920,8 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.collectionScan(),
             metricsFactory,
             Optional.empty(),
-            false);
+            false,
+            true);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
     AimdCongestionControl aimd = new AimdCongestionControl();
@@ -937,7 +952,8 @@ public class VoyageClientTest {
             VOYAGE_3_LARGE.collectionScan(),
             metricsFactory,
             Optional.empty(),
-            false);
+            false,
+            true);
     VoyageClient.injectVoyageClient(voyageClient, mockClient);
 
     AimdCongestionControl aimd = new AimdCongestionControl();
@@ -964,5 +980,36 @@ public class VoyageClientTest {
 
     // Window should not change
     assertEquals(initialCwnd, aimd.getCwnd(), 1e-7);
+  }
+
+  @Test
+  public void embed_withUseFlexTierFalse_ignoresCongestionSemaphore() throws Exception {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MetricsFactory metricsFactory = new MetricsFactory("test", registry);
+
+    HttpClient mockClient = createMockHttpClient();
+    VoyageClient voyageClient =
+        new VoyageClient(
+            VOYAGE_3_LARGE,
+            EmbeddingServiceConfig.ServiceTier.COLLECTION_SCAN,
+            VOYAGE_3_LARGE.collectionScan(),
+            metricsFactory,
+            Optional.empty(),
+            false,
+            false); // useFlexTier = false: congestion control should not run
+    VoyageClient.injectVoyageClient(voyageClient, mockClient);
+
+    AimdCongestionControl aimd = new AimdCongestionControl();
+    DynamicSemaphore semaphore = new DynamicSemaphore(aimd);
+    voyageClient.setCongestionSemaphore(semaphore);
+
+    List<VectorOrError> result = voyageClient.embed(List.of("test"), dummyContext());
+
+    assertEquals(1, result.size());
+    assertTrue(result.getFirst().vector.isPresent());
+    // Congestion control is disabled when useFlexTier is false: no acquire, no counters
+    assertEquals(0, semaphore.getUsedPermits());
+    assertEquals(0.0, registry.find("test.aimdSuccessfulRequests").counter().count(), 1E-7);
+    assertEquals(0.0, registry.find("test.aimdCongestionEvents").counter().count(), 1E-7);
   }
 }

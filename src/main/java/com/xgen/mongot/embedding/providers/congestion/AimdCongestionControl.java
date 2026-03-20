@@ -1,8 +1,15 @@
 package com.xgen.mongot.embedding.providers.congestion;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
+import com.xgen.mongot.util.bson.parser.BsonParseException;
+import com.xgen.mongot.util.bson.parser.DocumentEncodable;
+import com.xgen.mongot.util.bson.parser.DocumentParser;
+import com.xgen.mongot.util.bson.parser.Field;
+import java.util.Optional;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
+import org.bson.BsonDocument;
 
 /**
  * An implementation of Additive Increase/Multiplicative Decrease (AIMD) congestion control modeled
@@ -35,8 +42,8 @@ public class AimdCongestionControl implements DynamicSemaphorePolicy {
   /** Default multiplicative decrease factor (75% as per Flex Tier design, vs TCP's 50%). */
   public static final double DEFAULT_MULTIPLICATIVE_DECREASE = 0.75;
 
-  /** Default idle timeout in milliseconds (20 seconds). */
-  public static final int DEFAULT_IDLE_TIMEOUT_MS = 20_000;
+  /** Default idle timeout in milliseconds (5 minutes). */
+  public static final int DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
   /** Minimum congestion window size to prevent complete starvation. */
   public static final double MIN_CWND = 1.0;
@@ -99,6 +106,84 @@ public class AimdCongestionControl implements DynamicSemaphorePolicy {
         DEFAULT_LINEAR_INCREASE,
         DEFAULT_MULTIPLICATIVE_DECREASE,
         DEFAULT_IDLE_TIMEOUT_MS);
+  }
+
+  /**
+   * Congestion control parameters for AIMD (config/BSON shape). Used by MMS {@code
+   * autoEmbedding.congestionControl} and materialized view config. Optional fields use the same
+   * defaults as {@link AimdCongestionControl}.
+   */
+  public record CongestionControlParams(
+      int initialCwnd,
+      int slowStartThreshold,
+      double linearIncrease,
+      double multiplicativeDecrease,
+      int idleTimeoutMillis)
+      implements DocumentEncodable {
+
+    public static final class Fields {
+      public static final Field.WithDefault<Integer> INITIAL_CWND =
+          Field.builder("initialCwnd").intField().optional().withDefault(DEFAULT_INITIAL_CWND);
+      public static final Field.WithDefault<Integer> SLOW_START_THRESHOLD =
+          Field.builder("slowStartThreshold")
+              .intField()
+              .optional()
+              .withDefault(DEFAULT_SLOW_START_THRESHOLD);
+      public static final Field.WithDefault<Double> LINEAR_INCREASE =
+          Field.builder("linearIncrease")
+              .doubleField()
+              .optional()
+              .withDefault(DEFAULT_LINEAR_INCREASE);
+      public static final Field.WithDefault<Double> MULTIPLICATIVE_DECREASE =
+          Field.builder("multiplicativeDecrease")
+              .doubleField()
+              .optional()
+              .withDefault(DEFAULT_MULTIPLICATIVE_DECREASE);
+      public static final Field.WithDefault<Integer> IDLE_TIMEOUT_MS =
+          Field.builder("idleTimeoutMillis")
+              .intField()
+              .optional()
+              .withDefault(DEFAULT_IDLE_TIMEOUT_MS);
+    }
+
+    public static CongestionControlParams fromBson(DocumentParser parser)
+        throws BsonParseException {
+      return new CongestionControlParams(
+          parser.getField(Fields.INITIAL_CWND).unwrap(),
+          parser.getField(Fields.SLOW_START_THRESHOLD).unwrap(),
+          parser.getField(Fields.LINEAR_INCREASE).unwrap(),
+          parser.getField(Fields.MULTIPLICATIVE_DECREASE).unwrap(),
+          parser.getField(Fields.IDLE_TIMEOUT_MS).unwrap());
+    }
+
+    @Override
+    public BsonDocument toBson() {
+      return BsonDocumentBuilder.builder()
+          .field(Fields.INITIAL_CWND, this.initialCwnd)
+          .field(Fields.SLOW_START_THRESHOLD, this.slowStartThreshold)
+          .field(Fields.LINEAR_INCREASE, this.linearIncrease)
+          .field(Fields.MULTIPLICATIVE_DECREASE, this.multiplicativeDecrease)
+          .field(Fields.IDLE_TIMEOUT_MS, this.idleTimeoutMillis)
+          .build();
+    }
+
+    /**
+     * Builds an {@link AimdCongestionControl} from this config, or default instance when {@code cc}
+     * is empty.
+     */
+    public static AimdCongestionControl toAimdCongestionControl(
+        Optional<CongestionControlParams> cc) {
+      return cc
+          .map(
+              c ->
+                  new AimdCongestionControl(
+                      c.initialCwnd(),
+                      c.slowStartThreshold(),
+                      c.linearIncrease(),
+                      c.multiplicativeDecrease(),
+                      c.idleTimeoutMillis()))
+          .orElseGet(AimdCongestionControl::new);
+    }
   }
 
   /**

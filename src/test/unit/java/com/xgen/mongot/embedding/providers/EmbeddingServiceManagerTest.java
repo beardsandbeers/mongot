@@ -96,7 +96,7 @@ public class EmbeddingServiceManagerTest {
             List.of(embeddingServiceConfig),
             new FakeEmbeddingClientFactory(),
             EXECUTOR,
-            new SimpleMeterRegistry());
+            new SimpleMeterRegistry(), Optional.empty());
 
     List<VectorOrError> result =
         embeddingServiceManager.embed(
@@ -147,7 +147,7 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of(),
                 ImmutableSet.of("one")),
             EXECUTOR,
-            new SimpleMeterRegistry());
+            new SimpleMeterRegistry(), Optional.empty());
 
     // Verify the result
     Throwable ex =
@@ -180,7 +180,7 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of(),
                 ImmutableSet.of()),
             EXECUTOR,
-            new SimpleMeterRegistry());
+            new SimpleMeterRegistry(), Optional.empty());
 
     List<VectorOrError> result =
         embeddingServiceManager.embed(
@@ -218,7 +218,8 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of("retryable token"),
                 ImmutableSet.of()),
             EXECUTOR,
-            registry);
+            registry,
+            Optional.empty());
 
     Throwable ex =
         assertThrows(
@@ -284,7 +285,8 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of(),
                 47), // only allow single text to pass.
             EXECUTOR,
-            registry);
+            registry,
+            Optional.empty());
 
     List<VectorOrError> result =
         embeddingServiceManager
@@ -369,7 +371,8 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of(),
                 46), // only allow single text to pass.
             EXECUTOR,
-            registry);
+            registry,
+            Optional.empty());
 
     Throwable ex =
         assertThrows(
@@ -423,7 +426,7 @@ public class EmbeddingServiceManagerTest {
             List.of(embeddingServiceConfig),
             new FakeEmbeddingClientFactory(),
             EXECUTOR,
-            new SimpleMeterRegistry());
+            new SimpleMeterRegistry(), Optional.empty());
 
     Throwable ex =
         assertThrows(
@@ -474,7 +477,11 @@ public class EmbeddingServiceManagerTest {
 
     EmbeddingServiceManager embeddingServiceManager =
         new EmbeddingServiceManager(
-            List.of(), new FakeEmbeddingClientFactory(), EXECUTOR, new SimpleMeterRegistry());
+            List.of(),
+            new FakeEmbeddingClientFactory(),
+            EXECUTOR,
+            new SimpleMeterRegistry(),
+            Optional.empty());
 
     // Verify the result
     Throwable ex =
@@ -530,21 +537,23 @@ public class EmbeddingServiceManagerTest {
         .createEmbeddingClient(
             any(EmbeddingModelConfig.class),
             any(EmbeddingServiceConfig.ServiceTier.class),
-            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));
+            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class),
+            any(Optional.class));
 
     EmbeddingServiceManager embeddingServiceManager =
         new EmbeddingServiceManager(
             List.of(embeddingServiceConfig1),
             embeddingClientFactory,
             EXECUTOR,
-            new SimpleMeterRegistry());
+            new SimpleMeterRegistry(), Optional.empty());
 
     // Create one client per service tier
     verify(embeddingClientFactory, times(3))
         .createEmbeddingClient(
             any(EmbeddingModelConfig.class),
             any(EmbeddingServiceConfig.ServiceTier.class),
-            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));
+            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class),
+            any(Optional.class));
     // Reset invocation count before next set of assertions
     Mockito.reset(embeddingClientFactory, mockClient);
 
@@ -555,7 +564,8 @@ public class EmbeddingServiceManagerTest {
         .createEmbeddingClient(
             any(EmbeddingModelConfig.class),
             eq(COLLECTION_SCAN),
-            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));
+            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class),
+            any(Optional.class));
     verify(mockClient, times(0))
         .updateConfig(any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));
 
@@ -586,7 +596,8 @@ public class EmbeddingServiceManagerTest {
         .createEmbeddingClient(
             any(EmbeddingModelConfig.class),
             eq(COLLECTION_SCAN),
-            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));
+            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class),
+            any(Optional.class));
     // We don't expect a call to updateConfig() for our ClientInterface since we effectively have
     // the same credentials (only varying by different expiration time which doesn't matter for
     // VoyageEmbeddingCredentials)
@@ -621,7 +632,8 @@ public class EmbeddingServiceManagerTest {
         .createEmbeddingClient(
             any(EmbeddingModelConfig.class),
             eq(COLLECTION_SCAN),
-            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));
+            any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class),
+            any(Optional.class));
     // We only expect the underlying config to be updated for all service tiers
     verify(mockClient, times(3))
         .updateConfig(any(EmbeddingModelConfig.ConsolidatedWorkloadParams.class));

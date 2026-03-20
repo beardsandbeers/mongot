@@ -173,6 +173,35 @@
           "isDedicatedCluster": false
         }
       }
+    },
+    {
+      "description": "voyage-3.5 with useFlexTier false",
+      "value": {
+        "embeddingProvider": "VOYAGE",
+        "modelName": "voyage-3.5",
+        "config": {
+          "credentials": {
+            "_provider": "VOYAGE",
+            "apiToken": "token123",
+            "expirationDate": "2024-10-15T22:32:20.925Z"
+          },
+          "errorHandlingConfig": {
+            "initialRetryWaitMs": 50,
+            "jitter": 0.1,
+            "maxRetries": 50,
+            "maxRetryWaitMs": 10
+          },
+          "modelConfig": {
+            "_provider": "VOYAGE",
+            "batchSize": 100,
+            "batchTokenLimit": 1000,
+            "outputDimensions": 512,
+            "truncation": "START"
+          },
+          "isDedicatedCluster": true,
+          "useFlexTier": false
+        }
+      }
     }
   ],
   "invalid": [

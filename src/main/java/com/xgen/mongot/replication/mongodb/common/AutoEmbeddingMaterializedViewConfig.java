@@ -1,6 +1,8 @@
 package com.xgen.mongot.replication.mongodb.common;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
+import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl.CongestionControlParams;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.Runtime;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
@@ -10,6 +12,7 @@ import com.xgen.mongot.util.bson.parser.Value;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.bson.BsonDocument;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -84,6 +87,18 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
   /** The maximum number of materialized view bulk write commits per second allowed on this node. */
   public final Optional<Integer> mvWriteRateLimitRps;
 
+  /**
+   * AIMD congestion control parameters for flex-tier / embedding provider rate limiting (collection
+   * scan workloads). When empty, {@link AimdCongestionControl} defaults apply at runtime.
+   */
+  public final Optional<CongestionControlParams> congestionControl;
+
+  /**
+   * Service tiers for which Voyage flex tier is used (when deployment is Atlas). When empty, only
+   * {@link EmbeddingServiceConfig.ServiceTier#COLLECTION_SCAN} uses Voyage flex tier.
+   */
+  public final Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads;
+
   private AutoEmbeddingMaterializedViewConfig(
       boolean pauseAllInitialSyncs,
       List<ObjectId> pauseInitialSyncOnIndexIds,
@@ -100,7 +115,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       int maxInFlightEmbeddingGetMores,
       Optional<Integer> embeddingGetMoreBatchSize,
       Optional<Integer> materializedViewSchemaVersion,
-      Optional<Integer> mvWriteRateLimitRps) {
+      Optional<Integer> mvWriteRateLimitRps,
+      Optional<CongestionControlParams> congestionControl,
+      Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads) {
     super(
         pauseAllInitialSyncs,
         pauseInitialSyncOnIndexIds,
@@ -118,6 +135,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     this.requestRateLimitBackoffMs = requestRateLimitBackoffMs;
     this.materializedViewSchemaVersion = materializedViewSchemaVersion;
     this.mvWriteRateLimitRps = mvWriteRateLimitRps;
+    this.congestionControl = congestionControl;
+    this.flexTierWorkloads = flexTierWorkloads;
   }
 
   /**
@@ -136,7 +155,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Integer> optionalMaxInFlightEmbeddingGetMores,
       Optional<Integer> embeddingGetMoreBatchSize,
       Optional<Integer> materializedViewSchemaVersion,
-      Optional<Integer> mvWriteRateLimitRps) {
+      Optional<Integer> mvWriteRateLimitRps,
+      Optional<CongestionControlParams> congestionControl,
+      Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads) {
     return create(
         Runtime.INSTANCE,
         globalReplicationConfig,
@@ -150,7 +171,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         optionalMaxInFlightEmbeddingGetMores,
         embeddingGetMoreBatchSize,
         materializedViewSchemaVersion,
-        mvWriteRateLimitRps);
+        mvWriteRateLimitRps,
+        congestionControl,
+        flexTierWorkloads);
   }
 
   /** Used for testing. The above create() method should be called instead. */
@@ -168,7 +191,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Integer> optionalMaxInFlightEmbeddingGetMores,
       Optional<Integer> embeddingGetMoreBatchSize,
       Optional<Integer> materializedViewSchemaVersion,
-      Optional<Integer> mvWriteRateLimitRps) {
+      Optional<Integer> mvWriteRateLimitRps,
+      Optional<CongestionControlParams> congestionControl,
+      Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads) {
 
     int maxConcurrentEmbeddingInitialSyncs =
         getMaxConcurrentEmbeddingInitialSyncsWithDefault(
@@ -208,6 +233,19 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
 
     mvWriteRateLimitRps.ifPresent(value -> Check.argIsPositive(value, "mvWriteRateLimitRps"));
 
+    congestionControl.ifPresent(
+        c -> {
+          Check.argIsPositive(c.initialCwnd(), "congestionControl.initialCwnd");
+          Check.argIsPositive(c.slowStartThreshold(), "congestionControl.slowStartThreshold");
+          Check.argIsPositive(c.linearIncrease(), "congestionControl.linearIncrease");
+          Check.argInInclusiveRange(
+              c.multiplicativeDecrease(),
+              0.0,
+              1.0,
+              "congestionControl.multiplicativeDecrease");
+          Check.argIsPositive(c.idleTimeoutMillis(), "congestionControl.idleTimeoutMillis");
+        });
+
     return new AutoEmbeddingMaterializedViewConfig(
         globalReplicationConfig.pauseAllInitialSyncs(),
         globalReplicationConfig.pauseInitialSyncOnIndexIds(),
@@ -224,7 +262,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         maxInFlightEmbeddingGetMores,
         embeddingGetMoreBatchSize,
         materializedViewSchemaVersion,
-        mvWriteRateLimitRps);
+        mvWriteRateLimitRps,
+        congestionControl,
+        flexTierWorkloads);
   }
 
   /**
@@ -244,6 +284,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty());
   }
 
@@ -253,6 +295,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     return create(
         runtime,
         defaultGlobalReplicationConfig(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -292,7 +336,20 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         .field(Fields.EMBEDDING_GET_MORE_BATCH_SIZE, this.embeddingGetMoreBatchSize)
         .field(Fields.MATERIALIZED_VIEW_SCHEMA_VERSION, this.materializedViewSchemaVersion)
         .field(Fields.MV_WRITE_RATE_LIMIT_RPS, this.mvWriteRateLimitRps)
+        .field(Fields.CONGESTION_CONTROL, this.congestionControl)
+        .field(
+            Fields.FLEX_TIER_WORKLOADS,
+            this.flexTierWorkloads.map(AutoEmbeddingMaterializedViewConfig::sortedFlexTierList))
         .build();
+  }
+
+  /**
+   * Emits flex tiers in enum declaration order so BSON is stable across parse/serialize (unlike
+   * {@link List#copyOf(Set)} on a hash set).
+   */
+  private static List<EmbeddingServiceConfig.ServiceTier> sortedFlexTierList(
+      Set<EmbeddingServiceConfig.ServiceTier> tiers) {
+    return tiers.stream().sorted().toList();
   }
 
   @Override
@@ -501,5 +558,23 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
 
     private static final Field.Optional<Integer> MV_WRITE_RATE_LIMIT_RPS =
         Field.builder("mvWriteRateLimitRps").intField().mustBePositive().optional().noDefault();
+
+    private static final Field.Optional<CongestionControlParams> CONGESTION_CONTROL =
+        Field.builder("congestionControl")
+            .classField(CongestionControlParams::fromBson)
+            .allowUnknownFields()
+            .optional()
+            .noDefault();
+
+    private static final Field.Optional<List<EmbeddingServiceConfig.ServiceTier>>
+        FLEX_TIER_WORKLOADS =
+            Field.builder("flexTierWorkloads")
+                .listOf(
+                    Value.builder()
+                        .enumValue(EmbeddingServiceConfig.ServiceTier.class)
+                        .asUpperUnderscore()
+                        .required())
+                .optional()
+                .noDefault();
   }
 }

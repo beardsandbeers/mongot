@@ -473,7 +473,8 @@ public class CommunityMongotBootstrapper {
                   new EmbeddingClientFactory(meterRegistry, DeploymentEnvironment.COMMUNITY),
                   Executors.fixedSizeThreadScheduledExecutor(
                       "embedding-providers", 1, meterRegistry),
-                  meterRegistry));
+                  meterRegistry,
+                  mongotConfigs.autoEmbeddingMaterializedViewConfig.congestionControl));
     }
 
     // Get user's endpoint override from config
@@ -504,7 +505,8 @@ public class CommunityMongotBootstrapper {
                     "embedding-providers",
                     mongotConfigs.autoEmbeddingMaterializedViewConfig.numIndexingThreads * 2,
                     meterRegistry),
-                meterRegistry));
+                meterRegistry,
+                mongotConfigs.autoEmbeddingMaterializedViewConfig.congestionControl));
   }
 
   /** Loads Voyage API credential secrets from files specified in embedding config. */
@@ -849,7 +851,9 @@ public class CommunityMongotBootstrapper {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                mvWriteRateLimitRps)
+                mvWriteRateLimitRps,
+                Optional.empty(),
+                Optional.empty())
             : AutoEmbeddingMaterializedViewConfig.getDefault();
     return new MongotConfigs(
         luceneConfig,

@@ -3,10 +3,12 @@ load("//bazel/java:test.bzl", "java_test_suite")
 java_test_suite(
     name = "clients",
     srcs = [
+        "EmbeddingClientFactoryTest.java",
         "VoyageClientTest.java",
     ],
     tags = ["unit"],
     deps = [
+        "//src/main/java/com/xgen/mongot/config/util",
         "//src/main/java/com/xgen/mongot/embedding",
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
         "//src/main/java/com/xgen/mongot/embedding/providers/clients",

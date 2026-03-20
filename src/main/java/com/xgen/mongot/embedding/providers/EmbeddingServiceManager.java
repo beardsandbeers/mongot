@@ -13,6 +13,7 @@ import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.ServiceTier;
+import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl.CongestionControlParams;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.FutureUtils;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
@@ -21,6 +22,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
@@ -43,17 +45,20 @@ public class EmbeddingServiceManager {
   private final EmbeddingClientFactory embeddingClientFactory;
   private final MetricsFactory metricsFactory;
   private final Counter tokenEstimationFailsCounter;
+  private final Optional<CongestionControlParams> congestionControl;
 
   /** Creates an EmbeddingServiceManager from a list of EmbeddingServiceConfig. */
   public EmbeddingServiceManager(
       List<EmbeddingServiceConfig> embeddingServiceConfigs,
       EmbeddingClientFactory embeddingClientFactory,
       NamedScheduledExecutorService namedScheduledExecutorService,
-      MeterRegistry meterRegistry) {
+      MeterRegistry meterRegistry,
+      Optional<CongestionControlParams> congestionControl) {
     this.embeddingClientFactory = embeddingClientFactory;
     this.namedScheduledExecutorService = namedScheduledExecutorService;
     this.metricsFactory = new MetricsFactory("embeddingServiceManager", meterRegistry);
     this.tokenEstimationFailsCounter = this.metricsFactory.counter("tokenEstimationFailsCounter");
+    this.congestionControl = congestionControl;
 
     updateEmbeddingProviderManagers(embeddingServiceConfigs);
   }
@@ -80,7 +85,8 @@ public class EmbeddingServiceManager {
         embeddingServiceConfigs,
         this.namedScheduledExecutorService,
         this.embeddingClientFactory,
-        this.metricsFactory);
+        this.metricsFactory,
+        this.congestionControl);
   }
 
   /**

@@ -7,10 +7,12 @@ import com.xgen.mongot.embedding.providers.clients.EmbeddingClientFactory;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
+import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl.CongestionControlParams;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class EmbeddingServiceRegistry {
@@ -25,7 +27,8 @@ public class EmbeddingServiceRegistry {
       List<EmbeddingServiceConfig> embeddingServiceConfigs,
       NamedScheduledExecutorService namedScheduledExecutorService,
       EmbeddingClientFactory embeddingClientFactory,
-      MetricsFactory metricsFactory) {
+      MetricsFactory metricsFactory,
+      Optional<CongestionControlParams> congestionControl) {
     // TODO(CLOUDP-310761): Implement deregister individual model/provider config later.
     if (embeddingServiceConfigs.isEmpty()) {
       clearRegistry();
@@ -53,7 +56,8 @@ public class EmbeddingServiceRegistry {
                               newConfig,
                               embeddingClientFactory,
                               namedScheduledExecutorService,
-                              metricsFactory))
+                              metricsFactory,
+                              congestionControl))
                   .updateEmbeddingProviderManager(newConfig);
             });
   }

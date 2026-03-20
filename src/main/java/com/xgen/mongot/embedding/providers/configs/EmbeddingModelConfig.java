@@ -17,6 +17,7 @@ import java.util.Optional;
 public record EmbeddingModelConfig(
     String name,
     EmbeddingProvider provider,
+    boolean useFlexTier,
     ConsolidatedWorkloadParams query,
     ConsolidatedWorkloadParams changeStream,
     ConsolidatedWorkloadParams collectionScan) {
@@ -25,6 +26,7 @@ public record EmbeddingModelConfig(
     return new EmbeddingModelConfig(
         model,
         provider,
+        config.useFlexTier,
         consolidateWorkloadParams(
             config.getQueryParams(),
             config.getModelConfigBase(),
@@ -70,6 +72,7 @@ public record EmbeddingModelConfig(
       new EmbeddingModelConfig(
           "voyage-3-large",
           EmbeddingProvider.VOYAGE,
+          EmbeddingConfig.DEFAULT_USE_FLEX_TIER,
           new ConsolidatedWorkloadParams(
               DEFAULT_CONFIG,
               DEFAULT_ERROR_CONFIG,
@@ -208,6 +211,7 @@ public record EmbeddingModelConfig(
     }
     return Objects.equals(this.name, other.name)
         && this.provider == other.provider
+        && this.useFlexTier == other.useFlexTier
         && Objects.equals(this.query, other.query)
         && Objects.equals(this.changeStream, other.changeStream)
         && Objects.equals(this.collectionScan, other.collectionScan);
@@ -216,7 +220,12 @@ public record EmbeddingModelConfig(
   @Override
   public int hashCode() {
     return Objects.hash(
-        this.name, this.provider, this.query, this.changeStream, this.collectionScan);
+        this.name,
+        this.provider,
+        this.useFlexTier,
+        this.query,
+        this.changeStream,
+        this.collectionScan);
   }
 
   public record ConsolidatedWorkloadParams(

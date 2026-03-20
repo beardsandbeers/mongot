@@ -6,8 +6,10 @@ import com.xgen.mongot.embedding.providers.clients.ClientInterface;
 import com.xgen.mongot.embedding.providers.clients.EmbeddingClientFactory;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
+import com.xgen.mongot.embedding.providers.congestion.DynamicSemaphore;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.Optional;
 import java.util.Set;
 
 public class FakeEmbeddingClientFactory extends EmbeddingClientFactory {
@@ -51,6 +53,16 @@ public class FakeEmbeddingClientFactory extends EmbeddingClientFactory {
       EmbeddingModelConfig embeddingModelConfig,
       EmbeddingServiceConfig.ServiceTier serviceTier,
       EmbeddingModelConfig.ConsolidatedWorkloadParams workloadParams) {
+    return createEmbeddingClient(
+        embeddingModelConfig, serviceTier, workloadParams, Optional.empty());
+  }
+
+  @Override
+  public ClientInterface createEmbeddingClient(
+      EmbeddingModelConfig embeddingModelConfig,
+      EmbeddingServiceConfig.ServiceTier serviceTier,
+      EmbeddingModelConfig.ConsolidatedWorkloadParams workloadParams,
+      Optional<DynamicSemaphore> congestionControlSemaphore) {
     return new FakeEmbeddingProviderClient(
         this.localErrorInputSet,
         this.transientErrorInputSet,

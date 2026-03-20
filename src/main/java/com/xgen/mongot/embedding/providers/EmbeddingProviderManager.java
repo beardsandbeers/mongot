@@ -17,6 +17,7 @@ import com.xgen.mongot.embedding.providers.clients.EmbeddingClientFactory;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.EmbeddingCredentials;
 import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl;
+import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl.CongestionControlParams;
 import com.xgen.mongot.embedding.providers.congestion.DynamicSemaphore;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.metrics.Timed;
@@ -33,6 +34,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -87,12 +89,33 @@ public class EmbeddingProviderManager {
       EmbeddingClientFactory embeddingClientFactory,
       NamedScheduledExecutorService namedScheduledExecutorService,
       MetricsFactory metricsFactory) {
+    this(
+        embeddingModelConfig,
+        embeddingClientFactory,
+        namedScheduledExecutorService,
+        metricsFactory,
+        Optional.empty());
+  }
+
+  /**
+   * Creates a manager with optional AIMD congestion control parameters.
+   *
+   * @param congestionControl optional AIMD parameters from MMS auto-embedding config; when empty,
+   *     {@link AimdCongestionControl} defaults are used.
+   */
+  @SuppressWarnings("checkstyle:MissingJavadocMethod")
+  public EmbeddingProviderManager(
+      EmbeddingModelConfig embeddingModelConfig,
+      EmbeddingClientFactory embeddingClientFactory,
+      NamedScheduledExecutorService namedScheduledExecutorService,
+      MetricsFactory metricsFactory,
+      Optional<CongestionControlParams> congestionControl) {
     initializeMetrics(embeddingModelConfig, metricsFactory);
     this.embeddingClientFactory = embeddingClientFactory;
     this.embeddingModelConfig = embeddingModelConfig;
     this.namedScheduledExecutorService = namedScheduledExecutorService;
-    // AIMD congestion control components for COLLECTION_SCAN workloads
-    this.aimdCongestionControl = new AimdCongestionControl();
+    // AIMD congestion control for Voyage flex-tier workloads (tiers in flexTierWorkloads on Atlas)
+    this.aimdCongestionControl = CongestionControlParams.toAimdCongestionControl(congestionControl);
     this.congestionControlSemaphore = new DynamicSemaphore(this.aimdCongestionControl);
     // Register gauges for monitoring congestion window
     Tag modelTag = Tag.of("canonicalModel", embeddingModelConfig.name());
@@ -126,8 +149,10 @@ public class EmbeddingProviderManager {
                     Function.identity(),
                     tier ->
                         this.embeddingClientFactory.createEmbeddingClient(
-                            this.embeddingModelConfig, tier, getWorkloadParamsByTier(tier))));
-    this.clients.get(COLLECTION_SCAN).setCongestionSemaphore(this.congestionControlSemaphore);
+                            this.embeddingModelConfig,
+                            tier,
+                            getWorkloadParamsByTier(tier),
+                            Optional.of(this.congestionControlSemaphore))));
   }
 
   /**
@@ -154,11 +179,11 @@ public class EmbeddingProviderManager {
                         serviceTier,
                         tier ->
                             this.embeddingClientFactory.createEmbeddingClient(
-                                this.embeddingModelConfig, tier, getWorkloadParamsByTier(tier)))
+                                this.embeddingModelConfig,
+                                tier,
+                                getWorkloadParamsByTier(tier),
+                                Optional.of(this.congestionControlSemaphore)))
                     .updateConfig(getWorkloadParamsByTier(serviceTier)));
-    if (this.congestionControlSemaphore != null) {
-      this.clients.get(COLLECTION_SCAN).setCongestionSemaphore(this.congestionControlSemaphore);
-    }
   }
 
   private Map<ServiceTier, FailsafeExecutor<List<VectorOrError>>> initializeExecutors() {

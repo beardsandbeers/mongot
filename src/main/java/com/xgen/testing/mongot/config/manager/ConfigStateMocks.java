@@ -180,7 +180,8 @@ public class ConfigStateMocks {
                 List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
                 new FakeEmbeddingClientFactory(),
                 Executors.singleThreadScheduledExecutor("indexing", this.meterRegistry),
-                this.meterRegistry));
+                this.meterRegistry,
+                Optional.empty()));
     this.featureFlags = spy(FeatureFlags.withQueryFeaturesEnabled());
     this.configState =
         spy(

@@ -73,7 +73,9 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.of(8),
               Optional.of(9),
               Optional.of(2),
-              Optional.of(42)));
+              Optional.of(42),
+              Optional.empty(),
+              Optional.empty()));
     }
 
     @Test
@@ -125,6 +127,8 @@ public class AutoEmbeddingMaterializedViewConfigTest {
       assertEquals(Optional.empty(), config.embeddingGetMoreBatchSize);
       assertEquals(Optional.empty(), config.materializedViewSchemaVersion);
       assertEquals(Optional.empty(), config.mvWriteRateLimitRps);
+      assertEquals(Optional.empty(), config.congestionControl);
+      assertEquals(Optional.empty(), config.flexTierWorkloads);
     }
 
     @Test
@@ -146,7 +150,9 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
-              Optional.of(50));
+              Optional.of(50),
+              Optional.empty(),
+              Optional.empty());
       assertEquals(Optional.of(50), customConfig.getMvWriteRateLimitRps());
 
       assertThrows(
@@ -164,7 +170,9 @@ public class AutoEmbeddingMaterializedViewConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
-                  Optional.of(-1)));
+                  Optional.of(-1),
+                  Optional.empty(),
+                  Optional.empty()));
     }
 
     @Test
@@ -182,7 +190,9 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
-              Optional.of(75));
+              Optional.of(75),
+              Optional.empty(),
+              Optional.empty());
       BsonDocument bsonWith = configWith.toBson();
       assertTrue(
           "BSON should contain mvWriteRateLimitRps",

@@ -59,6 +59,7 @@ public class VoyageClient implements ClientInterface {
 
   private boolean isDedicatedCluster;
   private final boolean attachBillingMetadata;
+  private final boolean useFlexTier;
   private final EmbeddingServiceConfig.ServiceTier serviceTier;
   private final Optional<String> serviceTierApiValue;
   private @Nullable String credentialToken; // Dedicated cluster credentials, can be null for MTM
@@ -81,17 +82,23 @@ public class VoyageClient implements ClientInterface {
       EmbeddingModelConfig.ConsolidatedWorkloadParams workloadParams,
       MetricsFactory metricsFactory,
       Optional<MongotMetadata> metadata,
-      boolean attachBillingMetadata) {
+      boolean attachBillingMetadata,
+      boolean useFlexTier) {
     this.inputType = tier == EmbeddingServiceConfig.ServiceTier.QUERY ? "query" : "document";
     // TODO(CLOUDP-370950): Support truncation parameter from configs or query time.
     // Enable truncation in indexing time only.
     this.truncation = tier != EmbeddingServiceConfig.ServiceTier.QUERY;
+    this.useFlexTier = useFlexTier;
     this.serviceTierApiValue =
-        tier == EmbeddingServiceConfig.ServiceTier.COLLECTION_SCAN
-            ? Optional.of(VOYAGE_API_FLEX_TIER)
-            : Optional.empty();
+        useFlexTier ? Optional.of(VOYAGE_API_FLEX_TIER) : Optional.empty();
     this.modelId = embeddingModelConfig.name();
     this.serviceTier = tier;
+    if (useFlexTier) {
+      LOG.debug(
+          "Using Voyage flex tier for embedding model {} (service tier: {})",
+          this.modelId,
+          tier);
+    }
     this.endpoint = URI.create(workloadParams.providerEndpoint().orElse(DEFAULT_ENDPOINT));
     this.voyageHttpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_2).build();
     this.mongotMetadata = metadata;
@@ -114,8 +121,8 @@ public class VoyageClient implements ClientInterface {
       throws EmbeddingProviderTransientException, EmbeddingProviderNonTransientException {
     @Var Boolean isAck = null;
     try {
-      // Acquire permit if congestion control is enabled
-      if (this.congestionSemaphore != null) {
+      // Acquire permit only when congestion control is enabled (flex tier only)
+      if (this.useFlexTier && this.congestionSemaphore != null) {
         try {
           this.congestionSemaphore.acquire();
         } catch (InterruptedException e) {
@@ -168,7 +175,7 @@ public class VoyageClient implements ClientInterface {
         throw e;
       }
     } finally {
-      if (this.congestionSemaphore != null) {
+      if (this.useFlexTier && this.congestionSemaphore != null) {
         if (isAck != null) {
           if (isAck) {
             this.aimdSuccessCounter.increment();
