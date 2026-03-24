@@ -248,7 +248,9 @@ public class LuceneVectorIndexFieldValueHandler implements FieldValueHandler {
     return this.fieldDefinition
         .filter(
             vectorFieldDefinition ->
-                vectorFieldDefinition.getType() == VectorIndexFieldDefinition.Type.TEXT)
+                vectorFieldDefinition.getType() == VectorIndexFieldDefinition.Type.TEXT
+                    || vectorFieldDefinition.getType()
+                        == VectorIndexFieldDefinition.Type.AUTO_EMBED)
         .isPresent();
   }
 }
