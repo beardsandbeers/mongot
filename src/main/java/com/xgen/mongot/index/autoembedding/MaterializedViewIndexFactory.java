@@ -1,7 +1,9 @@
 package com.xgen.mongot.index.autoembedding;
 
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
+import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
 import com.xgen.mongot.embedding.mongodb.MaterializedViewCollectionResolver;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
@@ -38,9 +40,10 @@ public class MaterializedViewIndexFactory implements IndexFactory {
   private final MaterializedViewWriter.Factory materializedViewWriterFactory;
   private final LeaseManager leaseManager;
   private final MaterializedViewCollectionResolver collectionResolver;
+  private final AutoEmbeddingMongoClient autoEmbeddingMongoClient;
 
   public MaterializedViewIndexFactory(
-      SyncSourceConfig syncSourceConfig,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       FeatureFlags featureFlags,
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       LeaseManager leaseManager,
@@ -51,9 +54,10 @@ public class MaterializedViewIndexFactory implements IndexFactory {
     this.featureFlags = featureFlags;
     this.materializedViewWriterFactory =
         new MaterializedViewWriter.Factory(
-            syncSourceConfig, meterAndFtdcRegistry.meterRegistry(), mvWriteRateLimitRps);
+            autoEmbeddingMongoClient, meterAndFtdcRegistry.meterRegistry(), mvWriteRateLimitRps);
     this.leaseManager = leaseManager;
     this.collectionResolver = collectionResolver;
+    this.autoEmbeddingMongoClient = autoEmbeddingMongoClient;
   }
 
   /** Must be called after all associated indexes are closed. */
@@ -67,12 +71,12 @@ public class MaterializedViewIndexFactory implements IndexFactory {
   @Override
   public InitializedMaterializedViewIndex getIndex(
       IndexDefinitionGeneration indexDefinitionGeneration)
-      throws InvalidAnalyzerDefinitionException, IOException {
+      throws InvalidAnalyzerDefinitionException, IOException, MaterializedViewTransientException {
     Check.expectedType(
         IndexDefinitionGeneration.Type.AUTO_EMBEDDING, indexDefinitionGeneration.getType());
     MaterializedViewIndexDefinitionGeneration matViewIndexDefinitionGeneration =
         indexDefinitionGeneration.asMaterializedView();
-
+    // May throw MaterializedViewTransientException which will be retried by the caller.
     MaterializedViewCollectionMetadata collectionMetadata =
         this.collectionResolver.getOrCreateMaterializedViewForIndex(
             matViewIndexDefinitionGeneration);
@@ -118,5 +122,9 @@ public class MaterializedViewIndexFactory implements IndexFactory {
   public InitializedMaterializedViewIndex getInitializedIndex(
       Index index, IndexDefinitionGeneration definitionGeneration) throws IOException {
     return Check.instanceOf(index, InitializedMaterializedViewIndex.class);
+  }
+
+  public void updateSyncSource(SyncSourceConfig syncSourceConfig) {
+    this.autoEmbeddingMongoClient.updateSyncSource(syncSourceConfig);
   }
 }

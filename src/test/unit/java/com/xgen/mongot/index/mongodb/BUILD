@@ -6,6 +6,7 @@ java_test_suite(
     tags = ["unit"],
     deps = [
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
+        "//src/main/java/com/xgen/mongot/embedding/mongodb/common",
         "//src/main/java/com/xgen/mongot/embedding/mongodb/leasing",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/mongodb",

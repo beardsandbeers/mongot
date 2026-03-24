@@ -7,6 +7,7 @@ import com.xgen.mongot.config.manager.DefaultConfigManager;
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.mongodb.MaterializedViewCollectionResolver;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.mongodb.leasing.DynamicLeaderLeaseManager;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManagerOpsCommands;
@@ -174,14 +175,14 @@ public class CommonUtils {
 
   /** Creates MaterializedViewIndexFactory from sync source config */
   public static MaterializedViewIndexFactory getMaterializedViewIndexFactory(
-      SyncSourceConfig syncSourceConfig,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       FeatureFlags featureFlags,
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       LeaseManager leaseManager,
       MaterializedViewCollectionResolver collectionResolver,
       AutoEmbeddingMaterializedViewConfig materializedViewConfig) {
     return new MaterializedViewIndexFactory(
-        syncSourceConfig,
+        autoEmbeddingMongoClient,
         featureFlags,
         meterAndFtdcRegistry,
         leaseManager,
@@ -192,7 +193,7 @@ public class CommonUtils {
   /**
    * Creates a LeaseManager with explicit leader status from config.
    *
-   * @param syncSourceConfig the sync source configuration
+   * @param autoEmbeddingMongoClient the mongo client for auto embedding leases
    * @param meterAndFtdcRegistry the meter and FTDC registry
    * @param isAutoEmbeddingViewWriter true if this instance is the auto-embedding view writer
    *     (leader)
@@ -201,14 +202,16 @@ public class CommonUtils {
    */
   @Deprecated
   public static LeaseManager getLeaseManager(
-      SyncSourceConfig syncSourceConfig,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       boolean isAutoEmbeddingViewWriter,
       MaterializedViewCollectionMetadataCatalog mvMetadataCatalog) {
     LOG.info("Auto-embedding leader mode set via config: {}", isAutoEmbeddingViewWriter);
     // hostname is an unused parameter for now, so passing in a placeholder.
     return StaticLeaderLeaseManager.create(
-        syncSourceConfig,
+        Check.isPresent(
+            autoEmbeddingMongoClient.getLeaseManagerMongoClient(),
+            "autoEmbeddingLeaseManagerMongoClient"),
         meterAndFtdcRegistry,
         "localhost",
         isAutoEmbeddingViewWriter,
@@ -216,14 +219,12 @@ public class CommonUtils {
   }
 
   public static MaterializedViewCollectionResolver getMaterializedViewCollectionResolver(
-      SyncSourceConfig syncSourceConfig,
-      MeterAndFtdcRegistry meterAndFtdcRegistry,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       MaterializedViewCollectionMetadataCatalog metadataCatalog,
       LeaseManager leaseManager,
       AutoEmbeddingMaterializedViewConfig materializedViewConfig) {
     return MaterializedViewCollectionResolver.create(
-        syncSourceConfig,
-        meterAndFtdcRegistry,
+        autoEmbeddingMongoClient,
         metadataCatalog,
         leaseManager,
         materializedViewConfig);
@@ -236,7 +237,7 @@ public class CommonUtils {
    * dynamically at the index level through lease acquisition and renewal, rather than being
    * statically configured.
    *
-   * @param syncSourceConfig the sync source configuration
+   * @param autoEmbeddingMongoClient the mongo client for auto embedding leases
    * @param meterAndFtdcRegistry the meter and FTDC registry
    * @param hostname the hostname of this mongot instance
    * @param mvMetadataCatalog the materialized view collection metadata catalog
@@ -244,13 +245,13 @@ public class CommonUtils {
    * @return a DynamicLeaderLeaseManager for dynamic leader election
    */
   public static LeaseManager getDynamicLeaseManager(
-      SyncSourceConfig syncSourceConfig,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       String hostname,
       MaterializedViewCollectionMetadataCatalog mvMetadataCatalog,
       LeaseManagerOpsCommands opsCommands) {
     LOG.info("Creating DynamicLeaderLeaseManager for dynamic per-index leader election");
     return DynamicLeaderLeaseManager.create(
-        syncSourceConfig, meterAndFtdcRegistry, hostname, mvMetadataCatalog, opsCommands);
+        autoEmbeddingMongoClient, meterAndFtdcRegistry, hostname, mvMetadataCatalog, opsCommands);
   }
 }

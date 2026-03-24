@@ -1,5 +1,6 @@
 package com.xgen.mongot.config.manager;
 
+import static com.xgen.mongot.index.autoembedding.AutoEmbeddingIndexGenerationFactory.isAutoEmbeddingResolutionFailed;
 import static com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration.isMaterializedViewBasedIndex;
 import static com.xgen.mongot.util.Check.checkState;
 
@@ -75,18 +76,20 @@ public class IndexActions {
             .isEmpty(),
         "trying to insert an index to the catalog clobbering existing indexId: %s",
         definitionGeneration.getGenerationId());
-    if (isMaterializedViewBasedIndex(definitionGeneration.getIndexDefinition())
-        && this.configState.materializedViewIndexFactory.isEmpty()) {
+    IndexGeneration indexGeneration = getIndexGenerationByDefinitionType(definitionGeneration);
+    // When it returns UnresolvedAutoEmbeddingIndexGeneration, we still add it to indexCatalog to
+    // let config manager decide whether to retry on each update cycle.
+    this.configState.indexCatalog.addIndex(indexGeneration);
+    if (isAutoEmbeddingResolutionFailed(indexGeneration)) {
+      // Skips lifecycle for this unresolved indexGeneration,
       LOG.atWarn()
           .addKeyValue("indexId", generationId.indexId)
           .addKeyValue("generationId", generationId)
           .log(
-              "No MaterializedViewIndexFactory is provided, check your syncSource config. "
-                  + "Skips addNewIndex for this definition at this time.");
+              "Unable to create auto-embedding index, "
+                  + "Skips replication for this definition at this time.");
       return;
     }
-    IndexGeneration indexGeneration = getIndexGenerationByDefinitionType(definitionGeneration);
-    this.configState.indexCatalog.addIndex(indexGeneration);
 
     if (this.withReplication) {
       this.configState.getLifecycleManager().add(indexGeneration);
@@ -115,19 +118,19 @@ public class IndexActions {
             .isPresent(),
         "can not stage an index without corresponding index in catalog: %s",
         definitionGeneration.getGenerationId());
-    if (isMaterializedViewBasedIndex(definitionGeneration.getIndexDefinition())
-        && this.configState.materializedViewIndexFactory.isEmpty()) {
+    // staged won't let us clobber an index with the same indexId, we don't need to validate for it
+    IndexGeneration indexGeneration = getIndexGenerationByDefinitionType(definitionGeneration);
+    this.configState.staged.addIndex(indexGeneration);
+    if (isAutoEmbeddingResolutionFailed(indexGeneration)) {
+      // Skips lifecycle for this unresolved indexGeneration,
       LOG.atWarn()
           .addKeyValue("indexId", generationId.indexId)
           .addKeyValue("generationId", generationId)
           .log(
-              "No MaterializedViewIndexFactory is provided, check your syncSource config. "
-                  + "Skips addStagedIndex for this definition at this time.");
+              "Unable to create auto-embedding stage index, "
+                  + "Skips replication for this definition at this time.");
       return;
     }
-    // staged won't let us clobber an index with the same indexId, we don't need to validate for it
-    IndexGeneration indexGeneration = getIndexGenerationByDefinitionType(definitionGeneration);
-    this.configState.staged.addIndex(indexGeneration);
     if (this.withReplication) {
       this.configState.getLifecycleManager().add(indexGeneration);
     }

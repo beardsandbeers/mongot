@@ -1,5 +1,6 @@
 package com.xgen.mongot.config.manager;
 
+import static com.xgen.mongot.index.autoembedding.AutoEmbeddingIndexGenerationFactory.isAutoEmbeddingResolutionFailed;
 import static com.xgen.mongot.util.Check.checkArg;
 import static com.xgen.mongot.util.Check.checkState;
 
@@ -219,14 +220,12 @@ public class DefaultConfigManager implements ConfigManager {
         configState.phasingOut.getSize() == 0,
         "phasingOut indexes should have been dropped on startup, but were present");
 
-    configState
-        .indexCatalog
-        .getIndexes()
+    configState.indexCatalog.getIndexes().stream()
+        .filter(indexGeneration -> !isAutoEmbeddingResolutionFailed(indexGeneration))
         .forEach(indexGeneration -> configState.getLifecycleManager().add(indexGeneration));
 
-    configState
-        .staged
-        .getIndexes()
+    configState.staged.getIndexes().stream()
+        .filter(indexGeneration -> !isAutoEmbeddingResolutionFailed(indexGeneration))
         .forEach(indexGeneration -> configState.getLifecycleManager().add(indexGeneration));
   }
 

@@ -21,6 +21,10 @@ public class IndexStatus implements DocumentEncodable {
     reasonValidationMap.put(
         Reason.INITIALIZATION_FAILED, statusCode -> statusCode == StatusCode.FAILED);
     reasonValidationMap.put(
+        Reason.AUTO_EMBEDDING_RESOLUTION_FAILED, statusCode -> statusCode == StatusCode.FAILED);
+    reasonValidationMap.put(
+        Reason.AUTO_EMBEDDING_RESOLUTION_RETRY, statusCode -> statusCode == StatusCode.FAILED);
+    reasonValidationMap.put(
         Reason.INITIAL_SYNC_REPLICATION_FAILED, statusCode -> statusCode == StatusCode.FAILED);
     reasonValidationMap.put(
         Reason.STEADY_STATE_REPLICATION_FAILED, statusCode -> statusCode == StatusCode.FAILED);
@@ -141,7 +145,11 @@ public class IndexStatus implements DocumentEncodable {
     USER_ERROR,
     EXCEED_MAX_LIMIT,
     COLLECTION_NOT_FOUND,
-    INDEX_DROPPED
+    INDEX_DROPPED,
+    /** Fails to resolve derived definition of an auto embedding index. */
+    AUTO_EMBEDDING_RESOLUTION_FAILED,
+    /** Fails to resolve derived definition of an auto embedding index but recoverable. */
+    AUTO_EMBEDDING_RESOLUTION_RETRY
   }
 
   public static IndexStatus unknown() {
@@ -230,7 +238,12 @@ public class IndexStatus implements DocumentEncodable {
   }
 
   public boolean canBeRecovered() {
-    return this.reason.map(reason -> reason == Reason.INITIALIZATION_FAILED).orElse(false);
+    return this.reason
+        .map(
+            reason ->
+                reason == Reason.INITIALIZATION_FAILED
+                    || reason == Reason.AUTO_EMBEDDING_RESOLUTION_RETRY)
+        .orElse(false);
   }
 
   public Optional<Reason> getReason() {

@@ -115,7 +115,8 @@ class IndexRecoveryStager {
     List<IndexGeneration> indexesNeedToBeStaged = new ArrayList<>();
 
     // Retrieve indexes marked for recovery that need to be staged, such as those that became stale
-    // due to non invalidating errors or failed due to initialization errors.
+    // due to non invalidating errors or failed due to initialization errors or failed to resolve
+    // materialized view collection metadata for auto-embedding index.
     List<IndexGeneration> recoveringIndexes = getRecoveringIndexesToStage();
     logRecoveringIndexIds(recoveringIndexes);
     indexesNeedToBeStaged.addAll(recoveringIndexes);
@@ -139,7 +140,7 @@ class IndexRecoveryStager {
 
   private void retryFailedStageIndexes()
       throws Invariants.InvariantException, IOException, InvalidAnalyzerDefinitionException {
-    List<IndexGeneration> failedStagedIndexes = getInitializationFailedStagedIndexes();
+    List<IndexGeneration> failedStagedIndexes = getRetryableStagedIndexes();
 
     if (failedStagedIndexes.isEmpty()) {
       return;
@@ -166,9 +167,9 @@ class IndexRecoveryStager {
     this.indexActions.addStagedIndex(nextAttempt);
   }
 
-  private List<IndexGeneration> getInitializationFailedStagedIndexes() {
-    // we only want to re-stage attempt for failed stage index
-    // when it failed during initialization
+  private List<IndexGeneration> getRetryableStagedIndexes() {
+    // we only want to re-stage attempt for failed stage index when it failed during initialization
+    // or resolving materialized view collection metadata for auto-embedding index
     return this.configState.staged.getIndexes().stream()
         .filter(
             indexGeneration -> {
@@ -176,7 +177,10 @@ class IndexRecoveryStager {
               return status.getStatusCode() == IndexStatus.StatusCode.FAILED
                   && status
                       .getReason()
-                      .map(reason -> reason == IndexStatus.Reason.INITIALIZATION_FAILED)
+                      .map(
+                          reason ->
+                              reason == IndexStatus.Reason.INITIALIZATION_FAILED
+                                  || reason == IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_RETRY)
                       .orElse(false);
             })
         .collect(Collectors.toList());

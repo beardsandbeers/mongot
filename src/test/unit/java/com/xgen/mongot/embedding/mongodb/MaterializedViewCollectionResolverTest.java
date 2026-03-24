@@ -17,7 +17,8 @@ import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
-import com.xgen.mongot.embedding.exceptions.MaterializedViewNonTransientException;
+import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
 import com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration;
@@ -29,6 +30,7 @@ import com.xgen.mongot.replication.mongodb.common.CommonReplicationConfig;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.mongodb.serialization.MongoDbCollectionInfo;
 import com.xgen.testing.mongot.index.definition.VectorIndexDefinitionBuilder;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -46,7 +48,7 @@ import org.mockito.stubbing.Answer;
 /** Unit tests for {@link MaterializedViewCollectionResolver}. */
 public class MaterializedViewCollectionResolverTest {
 
-  private MongoClient mongoClient;
+  private AutoEmbeddingMongoClient autoEmbeddingMongoClient;
   private MongoDatabase mongoDatabase;
   private MaterializedViewCollectionMetadataCatalog metadataCatalog;
   private AutoEmbeddingMaterializedViewConfig materializedViewConfig;
@@ -61,13 +63,16 @@ public class MaterializedViewCollectionResolverTest {
   @Before
   @SuppressWarnings("unchecked")
   public void setUp() throws Exception {
-    this.mongoClient = mock(MongoClient.class);
+
     this.mongoDatabase = mock(MongoDatabase.class);
     this.metadataCatalog = new MaterializedViewCollectionMetadataCatalog();
     this.materializedViewConfig = AutoEmbeddingMaterializedViewConfig.getDefault();
     this.leaseManager = mock(LeaseManager.class);
-
-    when(this.mongoClient.getDatabase(eq(MV_DATABASE_NAME))).thenReturn(this.mongoDatabase);
+    var mongoClient = mock(MongoClient.class);
+    this.autoEmbeddingMongoClient =
+        new AutoEmbeddingMongoClient(
+            mongoClient, mongoClient, mongoClient, new SimpleMeterRegistry());
+    when(mongoClient.getDatabase(eq(MV_DATABASE_NAME))).thenReturn(this.mongoDatabase);
 
     doAnswer(
             (Answer<Void>)
@@ -136,7 +141,7 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
@@ -173,7 +178,7 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
@@ -203,7 +208,7 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
@@ -240,7 +245,7 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
@@ -280,7 +285,7 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
@@ -325,7 +330,7 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
@@ -385,14 +390,14 @@ public class MaterializedViewCollectionResolverTest {
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
             MV_DATABASE_NAME,
-            this.mongoClient,
+            this.autoEmbeddingMongoClient,
             this.metadataCatalog,
             this.materializedViewConfig,
             this.leaseManager);
 
-    MaterializedViewNonTransientException thrown =
+    MaterializedViewTransientException thrown =
         assertThrows(
-            MaterializedViewNonTransientException.class,
+            MaterializedViewTransientException.class,
             () -> resolver.getOrCreateMaterializedViewForIndex(indexDefGen));
 
     assertThat(thrown.getCause()).isNotNull();
@@ -429,7 +434,11 @@ public class MaterializedViewCollectionResolverTest {
 
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
-            MV_DATABASE_NAME, this.mongoClient, this.metadataCatalog, configV0, this.leaseManager);
+            MV_DATABASE_NAME,
+            this.autoEmbeddingMongoClient,
+            this.metadataCatalog,
+            configV0,
+            this.leaseManager);
 
     MaterializedViewCollectionMetadata metadata =
         resolver.getOrCreateMaterializedViewForIndex(indexDefGen);
@@ -473,7 +482,11 @@ public class MaterializedViewCollectionResolverTest {
 
     MaterializedViewCollectionResolver resolver =
         new MaterializedViewCollectionResolver(
-            MV_DATABASE_NAME, this.mongoClient, this.metadataCatalog, configV1, this.leaseManager);
+            MV_DATABASE_NAME,
+            this.autoEmbeddingMongoClient,
+            this.metadataCatalog,
+            configV1,
+            this.leaseManager);
 
     MaterializedViewCollectionMetadata metadata =
         resolver.getOrCreateMaterializedViewForIndex(indexDefGen);

@@ -3,14 +3,18 @@ package com.xgen.mongot.config.manager;
 import static com.xgen.testing.mongot.mock.index.IndexGeneration.mockDefinitionGeneration;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
 import com.xgen.mongot.index.InitializedIndex;
 import com.xgen.mongot.index.analyzer.InvalidAnalyzerDefinitionException;
 import com.xgen.mongot.index.autoembedding.AutoEmbeddingIndexGeneration;
+import com.xgen.mongot.index.autoembedding.UnresolvedAutoEmbeddingIndexGeneration;
 import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
+import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.testing.TestUtils;
 import com.xgen.testing.mongot.config.manager.ConfigStateMocks;
@@ -294,5 +298,125 @@ public class IndexActionsTest {
     Assert.assertFalse(
         "Index must be removed from Catalog after drop completes",
         this.mocks.initializedIndexCatalog.getIndex(generationId).isPresent());
+  }
+
+  @Test
+  public void
+      addNewIndexes_withMongoClientNotAvailable_addsUnresolvedIndexWithResolutionFailedStatus()
+          throws Exception {
+    doThrow(
+            new MaterializedViewTransientException(
+                "No sync source available",
+                MaterializedViewTransientException.Reason.MONGO_CLIENT_NOT_AVAILABLE))
+        .when(this.mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+
+    this.actions.addNewIndexes(List.of(definitionGeneration));
+
+    var catalogIndex =
+        this.mocks.indexCatalog.getIndexById(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    Assert.assertTrue(catalogIndex instanceof UnresolvedAutoEmbeddingIndexGeneration);
+    Assert.assertEquals(
+        IndexStatus.StatusCode.FAILED, catalogIndex.getIndex().getStatus().getStatusCode());
+    Assert.assertEquals(
+        IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_FAILED,
+        catalogIndex.getIndex().getStatus().getReason().get());
+    Assert.assertFalse(
+        "Index with MONGO_CLIENT_NOT_AVAILABLE should NOT be recoverable",
+        catalogIndex.getIndex().getStatus().canBeRecovered());
+    verify(this.mocks.lifecycleManager, never()).add(any());
+  }
+
+  @Test
+  public void addNewIndexes_withUnknownReason_addsUnresolvedIndexWithResolutionRetryStatus()
+      throws Exception {
+    // Default constructor uses UNKNOWN reason
+    doThrow(new MaterializedViewTransientException("Transient MongoDB error"))
+        .when(this.mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+
+    this.actions.addNewIndexes(List.of(definitionGeneration));
+
+    var catalogIndex =
+        this.mocks.indexCatalog.getIndexById(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    Assert.assertTrue(catalogIndex instanceof UnresolvedAutoEmbeddingIndexGeneration);
+    Assert.assertEquals(
+        IndexStatus.StatusCode.FAILED, catalogIndex.getIndex().getStatus().getStatusCode());
+    Assert.assertEquals(
+        IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_RETRY,
+        catalogIndex.getIndex().getStatus().getReason().get());
+    Assert.assertTrue(
+        "Index with UNKNOWN reason should be recoverable immediately",
+        catalogIndex.getIndex().getStatus().canBeRecovered());
+    verify(this.mocks.lifecycleManager, never()).add(any());
+  }
+
+  @Test
+  public void addStagedIndex_withNoSyncSource_addsUnresolvedStagedIndexWithResolutionFailedStatus()
+      throws Exception {
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+    this.actions.addNewIndexes(List.of(definitionGeneration));
+    this.mocks.clearInvocations();
+
+    doThrow(
+            new MaterializedViewTransientException(
+                "No sync source available",
+                MaterializedViewTransientException.Reason.MONGO_CLIENT_NOT_AVAILABLE))
+        .when(this.mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var stagedDefinitionGeneration =
+        definitionGeneration.incrementUser(definitionGeneration.definition());
+    this.actions.addStagedIndex(stagedDefinitionGeneration);
+
+    var stagedIndex = this.mocks.staged.getIndex(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    Assert.assertTrue(stagedIndex instanceof UnresolvedAutoEmbeddingIndexGeneration);
+    Assert.assertEquals(
+        IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_FAILED,
+        stagedIndex.getIndex().getStatus().getReason().get());
+    Assert.assertFalse(
+        "Staged index with MONGO_CLIENT_NOT_AVAILABLE should NOT be recoverable",
+        stagedIndex.getIndex().getStatus().canBeRecovered());
+    verify(this.mocks.lifecycleManager, never()).add(any());
+  }
+
+  @Test
+  public void
+      addStagedIndex_withUnknownReason_addsUnresolvedStagedIndexWithResolutionRetryStatus()
+          throws Exception {
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+    this.actions.addNewIndexes(List.of(definitionGeneration));
+    this.mocks.clearInvocations();
+
+    // Default constructor uses UNKNOWN reason
+    doThrow(new MaterializedViewTransientException("Transient MongoDB error"))
+        .when(this.mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var stagedDefinitionGeneration =
+        definitionGeneration.incrementUser(definitionGeneration.definition());
+    this.actions.addStagedIndex(stagedDefinitionGeneration);
+
+    var stagedIndex = this.mocks.staged.getIndex(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    Assert.assertTrue(stagedIndex instanceof UnresolvedAutoEmbeddingIndexGeneration);
+    Assert.assertEquals(
+        IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_RETRY,
+        stagedIndex.getIndex().getStatus().getReason().get());
+    Assert.assertTrue(
+        "Staged index with UNKNOWN reason should be recoverable immediately",
+        stagedIndex.getIndex().getStatus().canBeRecovered());
+    verify(this.mocks.lifecycleManager, never()).add(any());
   }
 }

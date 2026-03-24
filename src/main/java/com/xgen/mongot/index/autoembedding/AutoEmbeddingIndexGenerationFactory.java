@@ -5,8 +5,10 @@ import static com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGe
 import static com.xgen.mongot.index.mongodb.MaterializedViewWriter.MV_DATABASE_NAME;
 
 import com.xgen.mongot.catalog.InitializedIndexCatalog;
+import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
 import com.xgen.mongot.index.Index;
 import com.xgen.mongot.index.IndexFactory;
+import com.xgen.mongot.index.IndexGeneration;
 import com.xgen.mongot.index.InitializedVectorIndex;
 import com.xgen.mongot.index.VectorIndex;
 import com.xgen.mongot.index.analyzer.InvalidAnalyzerDefinitionException;
@@ -17,6 +19,8 @@ import com.xgen.mongot.util.Check;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Factory that generates composite AutoEmbedding index generation, used by ConfigManager to create
@@ -26,9 +30,14 @@ import java.util.function.Supplier;
  * be un-queryable if corresponding Materialized View status is in initial sync.
  */
 public class AutoEmbeddingIndexGenerationFactory {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(AutoEmbeddingIndexGenerationFactory.class);
 
-  /** Fetch a new AutoEmbeddingIndexGeneration */
-  public static AutoEmbeddingIndexGeneration getAutoEmbeddingIndexGeneration(
+  /**
+   * Returns a new AutoEmbeddingIndexGeneration or an UnresolvedAutoEmbeddingIndexGeneration if
+   * syncSource is not available.
+   */
+  public static IndexGeneration getAutoEmbeddingIndexGeneration(
       IndexFactory indexFactory,
       MaterializedViewIndexFactory matViewIndexFactory,
       VectorIndexDefinitionGeneration rawDefinitionGeneration,
@@ -39,9 +48,21 @@ public class AutoEmbeddingIndexGenerationFactory {
             && rawDefinitionGeneration.getIndexDefinition().getParsedAutoEmbeddingFeatureVersion()
                 >= MIN_VERSION_FOR_MATERIALIZED_VIEW_EMBEDDING,
         "Input definition is not materialized view based vector index");
-    InitializedMaterializedViewIndex matViewIndex =
-        matViewIndexFactory.getIndex(
-            createMaterializedViewIndexDefinitionGeneration(rawDefinitionGeneration));
+    InitializedMaterializedViewIndex matViewIndex;
+    try {
+      matViewIndex =
+          matViewIndexFactory.getIndex(
+              createMaterializedViewIndexDefinitionGeneration(rawDefinitionGeneration));
+    } catch (MaterializedViewTransientException e) {
+      LOG.atError()
+          .setCause(e)
+          .addKeyValue("generationId", rawDefinitionGeneration.getGenerationId())
+          .log(
+              "Failed to create materialized view index, "
+                  + "creates unresolved index instead, will retry it when sync source is updated.");
+      return UnresolvedAutoEmbeddingIndexGeneration.create(rawDefinitionGeneration, e.getReason());
+    }
+
     VectorIndexDefinitionGeneration derivedIndexDefinitionGeneration =
         derivedIndexDefinitionGeneration(rawDefinitionGeneration, matViewIndex);
     Index vectorIndex = indexFactory.getIndex(derivedIndexDefinitionGeneration);
@@ -59,6 +80,15 @@ public class AutoEmbeddingIndexGenerationFactory {
             initializedIndexSupplier),
         rawDefinitionGeneration,
         derivedIndexDefinitionGeneration);
+  }
+
+  /**
+   * Helper function to check whether IndexGeneration resolution fails when generating derived
+   * definition for auto embedding index, only returns true when auto-embedding index is unresolved.
+   */
+  public static boolean isAutoEmbeddingResolutionFailed(IndexGeneration indexGeneration) {
+    return indexGeneration instanceof UnresolvedAutoEmbeddingIndexGeneration
+        || indexGeneration.getIndex() instanceof UnresolvedAutoEmbeddingIndex;
   }
 
   static MaterializedViewIndexDefinitionGeneration createMaterializedViewIndexDefinitionGeneration(

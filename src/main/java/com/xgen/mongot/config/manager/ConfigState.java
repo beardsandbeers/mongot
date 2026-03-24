@@ -1,5 +1,6 @@
 package com.xgen.mongot.config.manager;
 
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Streams;
 import com.google.errorprone.annotations.Var;
@@ -16,8 +17,10 @@ import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagConfig;
 import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.IndexFactory;
 import com.xgen.mongot.index.IndexGeneration;
+import com.xgen.mongot.index.autoembedding.AutoEmbeddingIndexGenerationFactory;
 import com.xgen.mongot.index.autoembedding.MaterializedViewIndexFactory;
 import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
+import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.index.version.UserIndexVersion;
@@ -40,6 +43,7 @@ import java.util.Optional;
 import java.util.function.BinaryOperator;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.bson.types.ObjectId;
 import org.slf4j.LoggerFactory;
 
@@ -187,7 +191,8 @@ public class ConfigState {
 
   public void updateSyncSource(SyncSourceConfig syncSourceConfig) {
     this.lifecycleManager.updateSyncSource(syncSourceConfig);
-    // TODO(CLOUDP-360542): Support sync source updates for materialized view index factory
+    this.materializedViewIndexFactory.ifPresent(f -> f.updateSyncSource(syncSourceConfig));
+    resetUnresolvedAutoEmbeddingIndexes();
   }
 
   /** This method is called when the {@link ConfigState} is initialized from the config journal. */
@@ -434,5 +439,23 @@ public class ConfigState {
                           == this.indexFeatureVersion)
               .count();
     }
+  }
+
+  /**
+   * Resets index status for unresolved auto embedding indexes, IndexRecoverStager will pick them up
+   * and retry.
+   */
+  private void resetUnresolvedAutoEmbeddingIndexes() {
+    Stream.concat(this.staged.getIndexes().stream(), this.indexCatalog.getIndexes().stream())
+        .filter(AutoEmbeddingIndexGenerationFactory::isAutoEmbeddingResolutionFailed)
+        .forEach(
+            unresolvedIndexGeneration ->
+                unresolvedIndexGeneration
+                    .getIndex()
+                    // Set a failed status but recoverable (AUTO_EMBEDDING_RESOLUTION_RETRY)
+                    .setStatus(
+                        IndexStatus.failed(
+                            "Failed to resolve auto embedding index. Retrying...",
+                            IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_RETRY)));
   }
 }

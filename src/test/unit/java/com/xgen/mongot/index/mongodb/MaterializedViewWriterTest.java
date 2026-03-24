@@ -15,6 +15,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewNonTransientException;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.DocumentMetadata;
@@ -57,6 +58,7 @@ public class MaterializedViewWriterTest {
           new ObjectId(), new MaterializedViewGeneration(Generation.FIRST));
   private static final UUID COLLECTION_UUID = UUID.randomUUID();
 
+  private AutoEmbeddingMongoClient autoEmbeddingMongoClient;
   private MongoClient mockMongoClient;
   private MongoDatabase mockDatabase;
   private MongoCollection mockCollection;
@@ -65,6 +67,13 @@ public class MaterializedViewWriterTest {
   @Before
   public void setup() {
     this.mockMongoClient = Mockito.mock(MongoClient.class);
+    this.autoEmbeddingMongoClient =
+        new AutoEmbeddingMongoClient(
+            this.mockMongoClient,
+            this.mockMongoClient,
+            this.mockMongoClient,
+            new SimpleMeterRegistry());
+
     this.mockDatabase = Mockito.mock(MongoDatabase.class);
     this.mockCollection = Mockito.mock(MongoCollection.class);
 
@@ -83,7 +92,7 @@ public class MaterializedViewWriterTest {
   public void testUpdateAndCommit() throws IOException, FieldExceededLimitsException {
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -117,7 +126,7 @@ public class MaterializedViewWriterTest {
         .thenThrow(new BsonMaximumSizeExceededException("mocked error"));
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -137,7 +146,7 @@ public class MaterializedViewWriterTest {
         .thenReturn(null);
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -162,7 +171,7 @@ public class MaterializedViewWriterTest {
     when(this.mockCollection.bulkWrite(any())).thenThrow(bulkWriteException);
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -184,7 +193,7 @@ public class MaterializedViewWriterTest {
     when(this.mockCollection.bulkWrite(any())).thenThrow(bulkWriteException).thenReturn(null);
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -200,7 +209,7 @@ public class MaterializedViewWriterTest {
   public void testUpdateClosedIndex() throws IOException {
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -218,7 +227,7 @@ public class MaterializedViewWriterTest {
   public void testCommitClosedIndex() throws IOException {
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -234,7 +243,7 @@ public class MaterializedViewWriterTest {
   public void testDropMaterializedViewCollection() throws Exception {
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -260,7 +269,7 @@ public class MaterializedViewWriterTest {
       throws IOException, FieldExceededLimitsException {
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -303,7 +312,7 @@ public class MaterializedViewWriterTest {
       throws IOException, FieldExceededLimitsException {
     var matViewWriter =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -342,7 +351,7 @@ public class MaterializedViewWriterTest {
       throws IOException, FieldExceededLimitsException {
     var writer =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -360,7 +369,7 @@ public class MaterializedViewWriterTest {
     when(limiter.acquire()).thenReturn(0.0);
     var writer =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -381,7 +390,7 @@ public class MaterializedViewWriterTest {
     when(limiter.acquire()).thenReturn(0.0).thenReturn(0.5);
     var writer =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -401,7 +410,7 @@ public class MaterializedViewWriterTest {
     RateLimiter limiter = Mockito.mock(RateLimiter.class);
     var writer =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,
@@ -418,7 +427,7 @@ public class MaterializedViewWriterTest {
     RateLimiter sharedLimiter = RateLimiter.create(50);
     var writer1 =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             "col1",
             GENERATION_ID,
             this.mockLeaseManager,
@@ -427,7 +436,7 @@ public class MaterializedViewWriterTest {
             Optional.of(sharedLimiter));
     var writer2 =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             "col2",
             GENERATION_ID,
             this.mockLeaseManager,
@@ -447,7 +456,7 @@ public class MaterializedViewWriterTest {
 
     var writer3 =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             "col3",
             GENERATION_ID,
             this.mockLeaseManager,
@@ -467,7 +476,7 @@ public class MaterializedViewWriterTest {
     when(limiter.acquire()).thenReturn(0.0).thenReturn(0.5);
     var writer =
         new MaterializedViewWriter(
-            this.mockMongoClient,
+            this.autoEmbeddingMongoClient,
             MV_COLLECTION_NAME,
             GENERATION_ID,
             this.mockLeaseManager,

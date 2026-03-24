@@ -12,7 +12,6 @@ import com.mongodb.ErrorCategory;
 import com.mongodb.MongoWriteException;
 import com.mongodb.ReadConcern;
 import com.mongodb.ReadPreference;
-import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.result.UpdateResult;
@@ -21,6 +20,7 @@ import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewNonTransientException;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.utils.MongoClientOperationExecutor;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.IndexGeneration;
@@ -31,8 +31,6 @@ import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.Check;
-import com.xgen.mongot.util.mongodb.MongoClientBuilder;
-import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.mongot.util.mongodb.serialization.MongoDbCollectionInfo;
 import java.io.IOException;
 import java.time.Instant;
@@ -74,8 +72,6 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
 
   private static final String METRICS_NAMESPACE = "embedding.leasing.stats";
 
-  private static final int MONGO_CLIENT_MAX_CONNECTIONS = 2;
-
   @VisibleForTesting static final String LEASE_COLLECTION_NAME = "auto_embedding_leases";
 
   public static final long DEFAULT_INDEX_DEFINITION_VERSION = 0;
@@ -92,15 +88,14 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
   private final Set<GenerationId> followerGenerationIds;
   // Maps GenerationId to its definition version (as String) for use in pollFollowerStatuses().
   private final Map<GenerationId, String> generationIdToDefinitionVersion;
-  private final MongoCollection<BsonDocument> collection;
   private final MaterializedViewCollectionMetadataCatalog mvMetadataCatalog;
-  private final MongoClient mongoClient;
   private final String databaseName;
+  private final AutoEmbeddingMongoClient autoEmbeddingMongoClient;
   // End of give-up blackout (epoch ms). While now < this, do not acquire leadership.
   private final AtomicLong giveUpBlackoutEndTimeMs = new AtomicLong(0);
 
   public DynamicLeaderLeaseManager(
-      MongoClient mongoClient,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       MetricsFactory metricsFactory,
       String hostname,
       String databaseName,
@@ -114,24 +109,18 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
     this.followerGenerationIds = ConcurrentHashMap.newKeySet();
     this.generationIdToDefinitionVersion = new ConcurrentHashMap<>();
     this.databaseName = databaseName;
-    this.collection =
-        mongoClient
-            .getDatabase(databaseName)
-            .getCollection(LEASE_COLLECTION_NAME, BsonDocument.class)
-            .withReadConcern(ReadConcern.LINEARIZABLE)
-            .withReadPreference(ReadPreference.primary());
-    this.mongoClient = mongoClient;
+    this.autoEmbeddingMongoClient = autoEmbeddingMongoClient;
   }
 
   public static DynamicLeaderLeaseManager create(
-      SyncSourceConfig syncSourceConfig,
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       String hostname,
       MaterializedViewCollectionMetadataCatalog mvMetadataCatalog,
       LeaseManagerOpsCommands opsCommands) {
     DynamicLeaderLeaseManager manager =
         new DynamicLeaderLeaseManager(
-            getMongoClient(syncSourceConfig, meterAndFtdcRegistry),
+            autoEmbeddingMongoClient,
             new MetricsFactory(METRICS_NAMESPACE, meterAndFtdcRegistry.meterRegistry()),
             hostname,
             AUTO_EMBEDDING_INTERNAL_DATABASE_NAME,
@@ -201,7 +190,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
       try {
         UpdateResult result =
             this.operationExecutor.execute(
-                "giveUpLease", () -> this.collection.replaceOne(filter, released.toBson()));
+                "giveUpLease", () -> this.getCollection().replaceOne(filter, released.toBson()));
         if (result.getModifiedCount() == 1) {
           this.leases.put(leaseKeyToGiveUp, released);
           LOG.atInfo()
@@ -240,7 +229,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
     try {
       List<BsonDocument> rawLeases =
           this.operationExecutor.execute(
-              "getLeases", () -> this.collection.find().into(new ArrayList<>()));
+              "getLeases", () -> this.getCollection().find().into(new ArrayList<>()));
       for (BsonDocument rawLease : rawLeases) {
         Lease lease = normalizeLeaseIfNeeded(Lease.fromBson(rawLease));
         if (lease != null) {
@@ -277,13 +266,15 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
       return lease.withResolvedMatViewUuid(
           Check.instanceOf(
                   getCollectionInfo(
-                      this.mongoClient,
+                      Check.isPresent(
+                          this.autoEmbeddingMongoClient.getLeaseManagerMongoClient(),
+                          "leaseManagerMongoClient"),
                       this.databaseName,
                       lease.materializedViewCollectionMetadata().collectionName()),
                   MongoDbCollectionInfo.Collection.class)
               .info()
               .uuid());
-    } catch (Exception e) {
+    } catch (Exception | AssertionError e) {
       LOG.atWarn()
           .addKeyValue("leaseId", lease.id())
           .addKeyValue("leaseOwner", lease.leaseOwner())
@@ -399,7 +390,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
                   Filters.and(
                       Filters.eq("_id", getLeaseKey(generationId)),
                       Filters.eq(Lease.Fields.LEASE_OWNER.getName(), this.hostname));
-              var deleteResult = this.collection.deleteOne(filter);
+              var deleteResult = this.getCollection().deleteOne(filter);
               if (deleteResult.getDeletedCount() > 0) {
                 LOG.atInfo()
                     .addKeyValue("generationId", generationId)
@@ -536,7 +527,8 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
       List<BsonDocument> rawLeases =
           this.operationExecutor.execute(
               "getFollowerLeases",
-              () -> this.collection.find(Filters.in("_id", leaseKeys)).into(new ArrayList<>()));
+              () ->
+                  this.getCollection().find(Filters.in("_id", leaseKeys)).into(new ArrayList<>()));
       for (BsonDocument rawLease : rawLeases) {
         Lease lease = Lease.fromBson(rawLease);
         fetchedLeases.put(lease.id(), lease);
@@ -713,12 +705,17 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
       IndexDefinitionGeneration indexDefinitionGeneration,
       MaterializedViewCollectionMetadata proposedMetadata)
       throws Exception {
-    var existingLease = getLeaseFromDatabase(proposedMetadata.collectionName());
+    @Var var existingLease = this.leases.get(proposedMetadata.collectionName());
+    if (existingLease == null) {
+      // Try to get lease from database and update in memory state.
+      existingLease = refreshLeaseFromDatabase(proposedMetadata.collectionName());
+    }
     if (existingLease != null) {
       // If another Mongot already created the initial lease before this mongot calls method
       // syncLeasesFromMongod in the constructor, just reuse, no need to make another network call.
       return existingLease.materializedViewCollectionMetadata();
     }
+    // Fails to refresh from database, so we should be good to create a new entry in lease table.
     Lease lease =
         Lease.initialLease(
             // Materialized View Collection Name from CollectionResolver
@@ -775,7 +772,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
   private boolean createLeaseForNewIndex(Lease newLease) throws Exception {
     try {
       this.operationExecutor.execute(
-          "createLease", () -> this.collection.insertOne(newLease.toBson()));
+          "createLease", () -> this.getCollection().insertOne(newLease.toBson()));
       // Insert succeeded - we created the lease and synchronized in-memory lease state.
       this.leases.put(newLease.id(), newLease);
       // Don't add or remove generationId into this.followerGenerationIds or
@@ -843,7 +840,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
 
     var result =
         this.operationExecutor.execute(
-            "acquireLease", () -> this.collection.replaceOne(filter, newLease.toBson()));
+            "acquireLease", () -> this.getCollection().replaceOne(filter, newLease.toBson()));
 
     if (result.getMatchedCount() > 0) {
       this.leases.put(getLeaseKey(generationId), newLease);
@@ -956,6 +953,25 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
   }
 
   /**
+   * Refreshes the local lease copy from the database.
+   *
+   * <p>Note: Can be called before mvMetadataCatalog is populated.
+   */
+  @Nullable
+  private Lease refreshLeaseFromDatabase(String leaseKey) {
+    try {
+      Lease lease = getLeaseFromDatabase(leaseKey);
+      if (lease != null) {
+        this.leases.put(leaseKey, lease);
+      }
+      return lease;
+    } catch (Exception e) {
+      LOG.warn("Failed to refresh lease from database for key: {}", leaseKey, e);
+      return null;
+    }
+  }
+
+  /**
    * Renews the lease for a generation ID where this instance is the leader. If renewal fails (e.g.,
    * another instance took over), transitions to follower.
    *
@@ -1018,7 +1034,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
     try {
       var result =
           this.operationExecutor.execute(
-              "renewLease", () -> this.collection.replaceOne(filter, renewedLease.toBson()));
+              "renewLease", () -> this.getCollection().replaceOne(filter, renewedLease.toBson()));
 
       if (result.getMatchedCount() > 0) {
         // Successfully renewed.
@@ -1102,7 +1118,8 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
   private Lease getLeaseFromDatabase(String collectionName) throws Exception {
     BsonDocument rawLease =
         this.operationExecutor.execute(
-            "getLease", () -> this.collection.find(new Document("_id", collectionName)).first());
+            "getLease",
+            () -> this.getCollection().find(new Document("_id", collectionName)).first());
     if (rawLease == null) {
       return null;
     }
@@ -1159,7 +1176,7 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
                   Filters.eq(Lease.Fields.COMMIT_INFO.getName(), encodedUserData.asString())));
       var result =
           this.operationExecutor.execute(
-              "updateLease", () -> this.collection.replaceOne(filter, updatedLease.toBson()));
+              "updateLease", () -> this.getCollection().replaceOne(filter, updatedLease.toBson()));
       if (result.getMatchedCount() == 0) {
         // OCC failure - we lost leadership (or lease was deleted during index drop).
         becomeFollower(generationId);
@@ -1175,29 +1192,23 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
     }
   }
 
-  private static MongoClient getMongoClient(
-      SyncSourceConfig syncSourceConfig, MeterAndFtdcRegistry meterAndFtdcRegistry) {
-    // Use mongosUri if available (for sharded clusters), otherwise use mongodClusterReadWriteUri
-    // (for replica sets). We use mongodClusterReadWriteUri instead of mongodUri because mongodUri
-    // is a direct connection to a specific node (often a secondary), while mongodClusterUri
-    // contains all replica set members and allows the driver to route to the primary. This is
-    // required for LINEARIZABLE read concern and write operations.
-    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
-    LOG.atInfo()
-        .addKeyValue("hosts", syncSource.uri().getHosts())
-        .addKeyValue("directConnection", syncSource.uri().isDirectConnection())
-        .addKeyValue("replicaSet", syncSource.uri().getRequiredReplicaSetName())
-        .log("Creating MongoClient for DynamicLeaderLeaseManager");
-    return MongoClientBuilder.buildNonReplicationWithDefaults(
-        syncSource.uri(),
-        "Dynamic Lease Manager mongo client",
-        MONGO_CLIENT_MAX_CONNECTIONS,
-        syncSource.sslContext(),
-        meterAndFtdcRegistry.meterRegistry());
-  }
-
   private String getIndexDefinitionVersion(IndexDefinition indexDefinition) {
     return String.valueOf(
         indexDefinition.getDefinitionVersion().orElse(DEFAULT_INDEX_DEFINITION_VERSION));
+  }
+
+  private MongoCollection<BsonDocument> getCollection() throws MaterializedViewTransientException {
+    try {
+      return Check.isPresent(
+              this.autoEmbeddingMongoClient.getLeaseManagerMongoClient(), "leaseManagerMongoClient")
+          .getDatabase(this.databaseName)
+          .getCollection(LEASE_COLLECTION_NAME, BsonDocument.class)
+          .withReadConcern(ReadConcern.LINEARIZABLE)
+          .withReadPreference(ReadPreference.primary());
+    } catch (AssertionError e) {
+      // Catches empty this.autoEmbeddingMongoClient.getLeaseManagerMongoClient() when sync source
+      // is missing.
+      throw new MaterializedViewTransientException(e);
+    }
   }
 }

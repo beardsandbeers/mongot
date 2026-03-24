@@ -13,6 +13,7 @@ java_test_suite(
     tags = ["unit"],
     deps = [
         "//src/main/java/com/xgen/mongot/embedding/config",
+        "//src/main/java/com/xgen/mongot/embedding/mongodb/common",
         "//src/main/java/com/xgen/mongot/embedding/mongodb/leasing",
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/definition",
@@ -20,6 +21,7 @@ java_test_suite(
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/replication/mongodb/common",
         "//src/main/java/com/xgen/mongot/util",
+        "//src/main/java/com/xgen/mongot/util/mongodb/serialization",
         "//src/main/java/com/xgen/testing",
         "//src/main/java/com/xgen/testing/mongot/metrics",
         "//src/main/java/com/xgen/testing/mongot/mock/index",

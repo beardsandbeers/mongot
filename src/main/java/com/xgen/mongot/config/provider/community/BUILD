@@ -48,6 +48,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/config/util",
         "//src/main/java/com/xgen/mongot/cursor",
         "//src/main/java/com/xgen/mongot/embedding/config",
+        "//src/main/java/com/xgen/mongot/embedding/mongodb/common",
         "//src/main/java/com/xgen/mongot/embedding/providers",
         "//src/main/java/com/xgen/mongot/embedding/providers/clients",
         "//src/main/java/com/xgen/mongot/embedding/providers/configs",

@@ -1,12 +1,13 @@
 package com.xgen.mongot.index.mongodb;
 
+import static com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException.Reason.MONGO_CLIENT_NOT_AVAILABLE;
+
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.errorprone.annotations.Var;
 import com.mongodb.MongoBulkWriteException;
 import com.mongodb.MongoCommandException;
 import com.mongodb.MongoNamespace;
 import com.mongodb.bulk.BulkWriteError;
-import com.mongodb.client.MongoClient;
 import com.mongodb.client.model.DeleteOneModel;
 import com.mongodb.client.model.ReplaceOneModel;
 import com.mongodb.client.model.ReplaceOptions;
@@ -14,6 +15,7 @@ import com.mongodb.client.model.UpdateOneModel;
 import com.mongodb.client.model.WriteModel;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewNonTransientException;
 import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.embedding.utils.MongoClientOperationExecutor;
 import com.xgen.mongot.index.DocumentEvent;
@@ -27,8 +29,6 @@ import com.xgen.mongot.index.version.MaterializedViewGenerationId;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.concurrent.LockGuard;
 import com.xgen.mongot.util.mongodb.Errors;
-import com.xgen.mongot.util.mongodb.MongoClientBuilder;
-import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -70,7 +70,6 @@ public class MaterializedViewWriter implements IndexWriter {
 
   private static final int MAX_SUB_RETRY_ATTEMPTS = 3;
 
-  private final MongoClient mongoClient;
   private final MongoNamespace namespace;
   private final AtomicReference<ConcurrentLinkedQueue<WriteModel<RawBsonDocument>>>
       bulkOperationsRef;
@@ -83,6 +82,8 @@ public class MaterializedViewWriter implements IndexWriter {
   // Metrics
   private final Counter payloadTooLargeErrors;
   private final Counter partialBulkWriteErrors;
+  private final Counter dropMaterializedViewCollectionErrors;
+  private final Counter materializedViewClientUnavailable;
   private final Counter mvWriteThrottleCount;
   private final Timer mvWriteThrottleWaitTime;
   private final DistributionSummary bulkWriteNumDocs;
@@ -98,27 +99,33 @@ public class MaterializedViewWriter implements IndexWriter {
 
   private final ReentrantReadWriteLock.ReadLock shutdownAndCommitSharedLock;
 
+  private final AutoEmbeddingMongoClient autoEmbeddingMongoClient;
+
   /**
    * Whether the writer is closed. You need to hold the above-mentioned read lock to read the value
    * and the write lock to update the value.
    */
   private boolean closed;
 
-  public MaterializedViewWriter(
-      MongoClient mongoClient,
+  MaterializedViewWriter(
+      AutoEmbeddingMongoClient autoEmbeddingMongoClient,
       String matViewName,
       MaterializedViewGenerationId generationId,
       LeaseManager leaseManager,
       MetricsFactory metricsFactory,
       UUID collectionUuid,
       Optional<RateLimiter> rateLimiter) {
-    this.mongoClient = mongoClient;
+    this.autoEmbeddingMongoClient = autoEmbeddingMongoClient;
     this.namespace = new MongoNamespace(MV_DATABASE_NAME, matViewName);
     this.generationId = generationId;
     this.leaseManager = leaseManager;
     this.bulkOperationsRef = new AtomicReference<>(new ConcurrentLinkedQueue<>());
     this.payloadTooLargeErrors = metricsFactory.counter("payloadTooLargeErrors");
     this.partialBulkWriteErrors = metricsFactory.counter("partialBulkWriteErrors");
+    this.dropMaterializedViewCollectionErrors =
+        metricsFactory.counter("dropMaterializedViewCollectionErrors");
+    this.materializedViewClientUnavailable =
+        metricsFactory.counter("materializedViewClientUnavailable");
     this.mvWriteThrottleCount = metricsFactory.counter("mvWriteThrottleCount");
     this.mvWriteThrottleWaitTime = metricsFactory.timer("mvWriteThrottleWaitTime");
     this.bulkWriteNumDocs = metricsFactory.summary("bulkWriteNumDocs");
@@ -254,8 +261,8 @@ public class MaterializedViewWriter implements IndexWriter {
     return this.collectionUuid;
   }
 
-  public MongoClient getMongoClient() {
-    return this.mongoClient;
+  public AutoEmbeddingMongoClient getMongoClient() {
+    return this.autoEmbeddingMongoClient;
   }
 
   public MongoNamespace getNamespace() {
@@ -270,33 +277,34 @@ public class MaterializedViewWriter implements IndexWriter {
    */
   public CompletableFuture<Void> dropMaterializedViewCollection() {
     this.close();
+    var mongoClientOpt = this.autoEmbeddingMongoClient.getMaterializedViewWriterMongoClient();
+    if (mongoClientOpt.isEmpty()) {
+      this.dropMaterializedViewCollectionErrors.increment();
+      // This won't crash Mongot when IndexAction::dropIndex triggers it.
+      return CompletableFuture.failedFuture(
+          new MaterializedViewTransientException(
+              "Materialized view writer client is not available at this time.",
+              MONGO_CLIENT_NOT_AVAILABLE));
+    }
     return CompletableFuture.runAsync(
-        () -> {
-          this.mongoClient
-              .getDatabase(this.namespace.getDatabaseName())
-              .getCollection(this.namespace.getCollectionName(), RawBsonDocument.class)
-              .drop();
-        });
+        () ->
+            mongoClientOpt
+                .get()
+                .getDatabase(this.namespace.getDatabaseName())
+                .getCollection(this.namespace.getCollectionName(), RawBsonDocument.class)
+                .drop());
   }
 
   public static class Factory implements Closeable {
-    // TODO(CLOUDP-360606): make it configurable. Use 2 for now, as we follows the formula used in
-    // MongoDbReplicationManager::getSyncMongoClient but without counting connections for synonym,
-    // sessionRefresh and changeStreamModeSelection as this client is for stateless writing only, we
-    // will adjust it later.
-    private static final int DEFAULT_MAX_CONNECTIONS = 2;
-    private final MongoClient materializedViewMongoClient;
+    private final AutoEmbeddingMongoClient autoEmbeddingMongoClient;
     private final MetricsFactory metricsFactory;
     private final Optional<RateLimiter> rateLimiter;
 
-    public Factory(
-        SyncSourceConfig syncSourceConfig,
-        MeterRegistry meterRegistry,
+    public Factory(AutoEmbeddingMongoClient autoEmbeddingMongoClient, MeterRegistry meterRegistry,
         Optional<Integer> mvWriteRateLimitRps) {
       // TODO(CLOUDP-360542): Investigate whether we need to change this when primary mongod node is
       // not discoverable in original seedAddresses
-      this.materializedViewMongoClient =
-          createMaterializedViewMongoClient(syncSourceConfig, meterRegistry);
+      this.autoEmbeddingMongoClient = autoEmbeddingMongoClient;
       this.metricsFactory = new MetricsFactory("materializedViewWriter", meterRegistry);
       this.rateLimiter =
           mvWriteRateLimitRps.map(
@@ -312,7 +320,7 @@ public class MaterializedViewWriter implements IndexWriter {
         LeaseManager leaseManager,
         UUID collectionUuid) {
       return new MaterializedViewWriter(
-          this.materializedViewMongoClient,
+          this.autoEmbeddingMongoClient,
           matViewColName,
           generationId,
           leaseManager,
@@ -324,26 +332,7 @@ public class MaterializedViewWriter implements IndexWriter {
     @Override
     public void close() {
       // Close materializedViewMongoClient in factory as this materializedViewMongoClient is shared.
-      this.materializedViewMongoClient.close();
-    }
-
-    private MongoClient createMaterializedViewMongoClient(
-        SyncSourceConfig syncSourceConfig, MeterRegistry meterRegistry) {
-      // Use mongosUri if available, otherwise fall back to mongodClusterReadWriteUri. This allows
-      // the MongoDB driver to automatically discover replica set topology and route writes to the
-      // primary, avoiding NotWritablePrimary errors after failovers.
-      var connectionInfo =
-          syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
-      LOG.atInfo()
-          .addKeyValue("hosts", connectionInfo.uri().getHosts())
-          .addKeyValue("directConnection", connectionInfo.uri().isDirectConnection())
-          .log("Creating MongoClient for MaterializedViewWriter");
-      return MongoClientBuilder.buildNonReplicationWithDefaults(
-          connectionInfo.uri(),
-          "AutoEmbedding Materialized View Writer",
-          DEFAULT_MAX_CONNECTIONS,
-          connectionInfo.sslContext(),
-          meterRegistry);
+      this.autoEmbeddingMongoClient.close();
     }
   }
 
@@ -359,20 +348,31 @@ public class MaterializedViewWriter implements IndexWriter {
       throws Exception {
     // limit to avoid unbounded recursive calls
     if (subRetryAttempt >= MAX_SUB_RETRY_ATTEMPTS) {
-      throw new MaterializedViewNonTransientException(
-          "Failed to write to materialized view due to too many sub-retry attempts");
+      throw new MaterializedViewTransientException(
+          "Failed to write to materialized view due to too many sub-retry attempts,"
+              + " will retry the whole batch.");
+    }
+    var mongoClientOpt = this.autoEmbeddingMongoClient.getMaterializedViewWriterMongoClient();
+    if (mongoClientOpt.isEmpty()) {
+      // This shouldn't happen since we block replication when sync source is missing in
+      // IndexActions
+      this.materializedViewClientUnavailable.increment();
+      throw new MaterializedViewTransientException(
+          "Materialized view writer client is not available at this time."
+              + " Will retry the whole batch.",
+          MONGO_CLIENT_NOT_AVAILABLE);
     }
     // Record bulk write metrics - this metric is at an attempt level, so it is possible to
     // double count when retrying. This is ok for now as we are mainly using these metrics to
     // detect general trends and not for precise accounting.
     this.bulkWriteNumDocs.record(documents.size());
     this.bulkWritePayloadSize.record(calculatePayloadSize(documents));
-
     try {
       this.operationExecutor.execute(
           "materializedViewBulkWrite",
           () -> {
-            this.mongoClient
+            mongoClientOpt
+                .get()
                 .getDatabase(this.namespace.getDatabaseName())
                 .getCollection(this.namespace.getCollectionName(), RawBsonDocument.class)
                 .bulkWrite(documents);

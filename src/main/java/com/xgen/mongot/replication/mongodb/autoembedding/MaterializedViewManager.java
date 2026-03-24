@@ -517,6 +517,9 @@ public class MaterializedViewManager implements ReplicationManager {
   @Override
   public synchronized void add(IndexGeneration indexGeneration) {
     checkState(!this.shutdown, "cannot call add() after shutdown()");
+    LOG.atInfo()
+        .addKeyValue("generationId", indexGeneration.getGenerationId())
+        .log("Adding index generation to materialized view manager");
     AutoEmbeddingIndexGeneration autoEmbeddingIndexGeneration =
         Check.instanceOf(indexGeneration, AutoEmbeddingIndexGeneration.class);
     UUID uuid =

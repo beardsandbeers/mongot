@@ -1,18 +1,35 @@
 package com.xgen.mongot.config.manager;
 
+import static com.google.common.truth.Truth.assertThat;
+import static com.xgen.mongot.index.status.IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_FAILED;
+import static com.xgen.mongot.index.status.IndexStatus.Reason.AUTO_EMBEDDING_RESOLUTION_RETRY;
+import static com.xgen.testing.mongot.mock.index.IndexGeneration.mockDefinitionGeneration;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.errorprone.annotations.Var;
 import com.mongodb.MongoNamespace;
+import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.index.autoembedding.UnresolvedAutoEmbeddingIndexGeneration;
+import com.xgen.mongot.index.definition.IndexDefinitionGeneration;
+import com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.util.mongodb.serialization.MongoDbCollectionInfo;
 import com.xgen.mongot.util.mongodb.serialization.MongoDbCollectionInfos;
 import com.xgen.testing.mongot.config.manager.ConfigStateMocks;
+import com.xgen.testing.mongot.mock.index.MaterializedViewIndex;
+import com.xgen.testing.mongot.mock.index.VectorIndex;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -141,6 +158,157 @@ public class IndexRecoveryStagerTest {
     stageIndexes(mocks, Set.of());
 
     mocks.assertNoIndexActivity();
+  }
+
+  @Test
+  public void unresolvedAutoEmbeddingIndex_nosyncsource_afterUpdateSyncSource_isRecoveredByStager()
+      throws Exception {
+    var mocks = getEmptyMocks();
+
+    // Simulate missing sync source with MONGO_CLIENT_NOT_AVAILABLE reason
+    doThrow(
+            new MaterializedViewTransientException(
+                "No sync source available",
+                MaterializedViewTransientException.Reason.MONGO_CLIENT_NOT_AVAILABLE))
+        .when(mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+
+    IndexActions.withReplication(mocks.configState).addNewIndexes(List.of(definitionGeneration));
+
+    var unresolvedIndex = mocks.indexCatalog.getIndexById(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    assertFalse(
+        "Index with MONGO_CLIENT_NOT_AVAILABLE should NOT be recoverable before updateSyncSource",
+        unresolvedIndex.getIndex().getStatus().canBeRecovered());
+    assertThat(unresolvedIndex.getIndex().getStatus().getReason())
+        .isEqualTo(Optional.of(AUTO_EMBEDDING_RESOLUTION_FAILED));
+    assertTrue(unresolvedIndex instanceof UnresolvedAutoEmbeddingIndexGeneration);
+
+    mocks.clearInvocations();
+
+    // Restore MaterializedViewIndexFactory to succeed on subsequent calls
+    reset(mocks.configState.materializedViewIndexFactory.get());
+    when(mocks
+            .configState
+            .materializedViewIndexFactory
+            .get()
+            .getIndex(any(IndexDefinitionGeneration.class)))
+        .thenAnswer(
+            invocation ->
+                MaterializedViewIndex.mockIndex(
+                    (MaterializedViewIndexDefinitionGeneration) invocation.getArgument(0)));
+
+    // updateSyncSource resets unresolved indexes to AUTO_EMBEDDING_RESOLUTION_RETRY (recoverable)
+    mocks.configState.updateSyncSource(ConfigStateMocks.MOCK_SYNC_SOURCE_CONFIG);
+
+    assertEquals(
+        IndexStatus.StatusCode.FAILED, unresolvedIndex.getIndex().getStatus().getStatusCode());
+    assertThat(unresolvedIndex.getIndex().getStatus().getReason())
+        .isEqualTo(Optional.of(AUTO_EMBEDDING_RESOLUTION_RETRY));
+
+    assertTrue(
+        "Index should be recoverable after updateSyncSource",
+        unresolvedIndex.getIndex().getStatus().canBeRecovered());
+
+    // IndexRecoveryStager should stage a recovery attempt
+    stageIndexes(mocks, Set.of());
+
+    var stagedIndex = mocks.staged.getIndex(VectorIndex.MOCK_INDEX_ID);
+    assertTrue(
+        "Unresolved auto-embedding index should be staged for recovery after updateSyncSource",
+        stagedIndex.isPresent());
+    assertEquals(
+        definitionGeneration.generation().nextAttempt(),
+        stagedIndex.get().getGenerationId().generation);
+  }
+
+  @Test
+  public void unresolvedAutoEmbeddingIndex_withUnknownReason_isRecoverableImmediately()
+      throws Exception {
+    var mocks = getEmptyMocks();
+
+    // Simulate transient error with UNKNOWN reason (default) - should be recoverable immediately
+    doThrow(new MaterializedViewTransientException("Transient MongoDB error"))
+        .when(mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+
+    IndexActions.withReplication(mocks.configState).addNewIndexes(List.of(definitionGeneration));
+
+    var unresolvedIndex = mocks.indexCatalog.getIndexById(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    assertTrue(unresolvedIndex instanceof UnresolvedAutoEmbeddingIndexGeneration);
+
+    // With UNKNOWN reason, index should have AUTO_EMBEDDING_RESOLUTION_RETRY and be recoverable
+    assertThat(unresolvedIndex.getIndex().getStatus().getReason())
+        .isEqualTo(Optional.of(AUTO_EMBEDDING_RESOLUTION_RETRY));
+    assertTrue(
+        "Index with UNKNOWN reason should be recoverable immediately",
+        unresolvedIndex.getIndex().getStatus().canBeRecovered());
+
+    mocks.clearInvocations();
+
+    // Restore MaterializedViewIndexFactory to succeed on subsequent calls
+    reset(mocks.configState.materializedViewIndexFactory.get());
+    when(mocks
+            .configState
+            .materializedViewIndexFactory
+            .get()
+            .getIndex(any(IndexDefinitionGeneration.class)))
+        .thenAnswer(
+            invocation ->
+                MaterializedViewIndex.mockIndex(
+                    (MaterializedViewIndexDefinitionGeneration) invocation.getArgument(0)));
+
+    // IndexRecoveryStager should stage a recovery attempt immediately (no updateSyncSource needed)
+    stageIndexes(mocks, Set.of());
+
+    var stagedIndex = mocks.staged.getIndex(VectorIndex.MOCK_INDEX_ID);
+    assertTrue(
+        "Unresolved auto-embedding index with UNKNOWN reason should be staged for recovery",
+        stagedIndex.isPresent());
+    assertEquals(
+        definitionGeneration.generation().nextAttempt(),
+        stagedIndex.get().getGenerationId().generation);
+  }
+
+  @Test
+  public void unresolvedAutoEmbeddingIndex_beforeUpdateSyncSource_isNotRecovered()
+      throws Exception {
+    var mocks = getEmptyMocks();
+
+    doThrow(
+            new MaterializedViewTransientException(
+                "No sync source available",
+                MaterializedViewTransientException.Reason.MONGO_CLIENT_NOT_AVAILABLE))
+        .when(mocks.configState.materializedViewIndexFactory.get())
+        .getIndex(any(IndexDefinitionGeneration.class));
+
+    var definitionGeneration =
+        mockDefinitionGeneration(
+            VectorIndex.MOCK_MATERIALIZED_VIEW_AUTO_EMBEDDING_INDEX_DEFINITION);
+
+    IndexActions.withReplication(mocks.configState).addNewIndexes(List.of(definitionGeneration));
+
+    var unresolvedIndex = mocks.indexCatalog.getIndexById(VectorIndex.MOCK_INDEX_ID).orElseThrow();
+    assertThat(unresolvedIndex.getIndex().getStatus().getReason())
+        .isEqualTo(Optional.of(AUTO_EMBEDDING_RESOLUTION_FAILED));
+    // Status is FAILED but without INITIALIZATION_FAILED reason, so not recoverable yet
+    assertFalse(unresolvedIndex.getIndex().getStatus().canBeRecovered());
+    mocks.clearInvocations();
+
+    // Without updateSyncSource, the stager should not pick it up
+    stageIndexes(mocks, Set.of());
+
+    var stagedIndex = mocks.staged.getIndex(VectorIndex.MOCK_INDEX_ID);
+    assertTrue(
+        "Unresolved index should NOT be staged before updateSyncSource is called",
+        stagedIndex.isEmpty());
   }
 
   private void stageIndexes(ConfigStateMocks mocks, Set<UUID> directMongodCollectionSet)

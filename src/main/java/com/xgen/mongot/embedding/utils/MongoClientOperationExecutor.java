@@ -6,6 +6,7 @@ import com.mongodb.MongoNodeIsRecoveringException;
 import com.mongodb.MongoNotPrimaryException;
 import com.mongodb.MongoSocketException;
 import com.mongodb.MongoTimeoutException;
+import com.xgen.mongot.embedding.exceptions.MaterializedViewTransientException;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.mongodb.Errors;
 import com.xgen.mongot.util.retry.ExponentialBackoffPolicy;
@@ -59,8 +60,7 @@ public class MongoClientOperationExecutor {
             .build()
             .applyParameters(
                 new RetryPolicy<>()
-                    .handleIf(
-                        ex -> ex instanceof MongoException && isRetryable((MongoException) ex))
+                    .handleIf(MongoClientOperationExecutor::isRetryable)
                     .onRetry(
                         ex ->
                             LOG.warn(
@@ -122,15 +122,27 @@ public class MongoClientOperationExecutor {
         });
   }
 
-  private static boolean isRetryable(MongoException e) {
-    if (e instanceof MongoSocketException
-        || e instanceof MongoNotPrimaryException
-        || e instanceof MongoNodeIsRecoveringException
-        || e instanceof MongoCursorNotFoundException
-        || e instanceof MongoTimeoutException) {
+  private static boolean isRetryable(Throwable e) {
+    if (e instanceof IllegalStateException) {
+      // When MongoClient is closed during sync source update, it will throw IllegalStateException.
+      // This is not an ideal exception type check as MongoClient throws IllegalStateException when
+      // it is closed instead of MongoException.
       return true;
     }
-
-    return Errors.RETRYABLE_ERROR_CODES.contains(e.getCode());
+    if (e instanceof MaterializedViewTransientException) {
+      // MaterializedViewTransientException may be thrown when sync source is missing.
+      return true;
+    }
+    if (!(e instanceof MongoException mongoException)) {
+      return false;
+    }
+    if (mongoException instanceof MongoSocketException
+        || mongoException instanceof MongoNotPrimaryException
+        || mongoException instanceof MongoNodeIsRecoveringException
+        || mongoException instanceof MongoCursorNotFoundException
+        || mongoException instanceof MongoTimeoutException) {
+      return true;
+    }
+    return Errors.RETRYABLE_ERROR_CODES.contains(mongoException.getCode());
   }
 }

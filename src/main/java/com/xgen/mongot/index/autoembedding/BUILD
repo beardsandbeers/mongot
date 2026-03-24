@@ -9,6 +9,8 @@ java_library(
         "InitializedMaterializedViewIndex.java",
         "MaterializedViewIndexFactory.java",
         "MaterializedViewIndexGeneration.java",
+        "UnresolvedAutoEmbeddingIndex.java",
+        "UnresolvedAutoEmbeddingIndexGeneration.java",
     ],
     visibility = ["//:__subpackages__"],
     exports = [
@@ -25,6 +27,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/embedding/config",
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
         "//src/main/java/com/xgen/mongot/embedding/mongodb",
+        "//src/main/java/com/xgen/mongot/embedding/mongodb/common",
         "//src/main/java/com/xgen/mongot/embedding/mongodb/leasing",
         "//src/main/java/com/xgen/mongot/embedding/utils",
         "//src/main/java/com/xgen/mongot/featureflag",

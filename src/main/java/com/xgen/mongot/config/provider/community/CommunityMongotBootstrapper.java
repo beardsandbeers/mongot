@@ -25,6 +25,7 @@ import com.xgen.mongot.cursor.CursorConfig;
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.cursor.MongotCursorManagerImpl;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.embedding.providers.clients.EmbeddingClientFactory;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
@@ -623,19 +624,24 @@ public class CommunityMongotBootstrapper {
                         diskMonitor));
 
     var mvMetadataCatalog = new MaterializedViewCollectionMetadataCatalog();
+    var autoEmbeddingMongoClient =
+        new AutoEmbeddingMongoClient(
+            Optional.of(syncSourceConfig), meterAndFtdcRegistry.meterRegistry());
     var leaseManager =
         CommonUtils.getLeaseManager(
-            syncSourceConfig, meterAndFtdcRegistry, isAutoEmbeddingViewWriter, mvMetadataCatalog);
+            autoEmbeddingMongoClient,
+            meterAndFtdcRegistry,
+            isAutoEmbeddingViewWriter,
+            mvMetadataCatalog);
     var mvCollectionResolver =
         CommonUtils.getMaterializedViewCollectionResolver(
-            syncSourceConfig,
-            meterAndFtdcRegistry,
+            autoEmbeddingMongoClient,
             mvMetadataCatalog,
             leaseManager,
             mongotConfigs.autoEmbeddingMaterializedViewConfig);
     var materializedViewIndexFactory =
         CommonUtils.getMaterializedViewIndexFactory(
-            syncSourceConfig,
+            autoEmbeddingMongoClient,
             featureFlags,
             meterAndFtdcRegistry,
             leaseManager,

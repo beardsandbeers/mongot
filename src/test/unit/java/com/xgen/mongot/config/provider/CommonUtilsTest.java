@@ -11,6 +11,7 @@ import com.xgen.mongot.config.manager.DefaultConfigManager;
 import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.mongodb.MaterializedViewCollectionResolver;
+import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
@@ -52,6 +53,7 @@ public class CommonUtilsTest {
     private final Optional<Supplier<EmbeddingServiceManager>> embeddingServiceManagerSupplier;
     private final LeaseManager leaseManager;
     private final MaterializedViewCollectionMetadataCatalog mvMetadataCatalog;
+    private final AutoEmbeddingMongoClient autoEmbeddingMongoClient;
 
     private Mocks() {
       this.dataPath = mock(Path.class);
@@ -76,6 +78,7 @@ public class CommonUtilsTest {
       this.embeddingServiceManagerSupplier = Optional.empty();
       this.leaseManager = mock(LeaseManager.class);
       this.mvMetadataCatalog = mock(MaterializedViewCollectionMetadataCatalog.class);
+      this.autoEmbeddingMongoClient = mock(AutoEmbeddingMongoClient.class);
     }
 
     private static Mocks create() {
@@ -241,7 +244,7 @@ public class CommonUtilsTest {
 
     MaterializedViewIndexFactory factory =
         CommonUtils.getMaterializedViewIndexFactory(
-            mocks.syncSourceConfig,
+            mocks.autoEmbeddingMongoClient,
             mocks.featureFlags,
             MeterAndFtdcRegistry.create(mocks.meterRegistry, mocks.ftdcRegistry),
             mocks.leaseManager,
@@ -264,7 +267,7 @@ public class CommonUtilsTest {
         AutoEmbeddingMaterializedViewConfig.getDefault();
     MaterializedViewIndexFactory factoryNoLimit =
         CommonUtils.getMaterializedViewIndexFactory(
-            mocks.syncSourceConfig,
+            mocks.autoEmbeddingMongoClient,
             mocks.featureFlags,
             MeterAndFtdcRegistry.create(mocks.meterRegistry, mocks.ftdcRegistry),
             mocks.leaseManager,

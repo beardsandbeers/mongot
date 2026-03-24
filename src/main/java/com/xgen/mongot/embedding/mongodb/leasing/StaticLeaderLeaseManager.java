@@ -27,8 +27,6 @@ import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.Check;
-import com.xgen.mongot.util.mongodb.MongoClientBuilder;
-import com.xgen.mongot.util.mongodb.SyncSourceConfig;
 import com.xgen.mongot.util.mongodb.serialization.MongoDbCollectionInfo;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -68,9 +66,6 @@ public class StaticLeaderLeaseManager implements LeaseManager {
   private static final String METRICS_NAMESPACE = "embedding.leasing.stats";
 
   private static final ReplaceOptions REPLACE_OPTIONS = new ReplaceOptions().upsert(true);
-
-  // placeholder value until we see the need to change this.
-  private static final int MONGO_CLIENT_MAX_CONNECTIONS = 2;
 
   @VisibleForTesting static final String LEASE_COLLECTION_NAME = "auto_embedding_leases";
 
@@ -120,13 +115,13 @@ public class StaticLeaderLeaseManager implements LeaseManager {
   }
 
   public static StaticLeaderLeaseManager create(
-      SyncSourceConfig syncSourceConfig,
+      MongoClient mongoClient,
       MeterAndFtdcRegistry meterAndFtdcRegistry,
       String hostname,
       boolean isLeader,
       MaterializedViewCollectionMetadataCatalog mvMetadataCatalog) {
     return new StaticLeaderLeaseManager(
-        getMongoClient(syncSourceConfig, meterAndFtdcRegistry),
+        mongoClient,
         new MetricsFactory(METRICS_NAMESPACE, meterAndFtdcRegistry.meterRegistry()),
         hostname,
         AUTO_EMBEDDING_INTERNAL_DATABASE_NAME,
@@ -400,9 +395,12 @@ public class StaticLeaderLeaseManager implements LeaseManager {
   @Override
   public MaterializedViewCollectionMetadata initializeLease(
       IndexDefinitionGeneration indexDefinitionGeneration,
-      MaterializedViewCollectionMetadata proposedMetadata)
-      throws Exception {
-    var existingLease = getLeaseFromDatabase(proposedMetadata.collectionName());
+      MaterializedViewCollectionMetadata proposedMetadata) {
+    @Var var existingLease = this.leases.get(proposedMetadata.collectionName());
+    if (existingLease == null) {
+      // Try to get lease from database and update in memory state.
+      existingLease = refreshLeaseFromDatabase(proposedMetadata.collectionName());
+    }
     if (existingLease != null) {
       // If another Mongot already created the initial lease before this mongot calls method
       // syncLeasesFromMongod in the constructor, just reuse, no need to make another network call.
@@ -520,18 +518,23 @@ public class StaticLeaderLeaseManager implements LeaseManager {
     }
   }
 
-  private static MongoClient getMongoClient(
-      SyncSourceConfig syncSourceConfig, MeterAndFtdcRegistry meterAndFtdcRegistry) {
-    // Use mongosUri if available, otherwise fall back to mongodClusterReadWriteUri. This allows the
-    // MongoDB driver to automatically discover replica set topology and route writes to the
-    // primary, avoiding NotWritablePrimary errors after failovers.
-    var syncSource = syncSourceConfig.mongosUri.orElse(syncSourceConfig.mongodClusterReadWriteUri);
-    return MongoClientBuilder.buildNonReplicationWithDefaults(
-        syncSource.uri(),
-        "Lease Manager mongo client",
-        MONGO_CLIENT_MAX_CONNECTIONS,
-        syncSource.sslContext(),
-        meterAndFtdcRegistry.meterRegistry());
+  /**
+   * Refreshes the local lease copy from the database.
+   *
+   * <p>Note: Can be called before mvMetadataCatalog is populated.
+   */
+  @Nullable
+  private Lease refreshLeaseFromDatabase(String leaseKey) {
+    try {
+      Lease lease = getLeaseFromDatabase(leaseKey);
+      if (lease != null) {
+        this.leases.put(leaseKey, lease);
+      }
+      return lease;
+    } catch (Exception e) {
+      LOG.warn("Failed to refresh lease from database for key: {}", leaseKey, e);
+      return null;
+    }
   }
 
   private String getIndexDefinitionVersion(IndexGeneration indexGeneration) {

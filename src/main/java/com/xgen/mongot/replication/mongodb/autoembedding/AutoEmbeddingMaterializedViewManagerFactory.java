@@ -7,9 +7,6 @@ import java.util.Optional;
 @FunctionalInterface
 public interface AutoEmbeddingMaterializedViewManagerFactory {
   // TODO(CLOUDP-360913): Implement customized disk monitor for mat view.
-  /**
-   * Creates AutoEmbeddingMaterializedViewManager based on whether this node is leader or follower
-   * role, and materialized view auto-embedding is enabled.
-   */
+  /** Creates AutoEmbeddingMaterializedViewManager based on whether syncSourceConfig is present. */
   Optional<ReplicationManager> create(Optional<SyncSourceConfig> syncSourceConfig);
 }
