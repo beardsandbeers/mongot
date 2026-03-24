@@ -619,6 +619,170 @@
           "fields": {}
         }
       }
+    },
+    {
+      "description": "with indexIdAtCreationTime",
+      "json": {
+        "indexID": "507f191e810c19729de860ea",
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "collectionUUID": "eb6c40ca-f25e-47e8-b48c-02a05b64a5aa",
+        "indexFeatureVersion": 0,
+        "numPartitions": 1,
+        "indexIDAtCreationTime": "607f191e810c19729de860eb",
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      },
+      "bson": {
+        "indexID": {
+          "$oid": "507f191e810c19729de860ea"
+        },
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "indexFeatureVersion": 0,
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "numPartitions": 1,
+        "indexIDAtCreationTime": {
+          "$oid": "607f191e810c19729de860eb"
+        },
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      }
+    },
+    {
+      "description": "with autoEmbeddingDefinitionVersion",
+      "json": {
+        "indexID": "507f191e810c19729de860ea",
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "collectionUUID": "eb6c40ca-f25e-47e8-b48c-02a05b64a5aa",
+        "indexFeatureVersion": 0,
+        "numPartitions": 1,
+        "autoEmbeddingDefinitionVersion": 5,
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      },
+      "bson": {
+        "indexID": {
+          "$oid": "507f191e810c19729de860ea"
+        },
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "indexFeatureVersion": 0,
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "numPartitions": 1,
+        "autoEmbeddingDefinitionVersion": {
+          "$numberLong": "5"
+        },
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      }
+    },
+    {
+      "description": "with materializedViewNameFormatVersion",
+      "json": {
+        "indexID": "507f191e810c19729de860ea",
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "collectionUUID": "eb6c40ca-f25e-47e8-b48c-02a05b64a5aa",
+        "indexFeatureVersion": 0,
+        "numPartitions": 1,
+        "materializedViewNameFormatVersion": 2,
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      },
+      "bson": {
+        "indexID": {
+          "$oid": "507f191e810c19729de860ea"
+        },
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "indexFeatureVersion": 0,
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "numPartitions": 1,
+        "materializedViewNameFormatVersion": {
+          "$numberLong": "2"
+        },
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      }
+    },
+    {
+      "description": "with both autoEmbeddingDefinitionVersion and materializedViewNameFormatVersion",
+      "json": {
+        "indexID": "507f191e810c19729de860ea",
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "collectionUUID": "eb6c40ca-f25e-47e8-b48c-02a05b64a5aa",
+        "indexFeatureVersion": 0,
+        "numPartitions": 1,
+        "autoEmbeddingDefinitionVersion": 5,
+        "materializedViewNameFormatVersion": 2,
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      },
+      "bson": {
+        "indexID": {
+          "$oid": "507f191e810c19729de860ea"
+        },
+        "name": "index",
+        "database": "database",
+        "lastObservedCollectionName": "collection",
+        "indexFeatureVersion": 0,
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "numPartitions": 1,
+        "autoEmbeddingDefinitionVersion": {
+          "$numberLong": "5"
+        },
+        "materializedViewNameFormatVersion": {
+          "$numberLong": "2"
+        },
+        "mappings": {
+          "dynamic": true,
+          "fields": {}
+        }
+      }
     }
   ]
 }

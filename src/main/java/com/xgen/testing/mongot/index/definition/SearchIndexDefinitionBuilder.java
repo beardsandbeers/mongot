@@ -41,6 +41,9 @@ public class SearchIndexDefinitionBuilder {
       Optional.of(SearchIndexDefinition.Fields.INDEX_FEATURE_VERSION.getDefaultValue());
   private Optional<Long> definitionVersion = Optional.empty();
   private Optional<Instant> definitionVersionCreatedAt = Optional.empty();
+  private Optional<ObjectId> indexIdAtCreationTime = Optional.empty();
+  private Optional<Long> autoEmbeddingDefinitionVersion = Optional.empty();
+  private Optional<Long> materializedViewNameFormatVersion = Optional.empty();
 
   /**
    * This is a valid, minimally configured {@link SearchIndexDefinition} instance with dynamic
@@ -196,6 +199,23 @@ public class SearchIndexDefinitionBuilder {
     return this;
   }
 
+  public SearchIndexDefinitionBuilder indexIdAtCreationTime(ObjectId indexIdAtCreationTime) {
+    this.indexIdAtCreationTime = Optional.ofNullable(indexIdAtCreationTime);
+    return this;
+  }
+
+  public SearchIndexDefinitionBuilder autoEmbeddingDefinitionVersion(
+      Long autoEmbeddingDefinitionVersion) {
+    this.autoEmbeddingDefinitionVersion = Optional.ofNullable(autoEmbeddingDefinitionVersion);
+    return this;
+  }
+
+  public SearchIndexDefinitionBuilder materializedViewNameFormatVersion(
+      Long materializedViewNameFormatVersion) {
+    this.materializedViewNameFormatVersion = Optional.ofNullable(materializedViewNameFormatVersion);
+    return this;
+  }
+
   public SearchIndexDefinition build() {
     return SearchIndexDefinition.create(
         Check.isPresent(this.indexId, "indexId"),
@@ -215,7 +235,10 @@ public class SearchIndexDefinitionBuilder {
         this.typeSets,
         this.sort,
         this.definitionVersion,
-        this.definitionVersionCreatedAt);
+        this.definitionVersionCreatedAt,
+        this.indexIdAtCreationTime,
+        this.autoEmbeddingDefinitionVersion,
+        this.materializedViewNameFormatVersion);
   }
 
   public SearchIndexDefinitionGenerationBuilder asDefinitionGeneration() {

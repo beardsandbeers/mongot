@@ -6,6 +6,7 @@ import static com.xgen.testing.BsonDeserializationTestSuite.fromDocument;
 import static com.xgen.testing.BsonSerializationTestSuite.fromEncodable;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.google.common.truth.Truth;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
+import org.bson.types.ObjectId;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -147,6 +149,115 @@ public class VectorIndexDefinitionTest {
       Truth.assertThat(parsed.getNestedRoot()).isPresent();
       Truth.assertThat(parsed.getNestedRoot().get()).isEqualTo(FieldPath.parse("sections"));
     }
+
+    @Test
+    public void testIndexIdAtCreationTime_whenSet_returnsValue() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+      var indexIdAtCreationTime = new ObjectId("607f191e810c19729de860eb");
+
+      VectorIndexDefinition definition =
+          VectorIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .indexIdAtCreationTime(indexIdAtCreationTime)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      Truth.assertThat(definition.getIndexIdAtCreationTime()).isPresent();
+      Truth.assertThat(definition.getIndexIdAtCreationTime().get())
+          .isEqualTo(indexIdAtCreationTime);
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_whenNotSet_returnsEmpty() {
+      VectorIndexDefinition definition =
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      Truth.assertThat(definition.getIndexIdAtCreationTime()).isEmpty();
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_sameAsIndexId() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+
+      VectorIndexDefinition definition =
+          VectorIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .indexIdAtCreationTime(indexId)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      Truth.assertThat(definition.getIndexIdAtCreationTime()).isPresent();
+      Truth.assertThat(definition.getIndexIdAtCreationTime().get()).isEqualTo(indexId);
+      Truth.assertThat(definition.getIndexId()).isEqualTo(indexId);
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_differentValue_affectsEquality() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+      var indexIdAtCreationTime = new ObjectId("607f191e810c19729de860eb");
+
+      VectorIndexDefinition definitionWithCreationTime =
+          VectorIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .indexIdAtCreationTime(indexIdAtCreationTime)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      VectorIndexDefinition definitionWithoutCreationTime =
+          VectorIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      // Different because indexIdAtCreationTime (607f) != indexId (507f)
+      assertFalse(definitionWithCreationTime.equals(definitionWithoutCreationTime));
+      assertNotEquals(
+          definitionWithCreationTime.hashCode(), definitionWithoutCreationTime.hashCode());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_sameAsIndexId_doesNotAffectEquality() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+
+      VectorIndexDefinition definitionWithCreationTimeSameAsIndexId =
+          VectorIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .indexIdAtCreationTime(indexId) // same as indexId
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      VectorIndexDefinition definitionWithoutCreationTime =
+          VectorIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      // Equal because indexIdAtCreationTime.orElse(indexId) == indexId for both
+      assertEquals(definitionWithCreationTimeSameAsIndexId, definitionWithoutCreationTime);
+      assertEquals(
+          definitionWithCreationTimeSameAsIndexId.hashCode(),
+          definitionWithoutCreationTime.hashCode());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_roundTrip() throws Exception {
+      var indexIdAtCreationTime = new ObjectId("607f191e810c19729de860eb");
+
+      VectorIndexDefinition original =
+          VectorIndexDefinitionBuilder.builder()
+              .indexIdAtCreationTime(indexIdAtCreationTime)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      BsonDocument bson = original.toBson();
+      VectorIndexDefinition parsed = VectorIndexDefinition.fromBson(bson);
+
+      Truth.assertThat(parsed.getIndexIdAtCreationTime()).isPresent();
+      Truth.assertThat(parsed.getIndexIdAtCreationTime().get()).isEqualTo(indexIdAtCreationTime);
+      assertEquals(original, parsed);
+    }
   }
 
   private static void setupRegistry() {
@@ -229,7 +340,12 @@ public class VectorIndexDefinitionTest {
           textEmbeddingWithInvalidModelName(),
           textEmbeddingFullConfig(),
           withFlatIndexingAlgorithm(),
-          withExplicitHnswIndexingAlgorithm());
+          withExplicitHnswIndexingAlgorithm(),
+          withIndexIdAtCreationTime(),
+          withIndexIdAtCreationTimeSameAsIndexId(),
+          withAutoEmbeddingDefinitionVersion(),
+          withMaterializedViewNameFormatVersion(),
+          withBothAutoEmbeddingAndMaterializedViewVersions());
     }
 
     @Test
@@ -447,6 +563,57 @@ public class VectorIndexDefinitionTest {
                       new VectorFieldSpecification.HnswOptions(32, 500)))
               .build());
     }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorIndexDefinition>
+        withIndexIdAtCreationTime() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with indexIdAtCreationTime",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .indexIdAtCreationTime(new ObjectId("607f191e810c19729de860eb"))
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorIndexDefinition>
+        withIndexIdAtCreationTimeSameAsIndexId() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with indexIdAtCreationTime same as indexId",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .indexIdAtCreationTime(new ObjectId("507f191e810c19729de860ea"))
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorIndexDefinition>
+        withAutoEmbeddingDefinitionVersion() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with autoEmbeddingDefinitionVersion",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .autoEmbeddingDefinitionVersion(5L)
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorIndexDefinition>
+        withMaterializedViewNameFormatVersion() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with materializedViewNameFormatVersion",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .materializedViewNameFormatVersion(2L)
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<VectorIndexDefinition>
+        withBothAutoEmbeddingAndMaterializedViewVersions() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with both autoEmbeddingDefinitionVersion and materializedViewNameFormatVersion",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .autoEmbeddingDefinitionVersion(5L)
+              .materializedViewNameFormatVersion(2L)
+              .build());
+    }
   }
 
   @RunWith(Parameterized.class)
@@ -475,7 +642,11 @@ public class VectorIndexDefinitionTest {
           textEmbedding(),
           textEmbeddingUsingDotProduct(),
           textEmbeddingFullConfig(),
-          flatIndexingAlgorithm());
+          flatIndexingAlgorithm(),
+          withIndexIdAtCreationTime(),
+          withAutoEmbeddingDefinitionVersion(),
+          withMaterializedViewNameFormatVersion(),
+          withBothAutoEmbeddingAndMaterializedViewVersions());
     }
 
     @Test
@@ -591,6 +762,47 @@ public class VectorIndexDefinitionTest {
                   VectorSimilarity.COSINE,
                   VectorQuantization.NONE,
                   new VectorIndexingAlgorithm.FlatIndexingAlgorithm())
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<VectorIndexDefinition>
+        withIndexIdAtCreationTime() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with indexIdAtCreationTime",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .indexIdAtCreationTime(new ObjectId("607f191e810c19729de860eb"))
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<VectorIndexDefinition>
+        withAutoEmbeddingDefinitionVersion() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with autoEmbeddingDefinitionVersion",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .autoEmbeddingDefinitionVersion(5L)
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<VectorIndexDefinition>
+        withMaterializedViewNameFormatVersion() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with materializedViewNameFormatVersion",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .materializedViewNameFormatVersion(2L)
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<VectorIndexDefinition>
+        withBothAutoEmbeddingAndMaterializedViewVersions() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with both autoEmbeddingDefinitionVersion and materializedViewNameFormatVersion",
+          VectorIndexDefinitionBuilder.builder()
+              .withCosineVectorField("my.vector.field", 2048)
+              .autoEmbeddingDefinitionVersion(5L)
+              .materializedViewNameFormatVersion(2L)
               .build());
     }
   }

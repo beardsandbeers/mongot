@@ -57,7 +57,10 @@ public class AutoEmbeddingIndexDefinitionUtils {
         rawDefinition.getDefinitionVersion(),
         rawDefinition.getDefinitionVersionCreatedAt(),
         Optional.empty(), // TODO(https://jira.mongodb.org/browse/CLOUDP-363302)
-        rawDefinition.getNestedRoot());
+        rawDefinition.getNestedRoot(),
+        rawDefinition.getIndexIdAtCreationTime(),
+        rawDefinition.getAutoEmbeddingDefinitionVersion(),
+        rawDefinition.getMaterializedViewNameFormatVersion());
   }
 
   /**

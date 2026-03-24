@@ -38,6 +38,9 @@ public class VectorIndexDefinitionBuilder {
       VectorIndexDefinition.Fields.INDEX_FEATURE_VERSION.getDefaultValue();
   private Optional<StoredSourceDefinition> storedSource = Optional.empty();
   private Optional<FieldPath> nestedRoot = Optional.empty();
+  private Optional<ObjectId> indexIdAtCreationTime = Optional.empty();
+  private Optional<Long> autoEmbeddingDefinitionVersion = Optional.empty();
+  private Optional<Long> materializedViewNameFormatVersion = Optional.empty();
 
   public static VectorIndexDefinitionBuilder builder() {
     return new VectorIndexDefinitionBuilder();
@@ -273,6 +276,23 @@ public class VectorIndexDefinitionBuilder {
     return this;
   }
 
+  public VectorIndexDefinitionBuilder indexIdAtCreationTime(ObjectId indexIdAtCreationTime) {
+    this.indexIdAtCreationTime = Optional.ofNullable(indexIdAtCreationTime);
+    return this;
+  }
+
+  public VectorIndexDefinitionBuilder autoEmbeddingDefinitionVersion(
+      Long autoEmbeddingDefinitionVersion) {
+    this.autoEmbeddingDefinitionVersion = Optional.ofNullable(autoEmbeddingDefinitionVersion);
+    return this;
+  }
+
+  public VectorIndexDefinitionBuilder materializedViewNameFormatVersion(
+      Long materializedViewNameFormatVersion) {
+    this.materializedViewNameFormatVersion = Optional.ofNullable(materializedViewNameFormatVersion);
+    return this;
+  }
+
   public VectorIndexDefinition build() {
     return new VectorIndexDefinition(
         this.indexId,
@@ -287,6 +307,9 @@ public class VectorIndexDefinitionBuilder {
         this.definitionVersion,
         this.definitionVersionCreatedAt,
         this.storedSource,
-        this.nestedRoot);
+        this.nestedRoot,
+        this.indexIdAtCreationTime,
+        this.autoEmbeddingDefinitionVersion,
+        this.materializedViewNameFormatVersion);
   }
 }

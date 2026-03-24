@@ -36,10 +36,11 @@ public class IndexMapper {
       Optional<ViewDefinition> view,
       Long definitionVersion,
       Instant definitionVersionCreatedAt) {
+    var newIndexId = indexId.orElseGet(ObjectId::new);
     return switch (indexDefinition) {
       case UserSearchIndexDefinition searchIndexDefinition ->
           SearchIndexDefinition.create(
-              indexId.orElseGet(ObjectId::new),
+              newIndexId,
               indexName,
               db,
               collectionName,
@@ -56,10 +57,13 @@ public class IndexMapper {
               searchIndexDefinition.typeSets(),
               searchIndexDefinition.sort(),
               Optional.of(definitionVersion),
-              Optional.of(definitionVersionCreatedAt));
+              Optional.of(definitionVersionCreatedAt),
+              Optional.of(newIndexId),
+              Optional.empty(),
+              Optional.empty());
       case UserVectorIndexDefinition vectorIndexDefinition ->
           new VectorIndexDefinition(
-              indexId.orElseGet(ObjectId::new),
+              newIndexId,
               indexName,
               db,
               collectionName,
@@ -71,7 +75,10 @@ public class IndexMapper {
               Optional.of(definitionVersion),
               Optional.of(definitionVersionCreatedAt),
               vectorIndexDefinition.storedSource(),
-              vectorIndexDefinition.nestedRoot());
+              vectorIndexDefinition.nestedRoot(),
+              Optional.of(newIndexId),
+              Optional.empty(),
+              Optional.empty());
     };
   }
 

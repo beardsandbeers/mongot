@@ -4,7 +4,9 @@ import static com.xgen.mongot.index.definition.StoredSourceDefinition.Mode.EXCLU
 import static com.xgen.mongot.index.definition.StoredSourceDefinition.Mode.INCLUSION;
 import static com.xgen.testing.BsonDeserializationTestSuite.fromDocument;
 import static com.xgen.testing.BsonSerializationTestSuite.fromEncodable;
+import static org.junit.Assert.assertEquals;
 
+import com.google.common.truth.Truth;
 import com.mongodb.MongoNamespace;
 import com.xgen.mongot.index.analyzer.custom.IcuNormalizerTokenFilterDefinition;
 import com.xgen.mongot.index.analyzer.definition.StockAnalyzerNames;
@@ -33,6 +35,7 @@ import com.xgen.testing.mongot.index.definition.StringFieldDefinitionBuilder;
 import com.xgen.testing.mongot.index.definition.SynonymMappingDefinitionBuilder;
 import com.xgen.testing.mongot.index.definition.TokenFieldDefinitionBuilder;
 import com.xgen.testing.mongot.index.definition.TypeSetDefinitionBuilder;
+import com.xgen.testing.mongot.index.definition.VectorIndexDefinitionBuilder;
 import com.xgen.testing.mongot.index.query.sort.SortFieldBuilder;
 import com.xgen.testing.mongot.index.query.sort.SortSpecBuilder;
 import com.xgen.testing.mongot.index.query.sort.UserFieldSortOptionsBuilder;
@@ -98,7 +101,12 @@ public class SearchIndexDefinitionTest {
           withStoredDocumentExclusion(),
           withHighIndexFeatureVersion(),
           withDefaultNumPartitions(),
-          withMultipleNumPartitions());
+          withMultipleNumPartitions(),
+          withIndexIdAtCreationTime(),
+          withIndexIdAtCreationTimeSameAsIndexId(),
+          withAutoEmbeddingDefinitionVersion(),
+          withMaterializedViewNameFormatVersion(),
+          withBothAutoEmbeddingAndMaterializedViewVersions());
     }
 
     @Test
@@ -476,6 +484,82 @@ public class SearchIndexDefinitionTest {
               .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
               .build());
     }
+
+    private static BsonDeserializationTestSuite.ValidSpec<SearchIndexDefinition>
+        withIndexIdAtCreationTime() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with indexIdAtCreationTime",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .indexIdAtCreationTime(new ObjectId("607f191e810c19729de860eb"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<SearchIndexDefinition>
+        withIndexIdAtCreationTimeSameAsIndexId() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with indexIdAtCreationTime same as indexId",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .indexIdAtCreationTime(new ObjectId("507f191e810c19729de860ea"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<SearchIndexDefinition>
+        withAutoEmbeddingDefinitionVersion() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with autoEmbeddingDefinitionVersion",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .autoEmbeddingDefinitionVersion(5L)
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<SearchIndexDefinition>
+        withMaterializedViewNameFormatVersion() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with materializedViewNameFormatVersion",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .materializedViewNameFormatVersion(2L)
+              .build());
+    }
+
+    private static BsonDeserializationTestSuite.ValidSpec<SearchIndexDefinition>
+        withBothAutoEmbeddingAndMaterializedViewVersions() {
+      return BsonDeserializationTestSuite.TestSpec.valid(
+          "with both autoEmbeddingDefinitionVersion and materializedViewNameFormatVersion",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .autoEmbeddingDefinitionVersion(5L)
+              .materializedViewNameFormatVersion(2L)
+              .build());
+    }
   }
 
   @RunWith(Parameterized.class)
@@ -505,7 +589,11 @@ public class SearchIndexDefinitionTest {
           withStoredBoolean(),
           withStoredDocumentInclusion(),
           withStoredDocumentExclusion(),
-          withMultipleIndexPartitions());
+          withMultipleIndexPartitions(),
+          withIndexIdAtCreationTime(),
+          withAutoEmbeddingDefinitionVersion(),
+          withMaterializedViewNameFormatVersion(),
+          withBothAutoEmbeddingAndMaterializedViewVersions());
     }
 
     @Test
@@ -745,6 +833,67 @@ public class SearchIndexDefinitionTest {
               .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
               .numPartitions(2)
               .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<SearchIndexDefinition>
+        withIndexIdAtCreationTime() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with indexIdAtCreationTime",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .indexIdAtCreationTime(new ObjectId("607f191e810c19729de860eb"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<SearchIndexDefinition>
+        withAutoEmbeddingDefinitionVersion() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with autoEmbeddingDefinitionVersion",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .autoEmbeddingDefinitionVersion(5L)
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<SearchIndexDefinition>
+        withMaterializedViewNameFormatVersion() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with materializedViewNameFormatVersion",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .materializedViewNameFormatVersion(2L)
+              .build());
+    }
+
+    private static BsonSerializationTestSuite.TestSpec<SearchIndexDefinition>
+        withBothAutoEmbeddingAndMaterializedViewVersions() {
+      return BsonSerializationTestSuite.TestSpec.create(
+          "with both autoEmbeddingDefinitionVersion and materializedViewNameFormatVersion",
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .autoEmbeddingDefinitionVersion(5L)
+              .materializedViewNameFormatVersion(2L)
               .build());
     }
   }
@@ -1173,6 +1322,143 @@ public class SearchIndexDefinitionTest {
               .build();
 
       Assert.assertTrue(indexDefinition.getStoredSource().isAllExcluded());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_whenSet_returnsValue() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+      var indexIdAtCreationTime = new ObjectId("607f191e810c19729de860eb");
+
+      var indexDefinition =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .indexIdAtCreationTime(indexIdAtCreationTime)
+              .build();
+
+      Assert.assertTrue(indexDefinition.getIndexIdAtCreationTime().isPresent());
+      Assert.assertEquals(indexIdAtCreationTime, indexDefinition.getIndexIdAtCreationTime().get());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_whenNotSet_returnsEmpty() {
+      var indexDefinition =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(new ObjectId("507f191e810c19729de860ea"))
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build();
+
+      Assert.assertFalse(indexDefinition.getIndexIdAtCreationTime().isPresent());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_sameAsIndexId() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+
+      var indexDefinition =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .indexIdAtCreationTime(indexId)
+              .build();
+
+      Assert.assertTrue(indexDefinition.getIndexIdAtCreationTime().isPresent());
+      Assert.assertEquals(indexId, indexDefinition.getIndexIdAtCreationTime().get());
+      Assert.assertEquals(indexId, indexDefinition.getIndexId());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_differentValue_affectsEquality() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+      var indexIdAtCreationTime = new ObjectId("607f191e810c19729de860eb");
+
+      var definitionWithCreationTime =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .indexIdAtCreationTime(indexIdAtCreationTime)
+              .build();
+
+      var definitionWithoutCreationTime =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build();
+
+      // Different because indexIdAtCreationTime (607f) != indexId (507f)
+      Assert.assertNotEquals(definitionWithCreationTime, definitionWithoutCreationTime);
+      Assert.assertNotEquals(
+          definitionWithCreationTime.hashCode(), definitionWithoutCreationTime.hashCode());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_sameAsIndexId_doesNotAffectEquality() {
+      var indexId = new ObjectId("507f191e810c19729de860ea");
+
+      var definitionWithCreationTimeSameAsIndexId =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .indexIdAtCreationTime(indexId) // same as indexId
+              .build();
+
+      var definitionWithoutCreationTime =
+          SearchIndexDefinitionBuilder.builder()
+              .indexId(indexId)
+              .name("index")
+              .database("database")
+              .lastObservedCollectionName("collection")
+              .collectionUuid(UUID.fromString("eb6c40ca-f25e-47e8-b48c-02a05b64a5aa"))
+              .mappings(DocumentFieldDefinitionBuilder.builder().dynamic(true).build())
+              .build();
+
+      // Equal because indexIdAtCreationTime.orElse(indexId) == indexId for both
+      Assert.assertEquals(definitionWithCreationTimeSameAsIndexId, definitionWithoutCreationTime);
+      Assert.assertEquals(
+          definitionWithCreationTimeSameAsIndexId.hashCode(),
+          definitionWithoutCreationTime.hashCode());
+    }
+
+    @Test
+    public void testIndexIdAtCreationTime_roundTrip() throws Exception {
+      var indexIdAtCreationTime = new ObjectId("607f191e810c19729de860eb");
+
+      VectorIndexDefinition original =
+          VectorIndexDefinitionBuilder.builder()
+              .indexIdAtCreationTime(indexIdAtCreationTime)
+              .withCosineVectorField("my.vector.field", 128)
+              .build();
+
+      BsonDocument bson = original.toBson();
+      VectorIndexDefinition parsed = VectorIndexDefinition.fromBson(bson);
+
+      Truth.assertThat(parsed.getIndexIdAtCreationTime()).isPresent();
+      Truth.assertThat(parsed.getIndexIdAtCreationTime().get()).isEqualTo(indexIdAtCreationTime);
+      assertEquals(original, parsed);
     }
   }
 }

@@ -83,6 +83,16 @@ public sealed interface IndexDefinition extends DocumentEncodable
             .classField(StoredSourceDefinition::fromBson)
             .optional()
             .noDefault();
+
+    // This is the original IndexID carried over before Cluster migration or upgrade
+    public static final Field.Optional<ObjectId> INDEX_ID_AT_CREATION_TIME =
+        Field.builder("indexIDAtCreationTime").objectIdField().optional().noDefault();
+
+    static final Field.Optional<Long> AUTO_EMBEDDING_DEFINITION_VERSION =
+        Field.builder("autoEmbeddingDefinitionVersion").longField().optional().noDefault();
+
+    static final Field.Optional<Long> MATERIALIZED_VIEW_NAME_FORMAT_VERSION =
+        Field.builder("materializedViewNameFormatVersion").longField().optional().noDefault();
   }
 
   DateTimeFormatter DATE_FORMAT =
@@ -144,6 +154,21 @@ public sealed interface IndexDefinition extends DocumentEncodable
    * VectorIndexFieldDefinition.Type#TEXT}.
    */
   boolean isAutoEmbeddingIndex();
+
+  /** Returns the original IndexID carried over before Cluster migration or upgrade */
+  Optional<ObjectId> getIndexIdAtCreationTime();
+
+  /**
+   * Returns the auto-embedding definition version that can be different from index definition
+   * version, controls versioning of auto-embedding materialized view collection.
+   */
+  Optional<Long> getAutoEmbeddingDefinitionVersion();
+
+  /**
+   * Returns the materialized view collection name format version if this is a materialized view
+   * based index.
+   */
+  Optional<Long> getMaterializedViewNameFormatVersion();
 
   default MongoNamespace getLastObservedNamespace() {
     return new MongoNamespace(this.getDatabase(), this.getLastObservedCollectionName());

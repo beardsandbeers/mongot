@@ -528,6 +528,145 @@
           }
         ]
       }
+    },
+    {
+      "description": "with indexIdAtCreationTime",
+      "value": {
+        "indexID": "507f191e810c19729de860ea",
+        "database": "myDatabase",
+        "lastObservedCollectionName": "myCollection",
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "name": "myVectorIndex",
+        "type": "vectorSearch",
+        "indexIDAtCreationTime": "607f191e810c19729de860eb",
+        "fields": [
+          {
+            "type": "vector",
+            "path": "my.vector.field",
+            "numDimensions": 2048,
+            "similarity": "cosine",
+            "quantization": "none"
+          }
+        ]
+      }
+    },
+    {
+      "description": "with indexIdAtCreationTime same as indexId",
+      "value": {
+        "indexID": "507f191e810c19729de860ea",
+        "database": "myDatabase",
+        "lastObservedCollectionName": "myCollection",
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "name": "myVectorIndex",
+        "type": "vectorSearch",
+        "indexIDAtCreationTime": "507f191e810c19729de860ea",
+        "fields": [
+          {
+            "type": "vector",
+            "path": "my.vector.field",
+            "numDimensions": 2048,
+            "similarity": "cosine",
+            "quantization": "none"
+          }
+        ]
+      }
+    },
+    {
+      "description": "with autoEmbeddingDefinitionVersion",
+      "value": {
+        "indexID": "507f191e810c19729de860ea",
+        "database": "myDatabase",
+        "lastObservedCollectionName": "myCollection",
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "name": "myVectorIndex",
+        "type": "vectorSearch",
+        "autoEmbeddingDefinitionVersion": {
+          "$numberLong": "5"
+        },
+        "fields": [
+          {
+            "type": "vector",
+            "path": "my.vector.field",
+            "numDimensions": 2048,
+            "similarity": "cosine",
+            "quantization": "none"
+          }
+        ]
+      }
+    },
+    {
+      "description": "with materializedViewNameFormatVersion",
+      "value": {
+        "indexID": "507f191e810c19729de860ea",
+        "database": "myDatabase",
+        "lastObservedCollectionName": "myCollection",
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "name": "myVectorIndex",
+        "type": "vectorSearch",
+        "materializedViewNameFormatVersion": {
+          "$numberLong": "2"
+        },
+        "fields": [
+          {
+            "type": "vector",
+            "path": "my.vector.field",
+            "numDimensions": 2048,
+            "similarity": "cosine",
+            "quantization": "none"
+          }
+        ]
+      }
+    },
+    {
+      "description": "with both autoEmbeddingDefinitionVersion and materializedViewNameFormatVersion",
+      "value": {
+        "indexID": "507f191e810c19729de860ea",
+        "database": "myDatabase",
+        "lastObservedCollectionName": "myCollection",
+        "collectionUUID": {
+          "$binary": {
+            "base64": "62xAyvJeR+i0jAKgW2Slqg==",
+            "subType": "04"
+          }
+        },
+        "name": "myVectorIndex",
+        "type": "vectorSearch",
+        "autoEmbeddingDefinitionVersion": {
+          "$numberLong": "5"
+        },
+        "materializedViewNameFormatVersion": {
+          "$numberLong": "2"
+        },
+        "fields": [
+          {
+            "type": "vector",
+            "path": "my.vector.field",
+            "numDimensions": 2048,
+            "similarity": "cosine",
+            "quantization": "none"
+          }
+        ]
+      }
     }
   ],
   "invalid": [

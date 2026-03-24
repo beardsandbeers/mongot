@@ -396,6 +396,9 @@ public class AutoEmbeddingIndexValidatorTest {
         Optional.empty(),
         Optional.of(Instant.now()),
         Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty());
   }
 }
