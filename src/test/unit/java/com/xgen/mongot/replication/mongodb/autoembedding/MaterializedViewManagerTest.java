@@ -464,11 +464,12 @@ public class MaterializedViewManagerTest {
 
     // Verify the log message is emitted with leader mode = true
     boolean foundLog =
-        logEvents.stream()
-            .anyMatch(
-                event ->
-                    event.getFormattedMessage().contains("Creating auto-embedding generator")
-                        && event.getFormattedMessage().contains("leader mode = true"));
+        new ArrayList<>(logEvents)
+            .stream()
+                .anyMatch(
+                    event ->
+                        event.getFormattedMessage().contains("Creating auto-embedding generator")
+                            && event.getFormattedMessage().contains("leader mode = true"));
     assertTrue("Expected 'Creating auto-embedding generator (leader mode = true)' log", foundLog);
   }
 
@@ -493,11 +494,12 @@ public class MaterializedViewManagerTest {
 
     // Verify the log message is emitted with leader mode = false
     boolean foundLog =
-        logEvents.stream()
-            .anyMatch(
-                event ->
-                    event.getFormattedMessage().contains("Creating auto-embedding generator")
-                        && event.getFormattedMessage().contains("leader mode = false"));
+        new ArrayList<>(logEvents)
+            .stream()
+                .anyMatch(
+                    event ->
+                        event.getFormattedMessage().contains("Creating auto-embedding generator")
+                            && event.getFormattedMessage().contains("leader mode = false"));
     assertTrue("Expected 'Creating auto-embedding generator (leader mode = false)' log", foundLog);
   }
 
