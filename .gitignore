@@ -24,6 +24,7 @@ scripts/copybara/mongodb-bot.gitconfig
 scripts/netty-tcnative/output
 
 docker/bazel-cache
+docker/rust-builder/output
 docker/volume/cache
 
 evergreen_mongo_artifact
