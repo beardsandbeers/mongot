@@ -32,12 +32,15 @@ public class IndexingWorkSchedulerFactoryTest {
     IndexingWorkSchedulerFactory indexingWorkSchedulerFactory =
         IndexingWorkSchedulerFactory.create(2, mock(Supplier.class), new SimpleMeterRegistry());
 
-    for (IndexingWorkSchedulerFactory.IndexingStrategy strategy :
-        IndexingWorkSchedulerFactory.IndexingStrategy.values()) {
-      assertThat(indexingWorkSchedulerFactory.getIndexingWorkSchedulers().containsKey(strategy));
-      assertThat(indexingWorkSchedulerFactory.getIndexingWorkSchedulers().get(strategy))
-          .isInstanceOf(IndexingWorkScheduler.class);
-    }
+    // create() only provides DEFAULT and EMBEDDING; EMBEDDING_MATERIALIZED_VIEW is handled
+    // exclusively by MaterializedViewManager via createEmbeddingIndexingSchedulerOnly().
+    assertThat(indexingWorkSchedulerFactory.getIndexingWorkSchedulers())
+        .containsKey(IndexingWorkSchedulerFactory.IndexingStrategy.DEFAULT);
+    assertThat(indexingWorkSchedulerFactory.getIndexingWorkSchedulers())
+        .containsKey(IndexingWorkSchedulerFactory.IndexingStrategy.EMBEDDING);
+    assertThat(indexingWorkSchedulerFactory.getIndexingWorkSchedulers())
+        .doesNotContainKey(
+            IndexingWorkSchedulerFactory.IndexingStrategy.EMBEDDING_MATERIALIZED_VIEW);
   }
 
   @Test

@@ -3,6 +3,7 @@ package com.xgen.mongot.replication.mongodb.common;
 import static com.xgen.mongot.index.definition.MaterializedViewIndexDefinitionGeneration.MIN_VERSION_FOR_MATERIALIZED_VIEW_EMBEDDING;
 
 import com.google.common.base.Supplier;
+import com.xgen.mongot.embedding.AutoEmbeddingMemoryBudget;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.index.definition.IndexDefinition;
@@ -44,8 +45,8 @@ public class IndexingWorkSchedulerFactory {
       Supplier<EmbeddingServiceManager> embeddingServiceManagerSupplier,
       MeterRegistry registry) {
     log.info(
-        "Creating IndexingWorkSchedulerFactory with DEFAULT, CUSTOM_VECTOR_ENGINE, EMBEDDING and "
-            + "EMBEDDING_MATERIALIZED_VIEW strategies");
+        "Creating IndexingWorkSchedulerFactory with DEFAULT, CUSTOM_VECTOR_ENGINE and "
+            + "EMBEDDING strategies");
     var executor = Executors.fixedSizeThreadPool("indexing-work", numIndexingThreads, registry);
     DefaultIndexingWorkScheduler defaultIndexingWorkScheduler =
         DefaultIndexingWorkScheduler.create(executor);
@@ -53,17 +54,11 @@ public class IndexingWorkSchedulerFactory {
         CustomVectorEngineIndexingWorkScheduler.create(executor);
     EmbeddingIndexingWorkScheduler embeddingIndexingWorkScheduler =
         EmbeddingIndexingWorkScheduler.create(executor, embeddingServiceManagerSupplier);
-    EmbeddingIndexingWorkScheduler embeddingMaterializedViewWorkScheduler =
-        EmbeddingIndexingWorkScheduler.createForMaterializedViewIndex(
-            executor,
-            embeddingServiceManagerSupplier,
-            new MaterializedViewCollectionMetadataCatalog());
     return new IndexingWorkSchedulerFactory(
         Map.of(
             IndexingStrategy.DEFAULT, defaultIndexingWorkScheduler,
             IndexingStrategy.CUSTOM_VECTOR_ENGINE, customVectorEngineIndexingWorkScheduler,
-            IndexingStrategy.EMBEDDING, embeddingIndexingWorkScheduler,
-            IndexingStrategy.EMBEDDING_MATERIALIZED_VIEW, embeddingMaterializedViewWorkScheduler));
+            IndexingStrategy.EMBEDDING, embeddingIndexingWorkScheduler));
   }
 
   /**
@@ -96,9 +91,15 @@ public class IndexingWorkSchedulerFactory {
     log.info("Creating IndexingWorkSchedulerFactory with EmbeddingIndexingWorkScheduler only");
     var executor =
         Executors.fixedSizeThreadPool("indexing-auto-embedding", numIndexingThreads, registry);
+    // A single global budget is shared across all embedding schedulers so that the limit is
+    // enforced at the mongot level across all indexes.
+    var globalBudget = AutoEmbeddingMemoryBudget.createDefault();
     EmbeddingIndexingWorkScheduler embeddingIndexingWorkScheduler =
         EmbeddingIndexingWorkScheduler.createForMaterializedViewIndex(
-            executor, embeddingServiceManagerSupplier, matViewCollectionMetadataCatalog);
+            executor,
+            embeddingServiceManagerSupplier,
+            matViewCollectionMetadataCatalog,
+            globalBudget);
     return new IndexingWorkSchedulerFactory(
         Map.of(
             IndexingStrategy.EMBEDDING_MATERIALIZED_VIEW,

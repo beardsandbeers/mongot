@@ -8,6 +8,11 @@ public class MaterializedViewTransientException extends RuntimeException {
     this.reason = Reason.UNKNOWN;
   }
 
+  public MaterializedViewTransientException(String message, Throwable cause) {
+    super(message, cause);
+    this.reason = Reason.UNKNOWN;
+  }
+
   public MaterializedViewTransientException(Throwable throwable) {
     super(throwable);
     this.reason = Reason.UNKNOWN;

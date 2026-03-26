@@ -37,6 +37,7 @@ java_test_suite(
     data = ["//src/test/unit/resources/replication/mongodb/common:srcs"],
     tags = ["unit"],
     deps = [
+        "//src/main/java/com/xgen/mongot/embedding",
         "//src/main/java/com/xgen/mongot/embedding/config",
         "//src/main/java/com/xgen/mongot/embedding/exceptions",
         "//src/main/java/com/xgen/mongot/embedding/providers",

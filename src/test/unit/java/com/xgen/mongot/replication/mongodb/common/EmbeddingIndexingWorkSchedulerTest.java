@@ -17,6 +17,7 @@ import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.mongodb.MongoNamespace;
+import com.xgen.mongot.embedding.AutoEmbeddingMemoryBudget;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.exceptions.EmbeddingProviderNonTransientException;
@@ -709,6 +710,247 @@ public class EmbeddingIndexingWorkSchedulerTest {
     assertThat(textsPerModel.get(liteModelConfig)).containsExactly("textB");
   }
 
+  @Test
+  public void testGlobalBudgetExceededFastFails() {
+    MeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ObjectId indexId = new ObjectId();
+    var generationId = new GenerationId(indexId, Generation.CURRENT);
+    // 1-byte budget: any batch with an auto-embed field will exceed it
+    // (bytesPerDoc = 1024 dims * 4 bytes = 4096 for voyage-3-large)
+    AutoEmbeddingMemoryBudget tinyBudget = new AutoEmbeddingMemoryBudget(1, false);
+
+    EmbeddingIndexingWorkScheduler scheduler =
+        schedulerForMaterializedViewIndexWithBudget(
+            Suppliers.ofInstance(
+                new EmbeddingServiceManager(
+                    List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
+                    new FakeEmbeddingClientFactory(),
+                    Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
+                    meterRegistry,
+                    Optional.empty())),
+            generationId,
+            tinyBudget,
+            Long.MAX_VALUE);
+
+    VectorIndexDefinition vectorIndexDefinition =
+        VectorIndexDefinitionBuilder.builder().withAutoEmbedField(indexId + ".a").build();
+    DocumentIndexer indexer = mockDocumentRequiresAutoEmbedding(vectorIndexDefinition);
+    RawBsonDocument rawBsonDoc =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), createBasicBson()));
+    DocumentEvent event =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawBsonDoc), indexId), rawBsonDoc);
+
+    CompletableFuture<Void> future =
+        scheduler.schedule(
+            new ArrayList<>(List.of(event)),
+            SchedulerQueue.Priority.STEADY_STATE_CHANGE_STREAM,
+            indexer,
+            generationId,
+            Optional.of(new ObjectId()),
+            Optional.of(COMMIT_USER_DATA),
+            IGNORE_METRICS);
+
+    var e = assertThrows(ExecutionException.class, future::get);
+    assertThat(e.getCause()).isInstanceOf(SteadyStateException.class);
+    assertThat(e.getCause().getCause()).isInstanceOf(MaterializedViewTransientException.class);
+    assertThat(e.getCause().getCause().getMessage())
+        .contains("Global auto-embedding memory budget exceeded");
+  }
+
+  @Test
+  public void testGlobalBudgetReleasedAfterSuccessfulBatch()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    MeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ObjectId indexId = new ObjectId();
+    var generationId = new GenerationId(indexId, Generation.CURRENT);
+    // bytesPerDoc = 1024 dims * 4 bytes = 4096; budget fits exactly one doc's batch
+    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(4096, false);
+
+    EmbeddingIndexingWorkScheduler scheduler =
+        schedulerForMaterializedViewIndexWithBudget(
+            Suppliers.ofInstance(
+                new EmbeddingServiceManager(
+                    List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
+                    new FakeEmbeddingClientFactory(),
+                    Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
+                    meterRegistry,
+                    Optional.empty())),
+            generationId,
+            budget,
+            Long.MAX_VALUE);
+
+    VectorIndexDefinition vectorIndexDefinition =
+        VectorIndexDefinitionBuilder.builder().withAutoEmbedField(indexId + ".a").build();
+    DocumentIndexer indexer = mockDocumentRequiresAutoEmbedding(vectorIndexDefinition);
+    RawBsonDocument rawBsonDoc =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), createBasicBson()));
+    DocumentEvent event =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawBsonDoc), indexId), rawBsonDoc);
+
+    scheduler
+        .schedule(
+            new ArrayList<>(List.of(event)),
+            SchedulerQueue.Priority.STEADY_STATE_CHANGE_STREAM,
+            indexer,
+            generationId,
+            Optional.of(new ObjectId()),
+            Optional.of(COMMIT_USER_DATA),
+            IGNORE_METRICS)
+        .get(5, TimeUnit.SECONDS);
+
+    assertThat(budget.getCurrentUsageBytes()).isEqualTo(0);
+  }
+
+  @Test
+  public void testGlobalBudgetReleasedAfterFailedBatch() {
+    MeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ObjectId indexId = new ObjectId();
+    var generationId = new GenerationId(indexId, Generation.CURRENT);
+    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(4096, false);
+
+    // FakeEmbeddingClientFactory with "aString" as a transient failure trigger
+    EmbeddingIndexingWorkScheduler scheduler =
+        schedulerForMaterializedViewIndexWithBudget(
+            Suppliers.ofInstance(
+                new EmbeddingServiceManager(
+                    List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
+                    new FakeEmbeddingClientFactory(
+                        meterRegistry,
+                        ImmutableSet.of(),
+                        ImmutableSet.of("aString"),
+                        ImmutableSet.of()),
+                    Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
+                    meterRegistry,
+                    Optional.empty())),
+            generationId,
+            budget,
+            Long.MAX_VALUE);
+
+    VectorIndexDefinition vectorIndexDefinition =
+        VectorIndexDefinitionBuilder.builder().withAutoEmbedField(indexId + ".a").build();
+    DocumentIndexer indexer = mockDocumentRequiresAutoEmbedding(vectorIndexDefinition);
+    RawBsonDocument rawBsonDoc =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), createBasicBson()));
+    DocumentEvent event =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawBsonDoc), indexId), rawBsonDoc);
+
+    CompletableFuture<Void> future =
+        scheduler.schedule(
+            new ArrayList<>(List.of(event)),
+            SchedulerQueue.Priority.STEADY_STATE_CHANGE_STREAM,
+            indexer,
+            generationId,
+            Optional.of(new ObjectId()),
+            Optional.of(COMMIT_USER_DATA),
+            IGNORE_METRICS);
+
+    assertThrows(ExecutionException.class, future::get);
+    assertThat(budget.getCurrentUsageBytes()).isEqualTo(0);
+  }
+
+  @Test
+  public void testPerBatchBudgetCommitsAfterEachSubBatch() throws Exception {
+    MeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ObjectId indexId = new ObjectId();
+    var generationId = new GenerationId(indexId, Generation.CURRENT);
+    // bytesPerDoc = 1024 dims * 4 bytes = 4096; per-batch budget of 4096 → subBatchSize = 1
+    long perBatchBudget = 4096;
+
+    EmbeddingIndexingWorkScheduler scheduler =
+        schedulerForMaterializedViewIndexWithBudget(
+            Suppliers.ofInstance(
+                new EmbeddingServiceManager(
+                    List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
+                    new FakeEmbeddingClientFactory(),
+                    Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
+                    meterRegistry,
+                    Optional.empty())),
+            generationId,
+            AutoEmbeddingMemoryBudget.createDefault(),
+            perBatchBudget);
+
+    VectorIndexDefinition vectorIndexDefinition =
+        VectorIndexDefinitionBuilder.builder().withAutoEmbedField(indexId + ".a").build();
+    DocumentIndexer indexer = mockDocumentRequiresAutoEmbedding(vectorIndexDefinition);
+
+    // Two docs requiring embeddings → subBatchSize 1 → 2 sequential sub-batches
+    BsonDocument inner1 =
+        new BsonDocument("_id", new BsonString("id1")).append("a", new BsonString("text1"));
+    BsonDocument inner2 =
+        new BsonDocument("_id", new BsonString("id2")).append("a", new BsonString("text2"));
+    RawBsonDocument rawDoc1 =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), inner1));
+    RawBsonDocument rawDoc2 =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), inner2));
+    DocumentEvent event1 =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawDoc1), indexId), rawDoc1);
+    DocumentEvent event2 =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawDoc2), indexId), rawDoc2);
+
+    scheduler
+        .schedule(
+            new ArrayList<>(List.of(event1, event2)),
+            SchedulerQueue.Priority.STEADY_STATE_CHANGE_STREAM,
+            indexer,
+            generationId,
+            Optional.of(new ObjectId()),
+            Optional.of(COMMIT_USER_DATA),
+            IGNORE_METRICS)
+        .get(5, TimeUnit.SECONDS);
+
+    // 2 intermediate sub-batch commits + 1 final commit from finalize = 3 total
+    verify(indexer, times(3)).commit();
+  }
+
+  @Test
+  public void testGlobalBudgetReleasedWhenBatchFutureConstructionThrowsSynchronously()
+      throws ExecutionException, InterruptedException {
+    ObjectId indexId = new ObjectId();
+    var generationId = new GenerationId(indexId, Generation.CURRENT);
+    // Use a bounded budget so getCurrentUsageBytes() is tracked.
+    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(Long.MAX_VALUE / 2, false);
+
+    // Supplier that throws synchronously — this triggers the throw inside embed(), which is
+    // called synchronously before any CompletableFuture is chained. Without the try-catch in
+    // getBatchTasksFuture the acquired bytes would never be released.
+    EmbeddingIndexingWorkScheduler scheduler =
+        schedulerForMaterializedViewIndexWithBudget(
+            () -> {
+              throw new RuntimeException("supplier failed synchronously");
+            },
+            generationId,
+            budget,
+            Long.MAX_VALUE);
+
+    VectorIndexDefinition vectorIndexDefinition =
+        VectorIndexDefinitionBuilder.builder().withAutoEmbedField(indexId + ".a").build();
+    DocumentIndexer indexer = mockDocumentRequiresAutoEmbedding(vectorIndexDefinition);
+    RawBsonDocument rawBsonDoc =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), createBasicBson()));
+    DocumentEvent event =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawBsonDoc), indexId), rawBsonDoc);
+
+    CompletableFuture<Void> future =
+        scheduler.schedule(
+            new ArrayList<>(List.of(event)),
+            SchedulerQueue.Priority.STEADY_STATE_CHANGE_STREAM,
+            indexer,
+            generationId,
+            Optional.of(new ObjectId()),
+            Optional.of(COMMIT_USER_DATA),
+            IGNORE_METRICS);
+
+    assertThrows(ExecutionException.class, future::get);
+    // Budget must be fully released even though construction threw before whenComplete was set up.
+    assertThat(budget.getCurrentUsageBytes()).isEqualTo(0);
+  }
+
   @After
   public void clearStaticRegistries() {
     EmbeddingServiceRegistry.clearRegistry();
@@ -731,6 +973,22 @@ public class EmbeddingIndexingWorkSchedulerTest {
             VERSION_ZERO, UUID.randomUUID(), generationId.indexId.toHexString()));
     return EmbeddingIndexingWorkScheduler.createForMaterializedViewIndex(
         executor, supplier, matViewCollectionMetadataCatalog);
+  }
+
+  private EmbeddingIndexingWorkScheduler schedulerForMaterializedViewIndexWithBudget(
+      Supplier<EmbeddingServiceManager> supplier,
+      GenerationId generationId,
+      AutoEmbeddingMemoryBudget globalBudget,
+      long perBatchBudgetBytes) {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    NamedExecutorService executor = Executors.fixedSizeThreadPool("indexing", 2, meterRegistry);
+    var matViewCollectionMetadataCatalog = new MaterializedViewCollectionMetadataCatalog();
+    matViewCollectionMetadataCatalog.addMetadata(
+        generationId,
+        new MaterializedViewCollectionMetadata(
+            VERSION_ZERO, UUID.randomUUID(), generationId.indexId.toHexString()));
+    return EmbeddingIndexingWorkScheduler.createForMaterializedViewIndex(
+        executor, supplier, matViewCollectionMetadataCatalog, globalBudget, perBatchBudgetBytes);
   }
 
   private static IndexCommitUserData getCommitUserData(MongoNamespace namespace, int token) {
