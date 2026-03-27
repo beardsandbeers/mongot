@@ -712,7 +712,8 @@ public class VoyageClientTest {
     changeStreamClient.embed(List.of("test"), dummyContext());
 
     requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
-    verify(mockClient, org.mockito.Mockito.times(2)).send(requestCaptor.capture(), any());
+    verify(mockClient, org.mockito.Mockito.times(2))
+        .send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
 
     requestBody = extractRequestBody(requestCaptor.getValue());
     assertFalse(
@@ -785,6 +786,29 @@ public class VoyageClientTest {
   }
 
   @Test
+  public void testEmbed_includesDefaultOutputDimensionInRequest() throws Exception {
+    EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
+    HttpClient mockClient = createMockHttpClient();
+    VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, false);
+
+    int expectedOutputDimension = 1024;
+    String expectedOutputDtype = "float";
+    EmbeddingRequestContext context =
+        new EmbeddingRequestContext("myDb", "myIndex", "myCollection");
+    voyageClient.embed(List.of("test"), context);
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockClient).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+
+    String body = extractRequestBody(requestCaptor.getValue());
+    BsonDocument doc = BsonDocument.parse(body);
+    assertTrue(doc.containsKey("output_dimension"));
+    assertEquals(expectedOutputDimension, doc.get("output_dimension").asNumber().intValue());
+    assertTrue(doc.containsKey("output_dtype"));
+    assertEquals(expectedOutputDtype, doc.getString("output_dtype").getValue());
+  }
+
+  @Test
   public void testEmbed_noBillingMetadataWhenDisabled() throws Exception {
     EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
     HttpClient mockClient = createMockHttpClient();
@@ -829,7 +853,8 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, true);
 
     String longName = "a".repeat(257);
-    EmbeddingRequestContext context = new EmbeddingRequestContext("db", longName, "coll");
+    EmbeddingRequestContext context =
+        new EmbeddingRequestContext("db", longName, "coll");
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);

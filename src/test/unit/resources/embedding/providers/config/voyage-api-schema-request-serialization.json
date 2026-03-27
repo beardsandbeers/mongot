@@ -109,6 +109,29 @@
           "indexName": "myindex"
         }
       }
+    },
+    {
+      "description": "voyage-3-large query request with output_dimension",
+      "json": {
+        "input": [
+          "one"
+        ],
+        "model": "voyage-3-large",
+        "input_type": "query",
+        "encoding_format": "base64",
+        "truncation": false,
+        "output_dimension": 512
+      },
+      "bson": {
+        "input": [
+          "one"
+        ],
+        "model": "voyage-3-large",
+        "input_type": "query",
+        "encoding_format": "base64",
+        "truncation": false,
+        "output_dimension": 512
+      }
     }
   ]
 }

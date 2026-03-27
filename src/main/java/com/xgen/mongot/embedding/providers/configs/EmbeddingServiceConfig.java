@@ -518,19 +518,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
     public final Optional<Integer> outputDimensions;
     public final Optional<TruncationOption> truncation;
     public final Optional<String> modality;
-
-    /**
-     * Optional map from MMS-defined keys (typically per-quantization buckets such as {@code
-     * scalar}, {@code float}, {@code binary}) to default similarity for auto-embedding vector
-     * fields when omitted from the index definition. BSON is a document of string keys to camelCase
-     * similarity enum values, aligned with vector field {@code similarity} wire format. Types are
-     * {@link VoyageModelVectorParams} to avoid a dependency cycle with {@code index.definition}.
-     */
-    public final Optional<Map<String, VoyageModelVectorParams.Similarity>> similarity;
-
     public final Optional<VoyageModelVectorParams.Quantization> quantization;
-    public final Optional<VoyageModelVectorParams.IndexingMethod> indexingMethod;
-    public final Optional<VoyageModelVectorParams.HnswOptions> hnswOptions;
 
     public VoyageModelConfig(
         Optional<Integer> outputDimensions,
@@ -543,9 +531,6 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           batchSize,
           batchTokenLimit,
           Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
           Optional.empty());
     }
 
@@ -555,19 +540,13 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
         Optional<Integer> batchSize,
         Optional<Integer> batchTokenLimit,
         Optional<String> modality,
-        Optional<Map<String, VoyageModelVectorParams.Similarity>> similarity,
-        Optional<VoyageModelVectorParams.Quantization> quantization,
-        Optional<VoyageModelVectorParams.IndexingMethod> indexingMethod,
-        Optional<VoyageModelVectorParams.HnswOptions> hnswOptions) {
+        Optional<VoyageModelVectorParams.Quantization> quantization) {
       this.outputDimensions = outputDimensions;
       this.truncation = truncation;
       this.batchSize = batchSize;
       this.batchTokenLimit = batchTokenLimit;
       this.modality = modality;
-      this.similarity = similarity;
       this.quantization = quantization;
-      this.indexingMethod = indexingMethod;
-      this.hnswOptions = hnswOptions;
     }
 
     @Override
@@ -598,10 +577,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           .field(Fields.OUTPUT_DIMENSIONS, this.outputDimensions)
           .field(Fields.TRUNCATION, this.truncation)
           .field(Fields.MODALITY, this.modality)
-          .field(Fields.SIMILARITY, this.similarity)
           .field(Fields.QUANTIZATION, this.quantization)
-          .field(Fields.INDEXING_METHOD, this.indexingMethod)
-          .field(Fields.HNSW_OPTIONS, this.hnswOptions)
           .build();
     }
 
@@ -612,10 +588,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           parser.getField(Fields.BATCH_SIZE).unwrap(),
           parser.getField(Fields.BATCH_TOKEN_LIMIT).unwrap(),
           parser.getField(Fields.MODALITY).unwrap(),
-          parser.getField(Fields.SIMILARITY).unwrap(),
-          parser.getField(Fields.QUANTIZATION).unwrap(),
-          parser.getField(Fields.INDEXING_METHOD).unwrap(),
-          parser.getField(Fields.HNSW_OPTIONS).unwrap());
+          parser.getField(Fields.QUANTIZATION).unwrap());
     }
 
     public static class Fields {
@@ -633,32 +606,11 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
               .noDefault();
       static final Field.Optional<String> MODALITY =
           Field.builder("modality").stringField().optional().noDefault();
-      static final Field.Optional<Map<String, VoyageModelVectorParams.Similarity>> SIMILARITY =
-          Field.builder("similarity")
-              .mapOf(
-                  Value.builder()
-                      .enumValue(VoyageModelVectorParams.Similarity.class)
-                      .asCamelCase()
-                      .required())
-              .optional()
-              .noDefault();
       static final Field.Optional<VoyageModelVectorParams.Quantization> QUANTIZATION =
           Field.builder("quantization")
               .classField(
                   VoyageModelVectorParams::parseQuantizationFromModelConfigWire,
                   VoyageModelVectorParams.QUANTIZATION_MODEL_CONFIG_WIRE_ENCODER)
-              .optional()
-              .noDefault();
-      static final Field.Optional<VoyageModelVectorParams.IndexingMethod> INDEXING_METHOD =
-          Field.builder("indexingMethod")
-              .enumField(VoyageModelVectorParams.IndexingMethod.class)
-              .asCamelCase()
-              .optional()
-              .noDefault();
-      static final Field.Optional<VoyageModelVectorParams.HnswOptions> HNSW_OPTIONS =
-          Field.builder("hnswOptions")
-              .classField(VoyageModelVectorParams.HnswOptions::fromBson)
-              .disallowUnknownFields()
               .optional()
               .noDefault();
     }
@@ -677,10 +629,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           && Objects.equals(this.outputDimensions.orElse(null), that.outputDimensions.orElse(null))
           && Objects.equals(this.truncation.orElse(null), that.truncation.orElse(null))
           && Objects.equals(this.modality.orElse(null), that.modality.orElse(null))
-          && Objects.equals(this.similarity.orElse(null), that.similarity.orElse(null))
-          && Objects.equals(this.quantization.orElse(null), that.quantization.orElse(null))
-          && Objects.equals(this.indexingMethod.orElse(null), that.indexingMethod.orElse(null))
-          && Objects.equals(this.hnswOptions.orElse(null), that.hnswOptions.orElse(null));
+          && Objects.equals(this.quantization.orElse(null), that.quantization.orElse(null));
     }
 
     @Override
@@ -691,10 +640,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           this.outputDimensions.orElse(null),
           this.truncation.orElse(null),
           this.modality.orElse(null),
-          this.similarity.orElse(null),
-          this.quantization.orElse(null),
-          this.indexingMethod.orElse(null),
-          this.hnswOptions.orElse(null));
+          this.quantization.orElse(null));
     }
   }
 

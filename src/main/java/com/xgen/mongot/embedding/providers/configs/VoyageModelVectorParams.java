@@ -1,16 +1,10 @@
 package com.xgen.mongot.embedding.providers.configs;
 
 import com.google.common.collect.ImmutableMap;
-import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseContext;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
-import com.xgen.mongot.util.bson.parser.DocumentEncodable;
-import com.xgen.mongot.util.bson.parser.DocumentParser;
-import com.xgen.mongot.util.bson.parser.Field;
 import com.xgen.mongot.util.bson.parser.TypeDescription;
 import com.xgen.mongot.util.bson.parser.ValueEncoder;
-import org.apache.commons.lang3.Range;
-import org.bson.BsonDocument;
 import org.bson.BsonString;
 import org.bson.BsonType;
 import org.bson.BsonValue;
@@ -86,54 +80,5 @@ public final class VoyageModelVectorParams {
       return context.handleSemanticError("must be one of [float, scalar, binary, binaryNoRescore]");
     }
     return quantization;
-  }
-
-  /** Same values and BSON encoding as {@code indexingMethod} on vector field specifications. */
-  public enum IndexingMethod {
-    HNSW,
-    FLAT
-  }
-
-  /**
-   * HNSW graph parameters; same document shape as {@link
-   * com.xgen.mongot.index.definition.VectorFieldSpecification.HnswOptions}.
-   */
-  public record HnswOptions(int maxEdges, int numEdgeCandidates) implements DocumentEncodable {
-
-    public static final int MAXIMUM_MAX_EDGES = 64;
-    public static final int DEFAULT_MAX_EDGES = 16;
-    public static final int MAXIMUM_NUM_EDGE_CANDIDATES = 3200;
-    public static final int DEFAULT_NUM_EDGE_CANDIDATES = 100;
-
-    private static class Fields {
-
-      private static final Field.WithDefault<Integer> MAX_EDGES =
-          Field.builder("maxEdges")
-              .intField()
-              .mustBeWithinBounds(Range.of(DEFAULT_MAX_EDGES, MAXIMUM_MAX_EDGES))
-              .optional()
-              .withDefault(DEFAULT_MAX_EDGES);
-      private static final Field.WithDefault<Integer> NUM_EDGE_CANDIDATES =
-          Field.builder("numEdgeCandidates")
-              .intField()
-              .mustBeWithinBounds(
-                  Range.of(DEFAULT_NUM_EDGE_CANDIDATES, MAXIMUM_NUM_EDGE_CANDIDATES))
-              .optional()
-              .withDefault(DEFAULT_NUM_EDGE_CANDIDATES);
-    }
-
-    @Override
-    public BsonDocument toBson() {
-      return BsonDocumentBuilder.builder()
-          .fieldOmitDefaultValue(Fields.MAX_EDGES, this.maxEdges)
-          .fieldOmitDefaultValue(Fields.NUM_EDGE_CANDIDATES, this.numEdgeCandidates)
-          .build();
-    }
-
-    public static HnswOptions fromBson(DocumentParser parser) throws BsonParseException {
-      return new HnswOptions(
-          parser.getField(Fields.MAX_EDGES).unwrap(),
-          parser.getField(Fields.NUM_EDGE_CANDIDATES).unwrap());
-    }
   }
 }

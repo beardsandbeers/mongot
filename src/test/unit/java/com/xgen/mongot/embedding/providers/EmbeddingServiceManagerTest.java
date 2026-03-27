@@ -103,7 +103,8 @@ public class EmbeddingServiceManagerTest {
             List.of(embeddingServiceConfig),
             new FakeEmbeddingClientFactory(),
             EXECUTOR,
-            new SimpleMeterRegistry(), Optional.empty());
+            new SimpleMeterRegistry(),
+            Optional.empty());
 
     List<VectorOrError> result =
         embeddingServiceManager.embed(
@@ -157,7 +158,8 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of(),
                 ImmutableSet.of("one")),
             EXECUTOR,
-            new SimpleMeterRegistry(), Optional.empty());
+            new SimpleMeterRegistry(),
+            Optional.empty());
 
     // Verify the result
     Throwable ex =
@@ -193,14 +195,16 @@ public class EmbeddingServiceManagerTest {
                 ImmutableSet.of(),
                 ImmutableSet.of()),
             EXECUTOR,
-            new SimpleMeterRegistry(), Optional.empty());
+            new SimpleMeterRegistry(),
+            Optional.empty());
 
     List<VectorOrError> result =
         embeddingServiceManager.embed(
             Arrays.asList("invalid token", "invalid token", "three"),
             EmbeddingModelConfig.create(
                 "voyage-3-large", EmbeddingServiceConfig.EmbeddingProvider.VOYAGE, VOYAGE_3_CONFIG),
-            QUERY, dummyContext());
+            QUERY,
+            dummyContext());
     // Verify the result
     assertEquals(
         Arrays.asList(
@@ -248,7 +252,8 @@ public class EmbeddingServiceManagerTest {
                                 "voyage-3-large",
                                 EmbeddingServiceConfig.EmbeddingProvider.VOYAGE,
                                 VOYAGE_3_CONFIG),
-                            QUERY, dummyContext())
+                            QUERY,
+                            dummyContext())
                         .join())
             .getCause();
 
@@ -319,7 +324,8 @@ public class EmbeddingServiceManagerTest {
                     "voyage-3-large",
                     EmbeddingServiceConfig.EmbeddingProvider.VOYAGE,
                     VOYAGE_CONFIG_FOR_REBATCHING),
-                COLLECTION_SCAN, dummyContext())
+                COLLECTION_SCAN,
+                dummyContext())
             .join();
 
     // Verify the result
@@ -411,7 +417,8 @@ public class EmbeddingServiceManagerTest {
                                 "voyage-3-large",
                                 EmbeddingServiceConfig.EmbeddingProvider.VOYAGE,
                                 VOYAGE_CONFIG_FOR_REBATCHING),
-                            COLLECTION_SCAN, dummyContext())
+                            COLLECTION_SCAN,
+                            dummyContext())
                         .join())
             .getCause();
     assertTrue(ex instanceof EmbeddingProviderNonTransientException);
@@ -451,7 +458,8 @@ public class EmbeddingServiceManagerTest {
             List.of(embeddingServiceConfig),
             new FakeEmbeddingClientFactory(),
             EXECUTOR,
-            new SimpleMeterRegistry(), Optional.empty());
+            new SimpleMeterRegistry(),
+            Optional.empty());
 
     Throwable ex =
         assertThrows(
@@ -466,7 +474,8 @@ public class EmbeddingServiceManagerTest {
                                 "voyage-3-large",
                                 EmbeddingServiceConfig.EmbeddingProvider.VOYAGE,
                                 disabledRetriesConfig),
-                            QUERY, dummyContext())
+                            QUERY,
+                            dummyContext())
                         .join();
                   }
                 })
@@ -536,7 +545,8 @@ public class EmbeddingServiceManagerTest {
                 "voyage-3-large",
                 EmbeddingServiceConfig.EmbeddingProvider.VOYAGE,
                 disabledRetriesConfig),
-            QUERY, dummyContext());
+            QUERY,
+            dummyContext());
     // Verify the result
     assertEquals(
         List.of(
@@ -576,7 +586,8 @@ public class EmbeddingServiceManagerTest {
             List.of(embeddingServiceConfig1),
             embeddingClientFactory,
             EXECUTOR,
-            new SimpleMeterRegistry(), Optional.empty());
+            new SimpleMeterRegistry(),
+            Optional.empty());
 
     // Create one client per service tier
     verify(embeddingClientFactory, times(3))

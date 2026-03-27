@@ -90,6 +90,13 @@ public class VoyageClient implements ClientInterface {
 
   @VisibleForTesting public static final String VOYAGE_API_FLEX_TIER = "flex";
 
+  /** Default Voyage output shape until dimensions/datatype are read from model config per tier. */
+  // TODO(CLOUDP-392610): remove after EmbeddingRequestContext
+  private static final int DEFAULT_OUTPUT_DIMENSIONS = 1024;
+
+  // TODO(CLOUDP-392610): remove after EmbeddingRequestContext
+  private static final String DEFAULT_OUTPUT_DATATYPE = "float";
+
   VoyageClient(
       EmbeddingModelConfig embeddingModelConfig,
       EmbeddingServiceConfig.ServiceTier tier,
@@ -103,15 +110,12 @@ public class VoyageClient implements ClientInterface {
     // Enable truncation in indexing time only.
     this.truncation = tier != EmbeddingServiceConfig.ServiceTier.QUERY;
     this.useFlexTier = useFlexTier;
-    this.serviceTierApiValue =
-        useFlexTier ? Optional.of(VOYAGE_API_FLEX_TIER) : Optional.empty();
+    this.serviceTierApiValue = useFlexTier ? Optional.of(VOYAGE_API_FLEX_TIER) : Optional.empty();
     this.modelId = embeddingModelConfig.name();
     this.serviceTier = tier;
     if (useFlexTier) {
       LOG.debug(
-          "Using Voyage flex tier for embedding model {} (service tier: {})",
-          this.modelId,
-          tier);
+          "Using Voyage flex tier for embedding model {} (service tier: {})", this.modelId, tier);
     }
     this.endpoint = URI.create(workloadParams.providerEndpoint().orElse(DEFAULT_ENDPOINT));
     this.voyageHttpClient = newVoyageHttpClient();
@@ -265,8 +269,7 @@ public class VoyageClient implements ClientInterface {
         throw new IllegalStateException("Dedicated cluster credentials not configured. ");
       }
       LOG.debug(
-          "Using dedicated cluster credentials: tokenLength={}",
-          this.credentialToken.length());
+          "Using dedicated cluster credentials: tokenLength={}", this.credentialToken.length());
       return this.credentialToken;
     } else {
       // MTM cluster: tenant ID is required
@@ -279,13 +282,17 @@ public class VoyageClient implements ClientInterface {
       String tenant = tenantId.get();
       String apiToken = this.tenantCredentials.get(tenant);
       if (apiToken == null) {
-        LOG.error("No credentials found for tenant: {}, available tenants: {}",
-            tenant, this.tenantCredentials.keySet());
+        LOG.error(
+            "No credentials found for tenant: {}, available tenants: {}",
+            tenant,
+            this.tenantCredentials.keySet());
         throw new EmbeddingProviderTransientException(
             String.format("Unable to find credentials for tenant: %s", tenant));
       }
-      LOG.debug("Using tenant-specific credentials for tenant: {}, tokenLength={}",
-          tenant, apiToken.length());
+      LOG.debug(
+          "Using tenant-specific credentials for tenant: {}, tokenLength={}",
+          tenant,
+          apiToken.length());
       return apiToken;
     }
   }
@@ -530,11 +537,14 @@ public class VoyageClient implements ClientInterface {
                 this.modelId,
                 this.inputType,
                 inputs,
+                VoyageApiSchema.DEFAULT_ENCODING_FORMAT,
                 this.truncation,
                 this.attachBillingMetadata
                     ? Optional.of(buildBillingMetadata(context))
                     : Optional.empty(),
-                this.serviceTierApiValue)
+                this.serviceTierApiValue,
+                Optional.of(DEFAULT_OUTPUT_DIMENSIONS),
+                Optional.of(DEFAULT_OUTPUT_DATATYPE))
             .toBson();
 
     return requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body.toJson())).build();
@@ -597,7 +607,8 @@ public class VoyageClient implements ClientInterface {
           VoyageApiSchema.EmbedResponse.fromBson(
               BsonDocumentParser.fromRoot(JsonCodec.fromJson(response.body()))
                   .allowUnknownFields(true)
-                  .build());
+                  .build(),
+              DEFAULT_OUTPUT_DATATYPE);
       this.inputTokenDistribution.record(embedResponse.embedUsage.totalTokens);
       List<VectorOrError> results = new ArrayList<>();
       var iterator = embedResponse.data.iterator();

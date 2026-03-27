@@ -12,7 +12,6 @@ import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.Worklo
 import com.xgen.mongot.embedding.providers.configs.VoyageModelVectorParams;
 import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
-import java.util.Map;
 import java.util.Optional;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -39,10 +38,7 @@ public class EmbeddingModelConfigTest {
           Optional.of(1000),
           Optional.of(100_000),
           Optional.of("text"),
-          Optional.of(Map.of("scalar", VoyageModelVectorParams.Similarity.COSINE)),
-          Optional.of(VoyageModelVectorParams.Quantization.SCALAR),
-          Optional.of(VoyageModelVectorParams.IndexingMethod.HNSW),
-          Optional.of(new VoyageModelVectorParams.HnswOptions(16, 100)));
+          Optional.of(VoyageModelVectorParams.Quantization.SCALAR));
 
   private static final EmbeddingServiceConfig.ErrorHandlingConfig BASE_ERROR_CONFIG =
       new EmbeddingServiceConfig.ErrorHandlingConfig(10, 200L, 50L, 0.1);
@@ -200,9 +196,6 @@ public class EmbeddingModelConfigTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.of(Map.of("scalar", VoyageModelVectorParams.Similarity.DOT_PRODUCT)),
-            Optional.empty(),
-            Optional.empty(),
             Optional.empty());
 
     WorkloadParams overrideParams =
@@ -230,13 +223,8 @@ public class EmbeddingModelConfigTest {
     VoyageModelConfig result =
         (VoyageModelConfig) consolidatedConfig.collectionScan().modelConfig();
 
-    assertEquals(
-        Optional.of(Map.of("scalar", VoyageModelVectorParams.Similarity.DOT_PRODUCT)),
-        result.similarity);
     assertEquals(BASE_ADVANCED_MODEL_CONFIG.modality, result.modality);
     assertEquals(BASE_ADVANCED_MODEL_CONFIG.quantization, result.quantization);
-    assertEquals(BASE_ADVANCED_MODEL_CONFIG.indexingMethod, result.indexingMethod);
-    assertEquals(BASE_ADVANCED_MODEL_CONFIG.hnswOptions, result.hnswOptions);
   }
 
   @Test
@@ -269,10 +257,7 @@ public class EmbeddingModelConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
-              Optional.empty(),
-              Optional.of(quantization),
-              Optional.empty(),
-              Optional.empty());
+              Optional.of(quantization));
       BsonDocument encoded = original.toBson();
       BsonDocument root = new BsonDocument();
       encoded.keySet().forEach(k -> root.put(k, encoded.get(k)));
@@ -312,19 +297,7 @@ public class EmbeddingModelConfigTest {
             Optional.empty(),
             Optional.empty(),
             Optional.of("text"),
-            Optional.of(
-                Map.of(
-                    "scalar",
-                    VoyageModelVectorParams.Similarity.DOT_PRODUCT,
-                    "float",
-                    VoyageModelVectorParams.Similarity.COSINE,
-                    "binary",
-                    VoyageModelVectorParams.Similarity.EUCLIDEAN,
-                    "binaryNoRescore",
-                    VoyageModelVectorParams.Similarity.EUCLIDEAN)),
-            Optional.of(VoyageModelVectorParams.Quantization.SCALAR),
-            Optional.of(VoyageModelVectorParams.IndexingMethod.HNSW),
-            Optional.of(new VoyageModelVectorParams.HnswOptions(32, 200)));
+            Optional.of(VoyageModelVectorParams.Quantization.SCALAR));
     BsonDocument root = new BsonDocument();
     BsonDocument encoded = original.toBson();
     encoded.keySet().forEach(k -> root.put(k, encoded.get(k)));
@@ -405,10 +378,7 @@ public class EmbeddingModelConfigTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty(),
-            Optional.of(quantization),
-            Optional.empty(),
-            Optional.empty());
+            Optional.of(quantization));
     assertEquals(expectedWire, config.toBson().getString("quantization").getValue());
   }
 
