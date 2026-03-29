@@ -151,6 +151,17 @@ public interface LeaseManager {
   Optional<BsonTimestamp> getSteadyAsOfOplogPosition(GenerationId generationId);
 
   /**
+   * Returns the current lease version for the given generation ID.
+   * Used as a fencing token for MV writes.
+   *
+   * @param generationId the generation ID
+   * @return the current lease version, or Long.MAX_VALUE for static leaders
+   */
+  default long getLeaseVersion(GenerationId generationId) {
+    return Long.MAX_VALUE;
+  }
+
+  /**
    * Performs a heartbeat for all managed leases. For dynamic leader election, this renews the
    * leases for leaders to maintain leadership. For static leader, this is a no-op since leadership
    * is pre-assigned and constant.

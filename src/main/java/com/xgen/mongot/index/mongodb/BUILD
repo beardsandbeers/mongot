@@ -12,6 +12,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/lucene/field",
         "//src/main/java/com/xgen/mongot/index/status",
+        "@maven//:org_mongodb_bson",
         "@maven//:org_mongodb_mongodb_driver_core",
     ],
     deps = [

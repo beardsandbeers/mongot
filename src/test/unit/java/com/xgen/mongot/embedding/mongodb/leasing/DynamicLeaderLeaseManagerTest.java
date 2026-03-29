@@ -81,6 +81,7 @@ public class DynamicLeaderLeaseManagerTest {
         .thenReturn(this.mockCollection);
     when(this.mockCollection.withReadConcern(any())).thenReturn(this.mockCollection);
     when(this.mockCollection.withReadPreference(any())).thenReturn(this.mockCollection);
+    when(this.mockCollection.withWriteConcern(any())).thenReturn(this.mockCollection);
     when(this.mockCollection.find()).thenReturn(this.mockFindIterable);
     when(this.mockCollection.find(any(Bson.class))).thenReturn(this.mockFindIterable);
     when(this.mockFindIterable.into(any())).thenReturn(new ArrayList<>());

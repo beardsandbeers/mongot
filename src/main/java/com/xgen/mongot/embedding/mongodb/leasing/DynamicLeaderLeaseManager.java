@@ -12,6 +12,7 @@ import com.mongodb.ErrorCategory;
 import com.mongodb.MongoWriteException;
 import com.mongodb.ReadConcern;
 import com.mongodb.ReadPreference;
+import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.result.UpdateResult;
@@ -433,6 +434,12 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
   @Override
   public boolean isLeader(GenerationId generationId) {
     return this.leaderGenerationIds.contains(generationId);
+  }
+
+  @Override
+  public long getLeaseVersion(GenerationId generationId) {
+    Lease lease = this.leases.get(getLeaseKey(generationId));
+    return lease != null ? lease.leaseVersion() : -1;
   }
 
   @Override
@@ -1202,7 +1209,8 @@ public class DynamicLeaderLeaseManager implements LeaseManager {
           .getDatabase(this.databaseName)
           .getCollection(LEASE_COLLECTION_NAME, BsonDocument.class)
           .withReadConcern(ReadConcern.LINEARIZABLE)
-          .withReadPreference(ReadPreference.primary());
+          .withReadPreference(ReadPreference.primary())
+          .withWriteConcern(WriteConcern.MAJORITY);
     } catch (AssertionError e) {
       // Catches empty this.autoEmbeddingMongoClient.getLeaseManagerMongoClient() when sync source
       // is missing.
