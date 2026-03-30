@@ -31,6 +31,7 @@ import com.xgen.mongot.server.command.search.definition.request.ExplainDefinitio
 import com.xgen.mongot.server.command.search.definition.request.VectorSearchCommandDefinition;
 import com.xgen.mongot.server.message.MessageUtils;
 import com.xgen.mongot.util.Bytes;
+import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import io.micrometer.core.instrument.Timer;
@@ -119,7 +120,20 @@ public class DeprecatedVectorSearchCommand implements Command {
       if (initializedIndex.isPresent()) {
         if (initializedIndex.get().getType() == Type.VECTOR) {
           // If query is running against vector index, delegate execution to the new command.
-          return this.vectorCommandFactory.create(this.definition).run();
+          Command vectorCommand = this.vectorCommandFactory.create(this.definition);
+          // Propagate important info between the two Commands.
+          // Envoy metadata must be ready before the run.
+          this.searchEnvoyMetadata.ifPresent(vectorCommand::handleSearchEnvoyMetadata);
+          // Run the VectorSearchCommand.
+          BsonDocument response = vectorCommand.run();
+          // Cursor ID's are only available after the run.
+          Check.checkState(
+              this.createdCursorIds.isEmpty(),
+              "Expected createdCursorIds to be empty before "
+                  + "delegating to VectorSearchCommand, found %s",
+              this.createdCursorIds);
+          this.createdCursorIds.addAll(vectorCommand.getCreatedCursorIds());
+          return response;
         } else {
           var metricsUpdater =
               initializedIndex.get().getMetricsUpdater().getQueryingMetricsUpdater();

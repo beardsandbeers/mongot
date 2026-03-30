@@ -49,6 +49,7 @@ import com.xgen.mongot.index.query.operators.mql.Clause;
 import com.xgen.mongot.index.status.IndexStatus;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.metrics.PerIndexMetricsFactory;
+import com.xgen.mongot.server.command.Command;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.Vector;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
@@ -463,6 +464,9 @@ public class DeprecatedVectorSearchCommandTest {
         .thenReturn(Optional.of(indexGeneration));
     InitializedIndexCatalog initializedIndexCatalog = getInitializedIndexCatalog();
     var anotherCommandFactory = mock(VectorSearchCommand.Factory.class);
+    var delegatedCommand = mock(Command.class);
+    var delegatedResponse = new BsonDocument("ok", new BsonInt32(1));
+    var delegatedCursorIds = List.of(123L, 456L);
     var definition =
         VectorSearchCommandDefinitionBuilder.builder()
             .db(DATABASE_NAME)
@@ -481,6 +485,9 @@ public class DeprecatedVectorSearchCommandTest {
                             .build())
                     .build())
             .build();
+    when(anotherCommandFactory.create(definition)).thenReturn(delegatedCommand);
+    when(delegatedCommand.run()).thenReturn(delegatedResponse);
+    when(delegatedCommand.getCreatedCursorIds()).thenReturn(delegatedCursorIds);
 
     DeprecatedVectorSearchCommand command =
         new DeprecatedVectorSearchCommand(
@@ -501,12 +508,72 @@ public class DeprecatedVectorSearchCommandTest {
     Assert.assertEquals(
         0, queryingMetricsUpdater.getVectorSearchQueriesOverSearchIndexes().count(), COUNTER_TOL);
 
-    command.run();
+    BsonDocument result = command.run();
 
     Assert.assertEquals(
         0, queryingMetricsUpdater.getVectorSearchQueriesOverSearchIndexes().count(), COUNTER_TOL);
-
+    Assert.assertEquals(delegatedResponse, result);
+    Assert.assertEquals(delegatedCursorIds, command.getCreatedCursorIds());
     Mockito.verify(anotherCommandFactory).create(definition);
+    Mockito.verify(delegatedCommand).run();
+  }
+
+  @Test
+  public void testQueryAgainstVectorIndexReturnsErrorIfCreatedCursorIdsAreNotEmpty()
+      throws Exception {
+    var catalog = Mockito.mock(IndexCatalog.class);
+    IndexGeneration indexGeneration = mockVectorIndexGeneration();
+    when(catalog.getIndex(DATABASE_NAME, COLLECTION_UUID, Optional.empty(), INDEX_NAME))
+        .thenReturn(Optional.of(indexGeneration));
+    InitializedIndexCatalog initializedIndexCatalog = getInitializedIndexCatalog();
+    var anotherCommandFactory = mock(VectorSearchCommand.Factory.class);
+    var delegatedCommand = mock(Command.class);
+    var delegatedResponse = new BsonDocument("ok", new BsonInt32(1));
+    var definition =
+        VectorSearchCommandDefinitionBuilder.builder()
+            .db(DATABASE_NAME)
+            .collectionName(COLLECTION_NAME)
+            .collectionUuid(COLLECTION_UUID)
+            .vectorSearchQuery(
+                VectorQueryBuilder.builder()
+                    .index(INDEX_NAME)
+                    .criteria(
+                        ApproximateVectorQueryCriteriaBuilder.builder()
+                            .limit(LIMIT)
+                            .numCandidates(NUM_CANDIDATES)
+                            .queryVector(QUERY_VECTOR)
+                            .path(PATH)
+                            .filter(getFilter())
+                            .build())
+                    .build())
+            .build();
+    when(anotherCommandFactory.create(definition)).thenReturn(delegatedCommand);
+    when(delegatedCommand.run()).thenReturn(delegatedResponse);
+
+    DeprecatedVectorSearchCommand command =
+        new DeprecatedVectorSearchCommand(
+            getCursorManager(),
+            definition,
+            CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT,
+            catalog,
+            initializedIndexCatalog,
+            anotherCommandFactory,
+            BOOTSTRAPPER_METADATA);
+
+    var createdCursorIdsField =
+        DeprecatedVectorSearchCommand.class.getDeclaredField("createdCursorIds");
+    createdCursorIdsField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    var createdCursorIds = (List<Long>) createdCursorIdsField.get(command);
+    createdCursorIds.add(999L);
+
+    BsonDocument result = command.run();
+
+    Assert.assertEquals(0, result.getInt32("ok").getValue());
+    Assert.assertEquals(
+        "Expected createdCursorIds to be empty before "
+            + "delegating to VectorSearchCommand, found [999]",
+        result.getString("errmsg").getValue());
   }
 
   @Test
