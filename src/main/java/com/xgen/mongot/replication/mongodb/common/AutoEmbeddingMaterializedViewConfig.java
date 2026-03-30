@@ -108,10 +108,32 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
   public final int matViewWriterMaxConnections;
 
   /**
+   * Thread pool size for embedding provider work (e.g. {@link
+   * com.xgen.mongot.embedding.providers.EmbeddingServiceManager}). When not set in config,
+   * defaults to {@code max(1, runtime.getNumCpus())} at bootstrap (independent of Lucene indexing
+   * thread counts).
+   */
+  public final int numEmbeddingThreads;
+
+  /**
    * Indicates the default Materialized View Collection name format version, used for collection
    * resolver as a fallback if indexDefinition has no name format version.
    */
   public final long defaultMaterializedViewNameFormatVersion;
+
+  /**
+   * Backoff after errors that trigger a materialized-view resync (initial sync re-queue). When
+   * empty, materialized view replication uses {@link
+   * com.xgen.mongot.replication.mongodb.ReplicationIndexManager#DEFAULT_RESYNC_BACKOFF}.
+   */
+  public final Optional<Duration> resyncBackoff;
+
+  /**
+   * Backoff after transient steady-state replication errors. When empty, materialized view
+   * replication uses {@link
+   * com.xgen.mongot.replication.mongodb.ReplicationIndexManager#DEFAULT_TRANSIENT_BACKOFF}.
+   */
+  public final Optional<Duration> transientBackoff;
 
   private AutoEmbeddingMaterializedViewConfig(
       boolean pauseAllInitialSyncs,
@@ -128,11 +150,14 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       int maxConcurrentEmbeddingInitialSyncs,
       int maxInFlightEmbeddingGetMores,
       int matViewWriterMaxConnections,
+      int numEmbeddingThreads,
       Optional<Integer> embeddingGetMoreBatchSize,
       Optional<Integer> materializedViewSchemaVersion,
       Optional<Integer> mvWriteRateLimitRps,
       Optional<CongestionControlParams> congestionControl,
       Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads,
+      Optional<Duration> resyncBackoff,
+      Optional<Duration> transientBackoff,
       long defaultMaterializedViewNameFormatVersion) {
     super(
         pauseAllInitialSyncs,
@@ -154,6 +179,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     this.congestionControl = congestionControl;
     this.flexTierWorkloads = flexTierWorkloads;
     this.matViewWriterMaxConnections = matViewWriterMaxConnections;
+    this.numEmbeddingThreads = numEmbeddingThreads;
+    this.resyncBackoff = resyncBackoff;
+    this.transientBackoff = transientBackoff;
     this.defaultMaterializedViewNameFormatVersion = defaultMaterializedViewNameFormatVersion;
   }
 
@@ -172,11 +200,14 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Integer> optionalMaxConcurrentEmbeddingInitialSyncs,
       Optional<Integer> optionalMaxInFlightEmbeddingGetMores,
       Optional<Integer> optionalMatViewWriterMaxConnections,
+      Optional<Integer> optionalNumEmbeddingThreads,
       Optional<Integer> embeddingGetMoreBatchSize,
       Optional<Integer> materializedViewSchemaVersion,
       Optional<Integer> mvWriteRateLimitRps,
       Optional<CongestionControlParams> congestionControl,
       Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads,
+      Optional<Long> optionalResyncBackoffMs,
+      Optional<Long> optionalTransientBackoffMs,
       Optional<Long> defaultMaterializedViewNameFormatVersion) {
     return create(
         Runtime.INSTANCE,
@@ -190,11 +221,14 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         optionalMaxConcurrentEmbeddingInitialSyncs,
         optionalMaxInFlightEmbeddingGetMores,
         optionalMatViewWriterMaxConnections,
+        optionalNumEmbeddingThreads,
         embeddingGetMoreBatchSize,
         materializedViewSchemaVersion,
         mvWriteRateLimitRps,
         congestionControl,
         flexTierWorkloads,
+        optionalResyncBackoffMs,
+        optionalTransientBackoffMs,
         defaultMaterializedViewNameFormatVersion);
   }
 
@@ -212,11 +246,14 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Integer> optionalMaxConcurrentEmbeddingInitialSyncs,
       Optional<Integer> optionalMaxInFlightEmbeddingGetMores,
       Optional<Integer> optionalMatViewWriterMaxConnections,
+      Optional<Integer> optionalNumEmbeddingThreads,
       Optional<Integer> embeddingGetMoreBatchSize,
       Optional<Integer> materializedViewSchemaVersion,
       Optional<Integer> mvWriteRateLimitRps,
       Optional<CongestionControlParams> congestionControl,
       Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads,
+      Optional<Long> optionalResyncBackoffMs,
+      Optional<Long> optionalTransientBackoffMs,
       Optional<Long> optionalMaterializedViewNameFormatVersion) {
 
     int maxConcurrentEmbeddingInitialSyncs =
@@ -258,6 +295,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         MAX_MAT_VIEW_WRITER_MAX_CONNECTIONS,
         matViewWriterMaxConnections);
 
+    int numEmbeddingThreads =
+        getNumEmbeddingThreadsWithDefault(runtime, optionalNumEmbeddingThreads);
+
     embeddingGetMoreBatchSize.ifPresent(
         value -> Check.argIsPositive(value, "embeddingGetMoreBatchSize"));
 
@@ -283,6 +323,19 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     long defaultMaterializedViewNameFormatVersion =
         getMaterializedViewNameFormatVersionWithDefault(optionalMaterializedViewNameFormatVersion);
 
+    Optional<Duration> resyncBackoff =
+        optionalResyncBackoffMs.map(
+            ms -> {
+              Check.checkArg(ms > 0, "resyncBackoffMs must be positive, got %s", ms);
+              return Duration.ofMillis(ms);
+            });
+    Optional<Duration> transientBackoff =
+        optionalTransientBackoffMs.map(
+            ms -> {
+              Check.checkArg(ms > 0, "transientBackoffMs must be positive, got %s", ms);
+              return Duration.ofMillis(ms);
+            });
+
     return new AutoEmbeddingMaterializedViewConfig(
         globalReplicationConfig.pauseAllInitialSyncs(),
         globalReplicationConfig.pauseInitialSyncOnIndexIds(),
@@ -298,11 +351,14 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         maxConcurrentEmbeddingInitialSyncs,
         maxInFlightEmbeddingGetMores,
         matViewWriterMaxConnections,
+        numEmbeddingThreads,
         embeddingGetMoreBatchSize,
         materializedViewSchemaVersion,
         mvWriteRateLimitRps,
         congestionControl,
         flexTierWorkloads,
+        resyncBackoff,
+        transientBackoff,
         defaultMaterializedViewNameFormatVersion);
   }
 
@@ -327,6 +383,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty());
   }
 
@@ -336,6 +395,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     return create(
         runtime,
         defaultGlobalReplicationConfig(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -376,6 +438,7 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         .field(
             Fields.MAX_CONCURRENT_EMBEDDING_INITIAL_SYNCS, this.maxConcurrentEmbeddingInitialSyncs)
         .field(Fields.MAT_VIEW_WRITER_MAX_CONNECTIONS, this.matViewWriterMaxConnections)
+        .field(Fields.NUM_EMBEDDING_THREADS, this.numEmbeddingThreads)
         .field(Fields.MAX_IN_FLIGHT_EMBEDDING_GET_MORES, this.maxInFlightEmbeddingGetMores)
         .field(Fields.EMBEDDING_GET_MORE_BATCH_SIZE, this.embeddingGetMoreBatchSize)
         .field(Fields.MATERIALIZED_VIEW_SCHEMA_VERSION, this.materializedViewSchemaVersion)
@@ -384,6 +447,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         .field(
             Fields.FLEX_TIER_WORKLOADS,
             this.flexTierWorkloads.map(AutoEmbeddingMaterializedViewConfig::sortedFlexTierList))
+        .field(Fields.RESYNC_BACKOFF_MS, this.resyncBackoff.map(Duration::toMillis))
+        .field(Fields.TRANSIENT_BACKOFF_MS, this.transientBackoff.map(Duration::toMillis))
         .fieldOmitDefaultValue(
             Fields.MATERIALIZED_VIEW_NAME_FORMAT_VERSION,
             this.defaultMaterializedViewNameFormatVersion)
@@ -525,6 +590,24 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         });
   }
 
+  private static int getNumEmbeddingThreadsWithDefault(
+      Runtime runtime, Optional<Integer> optionalNumEmbeddingThreads) {
+    optionalNumEmbeddingThreads.ifPresent(
+        n -> Check.argIsPositive(n, "numEmbeddingThreads"));
+    int numEmbeddingThreads =
+        optionalNumEmbeddingThreads.orElseGet(
+            () -> {
+              int derived = Math.max(1, runtime.getNumCpus());
+              LOG.info(
+                  "numEmbeddingThreads not configured, defaulting to {} (max(1, getNumCpus()))"
+                      + ".",
+                  derived);
+              return derived;
+            });
+    Check.argIsPositive(numEmbeddingThreads, "numEmbeddingThreads");
+    return numEmbeddingThreads;
+  }
+
   private static int getMaxInFlightEmbeddingGetMoresWithDefault(
       Optional<Integer> optionalMaxInFlightEmbeddingGetMores, int numConcurrentChangeStreams) {
     return optionalMaxInFlightEmbeddingGetMores.orElseGet(
@@ -614,6 +697,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     private static final Field.Required<Integer> MAT_VIEW_WRITER_MAX_CONNECTIONS =
         Field.builder("matViewWriterMaxConnections").intField().mustBePositive().required();
 
+    private static final Field.Required<Integer> NUM_EMBEDDING_THREADS =
+        Field.builder("numEmbeddingThreads").intField().mustBePositive().required();
+
     private static final Field.Optional<Integer> EMBEDDING_GET_MORE_BATCH_SIZE =
         Field.builder("embeddingGetMoreBatchSize")
             .intField()
@@ -655,5 +741,11 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
             .mustBeNonNegative()
             .optional()
             .withDefault(DEFAULT_MATERIALIZED_VIEW_NAME_FORMAT_VERSION);
+
+    private static final Field.Optional<Long> RESYNC_BACKOFF_MS =
+        Field.builder("resyncBackoffMs").longField().mustBePositive().optional().noDefault();
+
+    private static final Field.Optional<Long> TRANSIENT_BACKOFF_MS =
+        Field.builder("transientBackoffMs").longField().mustBePositive().optional().noDefault();
   }
 }

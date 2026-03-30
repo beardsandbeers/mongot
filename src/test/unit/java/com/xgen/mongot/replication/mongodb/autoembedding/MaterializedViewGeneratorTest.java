@@ -128,6 +128,8 @@ public class MaterializedViewGeneratorTest {
         matViewIndex,
         mock(DocumentIndexer.class),
         mock(PeriodicIndexCommitter.class),
+        Duration.ofSeconds(30),
+        Duration.ofSeconds(30),
         Duration.ofSeconds(1),
         metricsFactory.meterRegistry,
         mock(FeatureFlags.class),

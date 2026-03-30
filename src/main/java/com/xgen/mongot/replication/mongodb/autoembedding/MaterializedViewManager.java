@@ -1025,6 +1025,8 @@ public class MaterializedViewManager implements ReplicationManager {
     private final FeatureFlags featureFlags;
     private final NamedScheduledExecutorService commitExecutor;
     private final Duration commitInterval;
+    private final Duration resyncBackoff;
+    private final Duration transientBackoff;
     private final Duration requestRateLimitBackoffMs;
     private final boolean enableNaturalOrderScan;
     private final AutoEmbeddingMaterializedViewConfig materializedViewConfig;
@@ -1065,9 +1067,15 @@ public class MaterializedViewManager implements ReplicationManager {
       this.initialSyncConfig = initialSyncConfig;
       this.matViewMetadataCatalog = matViewMetadataCatalog;
       this.commitInterval = commitInterval;
+      this.materializedViewConfig = materializedViewConfig;
+      this.resyncBackoff =
+          materializedViewConfig.resyncBackoff.orElse(
+              ReplicationIndexManager.DEFAULT_RESYNC_BACKOFF);
+      this.transientBackoff =
+          materializedViewConfig.transientBackoff.orElse(
+              ReplicationIndexManager.DEFAULT_TRANSIENT_BACKOFF);
       this.requestRateLimitBackoffMs =
           Duration.ofMillis(materializedViewConfig.requestRateLimitBackoffMs);
-      this.materializedViewConfig = materializedViewConfig;
       // Sets to empty values. updateSyncSourceConfig() will be called later to initialize them.
       this.clientSessionRecordMap = new HashMap<>();
       this.syncBatchMongoClient = Optional.empty();
@@ -1098,6 +1106,8 @@ public class MaterializedViewManager implements ReplicationManager {
           matViewIndex,
           indexer,
           committer,
+          this.resyncBackoff,
+          this.transientBackoff,
           this.requestRateLimitBackoffMs,
           this.meterAndFtdcRegistry.meterRegistry(),
           this.featureFlags,

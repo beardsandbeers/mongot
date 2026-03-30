@@ -64,8 +64,12 @@ import org.bson.BsonTimestamp;
 public class ReplicationIndexManager {
   // TODO(CLOUDP-365528): Visibility of some of these fields have been raised for re-use in
   // MaterializedViewGenerator. Need to revisit these fields/values for auto-embedding.
-  protected static final Duration DEFAULT_RESYNC_BACKOFF = Duration.ofSeconds(30);
-  protected static final Duration DEFAULT_TRANSIENT_BACKOFF = Duration.ofSeconds(30);
+  /** Default resync backoff when replication config does not specify {@code resyncBackoffMs}. */
+  public static final Duration DEFAULT_RESYNC_BACKOFF = Duration.ofSeconds(30);
+  /**
+   * Default transient backoff when replication config does not specify {@code transientBackoffMs}.
+   */
+  public static final Duration DEFAULT_TRANSIENT_BACKOFF = Duration.ofSeconds(30);
   private static final String EMPTY_EXCEPTION_METRIC_FIELD = "None";
   private static final String INDEX_DROPPED_COUNTER_UNKNOWN_TAG = "unknown";
   @VisibleForTesting static final String REPLICATION_FAILED_REASON_PREFIX = "Replication failed: ";

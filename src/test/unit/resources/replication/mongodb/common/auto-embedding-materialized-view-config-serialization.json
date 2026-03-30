@@ -20,11 +20,14 @@
         "numChangeStreamDecodingThreads": 5,
         "requestRateLimitBackoffMs": 6,
         "maxConcurrentEmbeddingInitialSyncs": 7,
-        "maxInFlightEmbeddingGetMores": 8,
         "matViewWriterMaxConnections": 10,
+        "numEmbeddingThreads": 8,
+        "maxInFlightEmbeddingGetMores": 8,
         "embeddingGetMoreBatchSize": 9,
         "materializedViewSchemaVersion": 2,
-        "mvWriteRateLimitRps": 42
+        "mvWriteRateLimitRps": 42,
+        "resyncBackoffMs": 30000,
+        "transientBackoffMs": 45000
       },
       "bson": {
         "pauseAllInitialSyncs": false,
@@ -48,11 +51,18 @@
         "numChangeStreamDecodingThreads": 5,
         "requestRateLimitBackoffMs": 6,
         "maxConcurrentEmbeddingInitialSyncs": 7,
-        "maxInFlightEmbeddingGetMores": 8,
         "matViewWriterMaxConnections": 10,
+        "numEmbeddingThreads": 8,
+        "maxInFlightEmbeddingGetMores": 8,
         "embeddingGetMoreBatchSize": 9,
         "materializedViewSchemaVersion": 2,
-        "mvWriteRateLimitRps": 42
+        "mvWriteRateLimitRps": 42,
+        "resyncBackoffMs": {
+          "$numberLong": "30000"
+        },
+        "transientBackoffMs": {
+          "$numberLong": "45000"
+        }
       }
     }
   ]

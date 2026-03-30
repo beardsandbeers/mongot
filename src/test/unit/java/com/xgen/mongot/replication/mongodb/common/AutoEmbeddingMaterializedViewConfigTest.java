@@ -72,11 +72,14 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.of(7),
               Optional.of(8),
               Optional.of(10),
+              Optional.of(8),
               Optional.of(9),
               Optional.of(2),
               Optional.of(42),
               Optional.empty(),
               Optional.empty(),
+              Optional.of(30_000L),
+              Optional.of(45_000L),
               Optional.of(1L)));
     }
 
@@ -134,6 +137,10 @@ public class AutoEmbeddingMaterializedViewConfigTest {
       assertEquals(Optional.empty(), config.mvWriteRateLimitRps);
       assertEquals(Optional.empty(), config.congestionControl);
       assertEquals(Optional.empty(), config.flexTierWorkloads);
+      assertEquals(Optional.empty(), config.resyncBackoff);
+      assertEquals(Optional.empty(), config.transientBackoff);
+
+      assertEquals(numCpus, config.numEmbeddingThreads);
     }
 
     @Test
@@ -156,7 +163,10 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
               Optional.of(50),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty());
@@ -178,7 +188,10 @@ public class AutoEmbeddingMaterializedViewConfigTest {
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
+                  Optional.empty(),
                   Optional.of(-1),
+                  Optional.empty(),
+                  Optional.empty(),
                   Optional.empty(),
                   Optional.empty(),
                   Optional.empty()));
@@ -200,7 +213,10 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
               Optional.of(75),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty());
@@ -241,6 +257,9 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty());
       assertEquals(8, config.matViewWriterMaxConnections);
     }
@@ -254,6 +273,9 @@ public class AutoEmbeddingMaterializedViewConfigTest {
               runtime,
               new CommonReplicationConfig.GlobalReplicationConfig(
                   false, List.of(), false, List.of(), false),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
               Optional.empty(),
               Optional.empty(),
               Optional.empty(),

@@ -178,6 +178,8 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
       InitializedMaterializedViewIndex matViewIndex,
       DocumentIndexer documentIndexer,
       PeriodicIndexCommitter periodicCommitter,
+      Duration resyncBackoff,
+      Duration transientBackoff,
       Duration requestRateLimitBackoffMs,
       MeterRegistry meterRegistry,
       FeatureFlags featureFlags,
@@ -193,8 +195,8 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
         periodicCommitter,
         new MetricsFactory("materializedViewGenerator", meterRegistry),
         featureFlags,
-        DEFAULT_RESYNC_BACKOFF,
-        DEFAULT_TRANSIENT_BACKOFF,
+        resyncBackoff,
+        transientBackoff,
         requestRateLimitBackoffMs,
         enableNaturalOrderScan);
   }
