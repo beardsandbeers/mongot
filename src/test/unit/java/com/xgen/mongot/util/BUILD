@@ -27,6 +27,7 @@ java_test_suite(
         "NumericUtilsTest.java",
         "OptionalsTest.java",
         "RuntimeTest.java",
+        "SanitizedBytesTest.java",
         "SecretsParserTest.java",
         "SingleLinkedListTest.java",
         "StreamsTest.java",
