@@ -1260,7 +1260,8 @@ public class LuceneSearchIndexReader implements SearchIndexReader {
                 query.pagination().map(Pagination::sequenceToken),
                 query.returnScope().isPresent(),
                 SearchResult::new,
-                this.indexPartitionId),
+                this.indexPartitionId,
+                this.indexDefinition.getSort().isPresent()),
         this.queryingMetricsUpdater);
   }
 
@@ -1288,7 +1289,8 @@ public class LuceneSearchIndexReader implements SearchIndexReader {
             Optional.empty(),
             false,
             VectorSearchResult::create,
-            this.indexPartitionId),
+            this.indexPartitionId,
+            false),
         this.queryingMetricsUpdater);
   }
 

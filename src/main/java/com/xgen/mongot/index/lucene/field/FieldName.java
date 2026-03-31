@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.util.UnicodeUtil;
 
@@ -598,5 +599,17 @@ public class FieldName {
 
   public static String getNullnessFieldName(FieldPath path) {
     return MetaField.NULLNESS.getLuceneFieldName() + "/" + path;
+  }
+
+  private static final String NULLNESS_FIELD_PREFIX =
+      MetaField.NULLNESS.getLuceneFieldName() + "/";
+
+  /**
+   * Returns true if the given Lucene field name identifies a {@code $meta/nullness} sort field
+   * (e.g. {@code "$meta/nullness/age"}). Used to strip nullness positions from {@code
+   * $searchSortValues} before sending results to mongos for merge-sort.
+   */
+  public static boolean isNullnessFieldName(@Nullable String luceneFieldName) {
+    return luceneFieldName != null && luceneFieldName.startsWith(NULLNESS_FIELD_PREFIX);
   }
 }

@@ -3,6 +3,7 @@ package com.xgen.mongot.index.lucene;
 import static com.xgen.mongot.index.lucene.Comparators.RELEVANCE_COMPARATOR;
 import static com.xgen.mongot.util.Check.checkState;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.flogger.FluentLogger;
 import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.cursor.batch.BatchCursorOptions;
@@ -19,6 +20,7 @@ import com.xgen.mongot.index.lucene.explain.explainers.ResultMaterializationFeat
 import com.xgen.mongot.index.lucene.explain.timing.ExplainTimings;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
+import com.xgen.mongot.index.lucene.field.FieldName;
 import com.xgen.mongot.index.lucene.query.pushdown.project.ProjectFactory;
 import com.xgen.mongot.index.lucene.query.pushdown.project.ProjectStage;
 import com.xgen.mongot.index.lucene.query.util.MetaIdRetriever;
@@ -29,6 +31,7 @@ import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.bson.BsonArrayBuilder;
 import com.xgen.mongot.util.timers.InvocationCountingTimer;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -113,6 +116,7 @@ class LuceneSearchBatchProducer implements BatchProducer {
   private Optional<IterValue> lastIterValue;
   private Optional<SearchResultsIter> searchResultsIter;
   private final boolean isReturnScopePresent;
+  private final boolean hasIndexSort;
 
   public LuceneSearchBatchProducer(
       LuceneIndexSearcherReference searcherReference,
@@ -129,7 +133,8 @@ class LuceneSearchBatchProducer implements BatchProducer {
       Optional<SequenceToken> sequenceToken,
       boolean isReturnScopePresent,
       ResultFactory resultFactory,
-      int indexPartitionId) {
+      int indexPartitionId,
+      boolean hasIndexSort) {
     this.searcherReference = searcherReference;
     this.unifiedHighlighter = unifiedHighlighter;
     this.scoreDetailsManager = scoreDetailsManager;
@@ -155,6 +160,7 @@ class LuceneSearchBatchProducer implements BatchProducer {
     this.sequenceToken = sequenceToken;
     this.isReturnScopePresent = isReturnScopePresent;
     this.indexPartitionId = indexPartitionId;
+    this.hasIndexSort = hasIndexSort;
     this.searchResultsIter = Optional.empty();
   }
 
@@ -477,6 +483,7 @@ class LuceneSearchBatchProducer implements BatchProducer {
     private final boolean luceneExhausted;
     private final ProjectStage projectStage;
     private final MetaIdRetriever metaIdRetriever;
+    private final ImmutableSet<Integer> nullnessFieldIndexes;
     private int documentIndex; // The index of the current value in the scoreDocs array.
     private Optional<IterValue> firstValue; // first value processed by the current iterator
     private Optional<IterValue> currentValue;
@@ -487,6 +494,10 @@ class LuceneSearchBatchProducer implements BatchProducer {
       this.topDocs = topDocs;
       this.scoreDocs = topDocs.scoreDocs;
       this.luceneExhausted = luceneExhausted;
+      this.nullnessFieldIndexes =
+          LuceneSearchBatchProducer.this.hasIndexSort
+              ? computeNullnessFieldIndexes(topDocs)
+              : ImmutableSet.of();
       // If there are highlights called for in the query, get them.
       this.searchHighlightsDocs =
           LuceneSearchBatchProducer.this.unifiedHighlighter.isPresent()
@@ -565,6 +576,7 @@ class LuceneSearchBatchProducer implements BatchProducer {
       Optional<List<BsonValue>> sortValues =
           LuceneSearchBatchProducer.this.sortProvider.sortValues(scoreDoc);
       Optional<ScoreDetails> scoreDetailsForDoc = this.scoreDetailsAllDocs.map(sd -> sd.get(index));
+      Optional<List<BsonValue>> sortValuesForMongos = stripNullnessSortValues(sortValues);
       this.currentValue =
           Optional.of(
               new IterValue(
@@ -578,7 +590,7 @@ class LuceneSearchBatchProducer implements BatchProducer {
                           highlights,
                           scoreDetailsForDoc,
                           storedSource,
-                          sortValues.map(SearchSortValues::create),
+                          sortValuesForMongos.map(SearchSortValues::create),
                           token,
                           rootDocumentid)
                       .toRawBson()));
@@ -637,6 +649,39 @@ class LuceneSearchBatchProducer implements BatchProducer {
 
       updateExhausted();
       maybeUpdate();
+    }
+
+    private static ImmutableSet<Integer> computeNullnessFieldIndexes(TopDocs topDocs) {
+      if (!(topDocs instanceof TopFieldDocs topFieldDocs)) {
+        return ImmutableSet.of();
+      }
+      ImmutableSet.Builder<Integer> builder = ImmutableSet.builder();
+      for (int i = 0; i < topFieldDocs.fields.length; i++) {
+        if (FieldName.isNullnessFieldName(topFieldDocs.fields[i].getField())) {
+          builder.add(i);
+        }
+      }
+      return builder.build();
+    }
+
+    /**
+     * Strips nullness sort values from the list so that {@code $searchSortValues} keys align with
+     * the non-expanded sort fields used by {@link
+     * com.xgen.mongot.server.command.search.ShardedSearchPlanner#constructSortSpec}.
+     */
+    private Optional<List<BsonValue>> stripNullnessSortValues(
+        Optional<List<BsonValue>> sortValues) {
+      if (this.nullnessFieldIndexes.isEmpty() || sortValues.isEmpty()) {
+        return sortValues;
+      }
+      List<BsonValue> all = sortValues.get();
+      List<BsonValue> filtered = new ArrayList<>(all.size() - this.nullnessFieldIndexes.size());
+      for (int i = 0; i < all.size(); i++) {
+        if (!this.nullnessFieldIndexes.contains(i)) {
+          filtered.add(all.get(i));
+        }
+      }
+      return Optional.of(filtered);
     }
   }
 }

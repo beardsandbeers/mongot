@@ -835,4 +835,14 @@ public class FieldNameTest {
     Optional<FieldName.TypeField> result = FieldName.TypeField.getTypeOf("");
     assertThat(result).isEmpty();
   }
+
+  @Test
+  public void isNullnessFieldName_variousInputs_correctResults() {
+    assertTrue(FieldName.isNullnessFieldName("$meta/nullness/age"));
+    assertTrue(FieldName.isNullnessFieldName("$meta/nullness/nested.field.path"));
+    assertFalse(FieldName.isNullnessFieldName("$meta/nullness"));
+    assertFalse(FieldName.isNullnessFieldName("$meta/_id"));
+    assertFalse(FieldName.isNullnessFieldName("$type:int64/v2/age"));
+    assertFalse(FieldName.isNullnessFieldName(null));
+  }
 }

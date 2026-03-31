@@ -448,7 +448,8 @@ public class SearchMergingBatchProducerTest {
         Optional.empty(),
         false,
         resultFactory,
-        indexPartitionId);
+        indexPartitionId,
+        false);
   }
 
   private static LuceneIndexSearcherReference getSearcherRef() throws IOException {

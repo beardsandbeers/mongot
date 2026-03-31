@@ -50,10 +50,15 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.StoredFields;
+import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.TotalHits;
 import org.bson.BsonArray;
+import org.bson.BsonDocument;
+import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.junit.Assert;
@@ -349,7 +354,8 @@ public class LuceneSearchBatchProducerTest {
             Optional.empty(),
             false,
             resultFactory,
-            0);
+            0,
+            false);
     // On the first batch, we register only that we received a limit hint
     executeAndGetNextBatch(producer, CursorConfig.DEFAULT_BSON_SIZE_SOFT_LIMIT, cursorOptions);
     Assert.assertEquals(1, updater.getExtractableLimitQueryCounter().count(), 0);
@@ -550,7 +556,8 @@ public class LuceneSearchBatchProducerTest {
         seqToken,
         false,
         SearchResult::new,
-        0);
+        0,
+        false);
   }
 
   @Theory
@@ -711,7 +718,8 @@ public class LuceneSearchBatchProducerTest {
         Optional.empty(),
         false,
         resultFactory,
-        indexPartitionId);
+        indexPartitionId,
+        false);
   }
 
   // Convenient method when indexPartitionId is 0.
@@ -758,7 +766,8 @@ public class LuceneSearchBatchProducerTest {
         Optional.empty(),
         true,
         resultFactory,
-        0);
+        0,
+        false);
   }
 
   private static LuceneIndexSearcherReference getSearcherRef() throws IOException {
@@ -857,5 +866,164 @@ public class LuceneSearchBatchProducerTest {
           ? super.getScoreDoc(this.repeatAfter)
           : super.getScoreDoc(docId);
     }
+  }
+
+  @Test
+  public void getNextBatch_withNullnessExpandedFields_stripsNullnessValues() throws Exception {
+    SortField nullnessField = new SortField("$meta/nullness/age", SortField.Type.LONG);
+    SortField valueField = new SortField("$type:int64/v2/age", SortField.Type.LONG);
+    SortField[] sortFields = {nullnessField, valueField};
+
+    int numDocs = 2;
+    ScoreDoc[] scoreDocs = new ScoreDoc[numDocs];
+    scoreDocs[0] = new FieldDoc(0, 1.0f, new Object[] {new BsonInt64(0), new BsonInt64(10)});
+    scoreDocs[1] = new FieldDoc(1, 0.9f, new Object[] {new BsonInt64(0), new BsonInt64(20)});
+
+    TopFieldDocs topDocs =
+        new TopFieldDocs(
+            new TotalHits(numDocs, TotalHits.Relation.EQUAL_TO), scoreDocs, sortFields);
+
+    var searcherRef = getSearcherRef();
+    @SuppressWarnings("unchecked")
+    LuceneSearchManager<QueryInfo> noOpManager = mock(LuceneSearchManager.class);
+    var producer =
+        new LuceneSearchBatchProducer(
+            searcherRef,
+            noOpManager,
+            topDocs,
+            true,
+            Optional.empty(),
+            Optional.empty(),
+            new ConstantBatchSizeStrategy(Integer.MAX_VALUE),
+            ProjectFactory.build(
+                new ProjectSpec(false, StoredSourceDefinition.createIncludeAll()),
+                searcherRef.getIndexSearcher().getIndexReader()),
+            IndexMetricsUpdaterBuilder.QueryingMetricsUpdaterBuilder.empty(),
+            QueryCursorOptions.empty(),
+            true,
+            Optional.empty(),
+            false,
+            SearchResult::new,
+            0,
+            true);
+
+    BsonArray batch = executeAndGetNextBatch(producer, Bytes.ofMebi(16));
+    Assert.assertEquals(2, batch.size());
+
+    BsonDocument sortValues0 = batch.get(0).asDocument().getDocument("$searchSortValues");
+    Assert.assertEquals(
+        "Nullness value should be stripped, leaving only the actual value field",
+        1,
+        sortValues0.size());
+    Assert.assertTrue(sortValues0.containsKey("_0"));
+    Assert.assertEquals(10L, sortValues0.get("_0").asInt64().getValue());
+
+    BsonDocument sortValues1 = batch.get(1).asDocument().getDocument("$searchSortValues");
+    Assert.assertEquals(1, sortValues1.size());
+    Assert.assertTrue(sortValues1.containsKey("_0"));
+    Assert.assertEquals(20L, sortValues1.get("_0").asInt64().getValue());
+  }
+
+  @Test
+  public void getNextBatch_withoutNullnessExpansion_sortValuesUnchanged() throws Exception {
+    SortField valueField = new SortField("$type:int64/v2/age", SortField.Type.LONG);
+    SortField[] sortFields = {valueField};
+
+    int numDocs = 1;
+    ScoreDoc[] scoreDocs = {
+      new FieldDoc(0, 1.0f, new Object[] {new BsonInt64(42)})
+    };
+
+    TopFieldDocs topDocs =
+        new TopFieldDocs(
+            new TotalHits(numDocs, TotalHits.Relation.EQUAL_TO), scoreDocs, sortFields);
+
+    var searcherRef = getSearcherRef();
+    @SuppressWarnings("unchecked")
+    LuceneSearchManager<QueryInfo> noOpManager = mock(LuceneSearchManager.class);
+    var producer =
+        new LuceneSearchBatchProducer(
+            searcherRef,
+            noOpManager,
+            topDocs,
+            true,
+            Optional.empty(),
+            Optional.empty(),
+            new ConstantBatchSizeStrategy(Integer.MAX_VALUE),
+            ProjectFactory.build(
+                new ProjectSpec(false, StoredSourceDefinition.createIncludeAll()),
+                searcherRef.getIndexSearcher().getIndexReader()),
+            IndexMetricsUpdaterBuilder.QueryingMetricsUpdaterBuilder.empty(),
+            QueryCursorOptions.empty(),
+            true,
+            Optional.empty(),
+            false,
+            SearchResult::new,
+            0,
+            true);
+
+    BsonArray batch = executeAndGetNextBatch(producer, Bytes.ofMebi(16));
+    Assert.assertEquals(1, batch.size());
+
+    BsonDocument sortValues = batch.get(0).asDocument().getDocument("$searchSortValues");
+    Assert.assertEquals(1, sortValues.size());
+    Assert.assertTrue(sortValues.containsKey("_0"));
+    Assert.assertEquals(42L, sortValues.get("_0").asInt64().getValue());
+  }
+
+  @Test
+  public void getNextBatch_multipleNullnessFields_allStripped() throws Exception {
+    SortField[] sortFields = {
+      new SortField("$meta/nullness/age", SortField.Type.LONG),
+      new SortField("$type:int64/v2/age", SortField.Type.LONG),
+      new SortField("$meta/nullness/score", SortField.Type.LONG),
+      new SortField("$type:int64/v2/score", SortField.Type.LONG),
+    };
+
+    ScoreDoc[] scoreDocs = {
+      new FieldDoc(
+          0,
+          1.0f,
+          new Object[] {new BsonInt64(0), new BsonInt64(25), new BsonInt64(0), new BsonInt64(99)})
+    };
+
+    TopFieldDocs topDocs =
+        new TopFieldDocs(
+            new TotalHits(1, TotalHits.Relation.EQUAL_TO), scoreDocs, sortFields);
+
+    var searcherRef = getSearcherRef();
+    @SuppressWarnings("unchecked")
+    LuceneSearchManager<QueryInfo> noOpManager = mock(LuceneSearchManager.class);
+    var producer =
+        new LuceneSearchBatchProducer(
+            searcherRef,
+            noOpManager,
+            topDocs,
+            true,
+            Optional.empty(),
+            Optional.empty(),
+            new ConstantBatchSizeStrategy(Integer.MAX_VALUE),
+            ProjectFactory.build(
+                new ProjectSpec(false, StoredSourceDefinition.createIncludeAll()),
+                searcherRef.getIndexSearcher().getIndexReader()),
+            IndexMetricsUpdaterBuilder.QueryingMetricsUpdaterBuilder.empty(),
+            QueryCursorOptions.empty(),
+            true,
+            Optional.empty(),
+            false,
+            SearchResult::new,
+            0,
+            true);
+
+    BsonArray batch = executeAndGetNextBatch(producer, Bytes.ofMebi(16));
+    Assert.assertEquals(1, batch.size());
+
+    BsonDocument sortValues = batch.get(0).asDocument().getDocument("$searchSortValues");
+    Assert.assertEquals(
+        "Both nullness fields should be stripped, leaving only 2 value fields",
+        2,
+        sortValues.size());
+    Assert.assertEquals(25L, sortValues.get("_0").asInt64().getValue());
+    Assert.assertEquals(99L, sortValues.get("_1").asInt64().getValue());
   }
 }
