@@ -63,17 +63,19 @@ import org.apache.commons.lang3.tuple.Pair;
  * <ul>
  *   <li><b>Global budget</b> ({@link AutoEmbeddingMemoryBudget}): a mongot-level limit shared
  *       across all indexes. If the budget is exceeded when a batch starts, the batch is fast-failed
- *       with a transient exception. Controlled by {@link
- *       AutoEmbeddingMemoryBudget#GLOBAL_BUDGET_BYTES}.
- *   <li><b>Per-batch budget</b> ({@link #PER_BATCH_AUTO_EMBEDDING_MEMORY_BUDGET_BYTES}): limits how
- *       much embedding memory a single materialized-view batch holds at once. When set, the batch
- *       is divided into sub-batches that are embedded and flushed sequentially, so the next
- *       sub-batch's embedding call is only issued after the previous sub-batch is committed to
- *       MongoDB.
+ *       with a transient exception. Controlled by {@code
+ *       AutoEmbeddingMaterializedViewConfig#globalMemoryBudgetHeapPercent}.
+ *   <li><b>Per-batch budget</b> (field {@code perBatchBudgetBytes}): limits how much embedding
+ *       memory a single materialized-view batch holds at once. When active, the batch is divided
+ *       into sub-batches that are embedded and flushed sequentially, so the next sub-batch's
+ *       embedding call is only issued after the previous sub-batch is committed to MongoDB.
+ *       Controlled by {@code AutoEmbeddingMaterializedViewConfig#perBatchMemoryBudgetHeapPercent}.
+ *       The constant {@link #PER_BATCH_AUTO_EMBEDDING_MEMORY_BUDGET_BYTES} is only used by the
+ *       legacy {@code EMBEDDING} strategy (type:text indexes), not by this configurable path.
  * </ul>
  *
- * <p>Both budgets default to unbounded ({@link Long#MAX_VALUE}), preserving existing behaviour.
- * Update the static fields to enable enforcement.
+ * <p>The global budget defaults to 100% (unbounded). The per-batch budget defaults to 50% of JVM
+ * heap. Setting either to 100% disables it.
  */
 final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
 
@@ -84,13 +86,8 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
   private static final int MAX_AUTO_EMBED_DOCUMENT_BUNDLE_SIZE = 1000;
 
   /**
-   * Per-batch memory budget in bytes. Each materialized-view batch is split into sub-batches whose
-   * estimated embedding memory does not exceed this limit. Sub-batches are processed and flushed
-   * sequentially: the next sub-batch's embedding call is only issued after the previous sub-batch
-   * is committed to MongoDB.
-   *
-   * <p>Unbounded by default. Update this constant to limit per-batch memory usage.
-   * TODO(CLOUDP-387607): Support a configurable memory budget.
+   * Default per-batch memory budget for the legacy {@code EMBEDDING} strategy (type:text indexes).
+   * Unbounded because this strategy does not go through the configurable budget path.
    */
   static final long PER_BATCH_AUTO_EMBEDDING_MEMORY_BUDGET_BYTES = Long.MAX_VALUE;
 
@@ -267,7 +264,7 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
                 matViewCollectionMetadataOpt,
                 subBatchSize);
       } else {
-        // Default: process all bundles in parallel (existing behaviour).
+        // No per-batch budget: process all bundles in parallel.
         List<CompletableFuture<List<DocumentEvent>>> indexingBundles =
             embed(
                 batch.events,

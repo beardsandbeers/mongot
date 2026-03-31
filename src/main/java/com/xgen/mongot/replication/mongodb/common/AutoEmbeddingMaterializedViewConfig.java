@@ -1,6 +1,7 @@
 package com.xgen.mongot.replication.mongodb.common;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.xgen.mongot.embedding.AutoEmbeddingMemoryBudget;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
 import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl.CongestionControlParams;
 import com.xgen.mongot.util.Check;
@@ -32,6 +33,15 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
   private static final int DEFAULT_MAT_VIEW_WRITER_MAX_CONNECTIONS = 4;
   private static final int MAX_MAT_VIEW_WRITER_MAX_CONNECTIONS = 16;
   private static final long DEFAULT_MATERIALIZED_VIEW_NAME_FORMAT_VERSION = 1;
+
+  /**
+   * Default memory budget as a percentage of JVM heap. The global default is 100% (unbounded). The
+   * per-batch default is 50%, which limits peak memory from a single batch without restricting
+   * overall throughput. Setting either to 100% disables that budget entirely.
+   */
+  static final int DEFAULT_GLOBAL_MEMORY_BUDGET_HEAP_PERCENT = 100;
+
+  static final int DEFAULT_PER_BATCH_MEMORY_BUDGET_HEAP_PERCENT = 50;
 
   /**
    * The number of steady state change streams that are allowed to have outstanding getMores issued
@@ -135,6 +145,21 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
    */
   public final Optional<Duration> transientBackoff;
 
+  /**
+   * The global auto-embedding memory budget as a percentage of JVM max heap, shared across all
+   * auto-embedding indexes on this mongot. Setting this to 100 disables the budget (unbounded
+   * mode). Defaults to {@link #DEFAULT_GLOBAL_MEMORY_BUDGET_HEAP_PERCENT} (unbounded).
+   */
+  public final int globalMemoryBudgetHeapPercent;
+
+  /**
+   * The per-batch auto-embedding memory budget as a percentage of JVM max heap. Limits embedding
+   * memory held by a single materialized-view batch at a time; the batch is split into sub-batches
+   * that are flushed sequentially when this limit is active. Setting this to 100 disables the
+   * budget (unbounded mode). Defaults to {@link #DEFAULT_PER_BATCH_MEMORY_BUDGET_HEAP_PERCENT}.
+   */
+  public final int perBatchMemoryBudgetHeapPercent;
+
   private AutoEmbeddingMaterializedViewConfig(
       boolean pauseAllInitialSyncs,
       List<ObjectId> pauseInitialSyncOnIndexIds,
@@ -158,7 +183,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads,
       Optional<Duration> resyncBackoff,
       Optional<Duration> transientBackoff,
-      long defaultMaterializedViewNameFormatVersion) {
+      long defaultMaterializedViewNameFormatVersion,
+      int globalMemoryBudgetHeapPercent,
+      int perBatchMemoryBudgetHeapPercent) {
     super(
         pauseAllInitialSyncs,
         pauseInitialSyncOnIndexIds,
@@ -183,6 +210,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     this.resyncBackoff = resyncBackoff;
     this.transientBackoff = transientBackoff;
     this.defaultMaterializedViewNameFormatVersion = defaultMaterializedViewNameFormatVersion;
+    this.globalMemoryBudgetHeapPercent = globalMemoryBudgetHeapPercent;
+    this.perBatchMemoryBudgetHeapPercent = perBatchMemoryBudgetHeapPercent;
   }
 
   /**
@@ -208,7 +237,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads,
       Optional<Long> optionalResyncBackoffMs,
       Optional<Long> optionalTransientBackoffMs,
-      Optional<Long> defaultMaterializedViewNameFormatVersion) {
+      Optional<Long> defaultMaterializedViewNameFormatVersion,
+      Optional<Integer> globalMemoryBudgetHeapPercent,
+      Optional<Integer> perBatchMemoryBudgetHeapPercent) {
     return create(
         Runtime.INSTANCE,
         globalReplicationConfig,
@@ -229,7 +260,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         flexTierWorkloads,
         optionalResyncBackoffMs,
         optionalTransientBackoffMs,
-        defaultMaterializedViewNameFormatVersion);
+        defaultMaterializedViewNameFormatVersion,
+        globalMemoryBudgetHeapPercent,
+        perBatchMemoryBudgetHeapPercent);
   }
 
   /** Used for testing. The above create() method should be called instead. */
@@ -254,7 +287,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
       Optional<Set<EmbeddingServiceConfig.ServiceTier>> flexTierWorkloads,
       Optional<Long> optionalResyncBackoffMs,
       Optional<Long> optionalTransientBackoffMs,
-      Optional<Long> optionalMaterializedViewNameFormatVersion) {
+      Optional<Long> optionalMaterializedViewNameFormatVersion,
+      Optional<Integer> optionalGlobalMemoryBudgetHeapPercent,
+      Optional<Integer> optionalPerBatchMemoryBudgetHeapPercent) {
 
     int maxConcurrentEmbeddingInitialSyncs =
         getMaxConcurrentEmbeddingInitialSyncsWithDefault(
@@ -335,6 +370,16 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
               Check.checkArg(ms > 0, "transientBackoffMs must be positive, got %s", ms);
               return Duration.ofMillis(ms);
             });
+    int globalMemoryBudgetHeapPercent =
+        getMemoryBudgetHeapPercentWithDefault(
+            optionalGlobalMemoryBudgetHeapPercent,
+            "globalMemoryBudgetHeapPercent",
+            DEFAULT_GLOBAL_MEMORY_BUDGET_HEAP_PERCENT);
+    int perBatchMemoryBudgetHeapPercent =
+        getMemoryBudgetHeapPercentWithDefault(
+            optionalPerBatchMemoryBudgetHeapPercent,
+            "perBatchMemoryBudgetHeapPercent",
+            DEFAULT_PER_BATCH_MEMORY_BUDGET_HEAP_PERCENT);
 
     return new AutoEmbeddingMaterializedViewConfig(
         globalReplicationConfig.pauseAllInitialSyncs(),
@@ -359,7 +404,9 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         flexTierWorkloads,
         resyncBackoff,
         transientBackoff,
-        defaultMaterializedViewNameFormatVersion);
+        defaultMaterializedViewNameFormatVersion,
+        globalMemoryBudgetHeapPercent,
+        perBatchMemoryBudgetHeapPercent);
   }
 
   /**
@@ -386,6 +433,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty());
   }
 
@@ -395,6 +444,8 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
     return create(
         runtime,
         defaultGlobalReplicationConfig(),
+        Optional.empty(),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -452,6 +503,10 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         .fieldOmitDefaultValue(
             Fields.MATERIALIZED_VIEW_NAME_FORMAT_VERSION,
             this.defaultMaterializedViewNameFormatVersion)
+        .fieldOmitDefaultValue(
+            Fields.GLOBAL_MEMORY_BUDGET_HEAP_PERCENT, this.globalMemoryBudgetHeapPercent)
+        .fieldOmitDefaultValue(
+            Fields.PER_BATCH_MEMORY_BUDGET_HEAP_PERCENT, this.perBatchMemoryBudgetHeapPercent)
         .build();
   }
 
@@ -636,6 +691,40 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
         });
   }
 
+  private static int getMemoryBudgetHeapPercentWithDefault(
+      Optional<Integer> optionalHeapPercent, String fieldName, int defaultValue) {
+    int heapPercent = optionalHeapPercent.orElse(defaultValue);
+    Check.checkArg(
+        heapPercent >= 1 && heapPercent <= 100,
+        "%s must be between 1 and 100 (inclusive), got %s",
+        fieldName,
+        heapPercent);
+    if (optionalHeapPercent.isEmpty()) {
+      LOG.info("{} not configured, defaulting to {}%.", fieldName, defaultValue);
+    }
+    return heapPercent;
+  }
+
+  /**
+   * Creates an {@link AutoEmbeddingMemoryBudget} from this config's global budget percent using the
+   * given runtime to determine max heap size.
+   */
+  public AutoEmbeddingMemoryBudget createGlobalMemoryBudget(Runtime runtime) {
+    return AutoEmbeddingMemoryBudget.fromHeapPercent(this.globalMemoryBudgetHeapPercent, runtime);
+  }
+
+  /**
+   * Returns the per-batch memory budget in bytes derived from the configured heap percent and the
+   * given runtime's max heap size. Returns {@link Long#MAX_VALUE} when the budget is set to 100%
+   * (unbounded).
+   */
+  public long getPerBatchMemoryBudgetBytes(Runtime runtime) {
+    if (this.perBatchMemoryBudgetHeapPercent >= 100) {
+      return Long.MAX_VALUE;
+    }
+    return runtime.getMaxHeapSize().toBytes() * this.perBatchMemoryBudgetHeapPercent / 100;
+  }
+
   private static class Fields {
 
     private static final Field.Required<Integer> NUM_CONCURRENT_CHANGE_STREAMS =
@@ -747,5 +836,19 @@ public final class AutoEmbeddingMaterializedViewConfig extends CommonReplication
 
     private static final Field.Optional<Long> TRANSIENT_BACKOFF_MS =
         Field.builder("transientBackoffMs").longField().mustBePositive().optional().noDefault();
+
+    private static final Field.WithDefault<Integer> GLOBAL_MEMORY_BUDGET_HEAP_PERCENT =
+        Field.builder("globalMemoryBudgetHeapPercent")
+            .intField()
+            .mustBePositive()
+            .optional()
+            .withDefault(DEFAULT_GLOBAL_MEMORY_BUDGET_HEAP_PERCENT);
+
+    private static final Field.WithDefault<Integer> PER_BATCH_MEMORY_BUDGET_HEAP_PERCENT =
+        Field.builder("perBatchMemoryBudgetHeapPercent")
+            .intField()
+            .mustBePositive()
+            .optional()
+            .withDefault(DEFAULT_PER_BATCH_MEMORY_BUDGET_HEAP_PERCENT);
   }
 }

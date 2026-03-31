@@ -7,6 +7,7 @@ import com.xgen.mongot.embedding.AutoEmbeddingMemoryBudget;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.providers.EmbeddingServiceManager;
 import com.xgen.mongot.index.definition.IndexDefinition;
+import com.xgen.mongot.util.Runtime;
 import com.xgen.mongot.util.concurrent.Executors;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Map;
@@ -82,24 +83,37 @@ public class IndexingWorkSchedulerFactory {
   /**
    * Creates a new IndexingWorkSchedulerFactory with EmbeddingIndexingScheduler for the
    * MaterializedView index only. Used by MaterializedViewManager.
+   *
+   * @param globalMemoryBudgetHeapPercent percentage of JVM max heap for the global embedding memory
+   *     budget (1–100; 100 disables the limit)
+   * @param perBatchMemoryBudgetHeapPercent percentage of JVM max heap for the per-batch embedding
+   *     memory budget (1–100; 100 disables the limit)
    */
   public static IndexingWorkSchedulerFactory createEmbeddingIndexingSchedulerOnly(
       int numIndexingThreads,
       Supplier<EmbeddingServiceManager> embeddingServiceManagerSupplier,
       MaterializedViewCollectionMetadataCatalog matViewCollectionMetadataCatalog,
-      MeterRegistry registry) {
+      MeterRegistry registry,
+      int globalMemoryBudgetHeapPercent,
+      int perBatchMemoryBudgetHeapPercent) {
     log.info("Creating IndexingWorkSchedulerFactory with EmbeddingIndexingWorkScheduler only");
     var executor =
         Executors.fixedSizeThreadPool("indexing-auto-embedding", numIndexingThreads, registry);
     // A single global budget is shared across all embedding schedulers so that the limit is
     // enforced at the mongot level across all indexes.
-    var globalBudget = AutoEmbeddingMemoryBudget.createDefault();
+    var globalBudget =
+        AutoEmbeddingMemoryBudget.fromHeapPercent(globalMemoryBudgetHeapPercent, Runtime.INSTANCE);
+    long perBatchBudgetBytes =
+        perBatchMemoryBudgetHeapPercent >= 100
+            ? Long.MAX_VALUE
+            : Runtime.INSTANCE.getMaxHeapSize().toBytes() * perBatchMemoryBudgetHeapPercent / 100;
     EmbeddingIndexingWorkScheduler embeddingIndexingWorkScheduler =
         EmbeddingIndexingWorkScheduler.createForMaterializedViewIndex(
             executor,
             embeddingServiceManagerSupplier,
             matViewCollectionMetadataCatalog,
-            globalBudget);
+            globalBudget,
+            perBatchBudgetBytes);
     return new IndexingWorkSchedulerFactory(
         Map.of(
             IndexingStrategy.EMBEDDING_MATERIALIZED_VIEW,

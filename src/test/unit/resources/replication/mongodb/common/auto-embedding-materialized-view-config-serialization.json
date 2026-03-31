@@ -27,7 +27,9 @@
         "materializedViewSchemaVersion": 2,
         "mvWriteRateLimitRps": 42,
         "resyncBackoffMs": 30000,
-        "transientBackoffMs": 45000
+        "transientBackoffMs": 45000,
+        "globalMemoryBudgetHeapPercent": 75,
+        "perBatchMemoryBudgetHeapPercent": 60
       },
       "bson": {
         "pauseAllInitialSyncs": false,
@@ -62,7 +64,9 @@
         },
         "transientBackoffMs": {
           "$numberLong": "45000"
-        }
+        },
+        "globalMemoryBudgetHeapPercent": 75,
+        "perBatchMemoryBudgetHeapPercent": 60
       }
     }
   ]

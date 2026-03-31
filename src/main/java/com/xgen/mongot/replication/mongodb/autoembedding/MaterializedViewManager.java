@@ -341,7 +341,9 @@ public class MaterializedViewManager implements ReplicationManager {
             materializedViewConfig.numIndexingThreads,
             embeddingServiceManagerSupplier.get(),
             matViewMetadataCatalog,
-            meterRegistry);
+            meterRegistry,
+            materializedViewConfig.globalMemoryBudgetHeapPercent,
+            materializedViewConfig.perBatchMemoryBudgetHeapPercent);
 
     var decodingWorkScheduler =
         DecodingWorkScheduler.create(

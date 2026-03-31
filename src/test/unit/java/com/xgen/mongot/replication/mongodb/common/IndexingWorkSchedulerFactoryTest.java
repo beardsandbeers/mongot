@@ -70,7 +70,9 @@ public class IndexingWorkSchedulerFactoryTest {
             2,
             mock(Supplier.class),
             new MaterializedViewCollectionMetadataCatalog(),
-            new SimpleMeterRegistry());
+            new SimpleMeterRegistry(),
+            100,
+            100);
     for (IndexingWorkSchedulerFactory.IndexingStrategy strategy :
         IndexingWorkSchedulerFactory.IndexingStrategy.values()) {
       assertThat(indexingWorkSchedulerFactory.getIndexingWorkSchedulers()).containsKey(strategy);

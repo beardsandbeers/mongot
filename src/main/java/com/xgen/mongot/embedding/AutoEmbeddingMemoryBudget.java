@@ -3,6 +3,7 @@ package com.xgen.mongot.embedding;
 import com.google.common.flogger.FluentLogger;
 import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.util.Check;
+import com.xgen.mongot.util.Runtime;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -13,18 +14,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * exceeding the memory budget. When a batch cannot acquire memory, it is fast-failed with a
  * transient exception so it can be retried later when memory frees up.
  *
- * <p>The default budget is unbounded ({@link Long#MAX_VALUE}). This can be tuned by updating {@link
- * #GLOBAL_BUDGET_BYTES} in source and redeploying.
+ * <p>The default budget is unbounded ({@link Long#MAX_VALUE}). The budget can be sized as a
+ * percentage of JVM heap using {@link #fromHeapPercent}.
  */
 public class AutoEmbeddingMemoryBudget {
 
   private static final FluentLogger FLOGGER = FluentLogger.forEnclosingClass();
-
-  /**
-   * Global auto-embedding memory budget in bytes, shared across all indexes on this mongot.
-   * Unbounded by default. TODO(CLOUDP-387607): Support a configurable memory budget.
-   */
-  static final long GLOBAL_BUDGET_BYTES = Long.MAX_VALUE;
 
   private final long maxBytes;
   private final AtomicLong currentUsageBytes = new AtomicLong(0);
@@ -35,9 +30,32 @@ public class AutoEmbeddingMemoryBudget {
     this.unbounded = unbounded;
   }
 
-  /** Creates a new budget using the value of {@link #GLOBAL_BUDGET_BYTES}. */
+  /** Creates an unbounded budget (no memory limit enforced). */
   public static AutoEmbeddingMemoryBudget createDefault() {
-    return new AutoEmbeddingMemoryBudget(GLOBAL_BUDGET_BYTES, true);
+    return new AutoEmbeddingMemoryBudget(Long.MAX_VALUE, true);
+  }
+
+  /**
+   * Creates a budget sized to {@code heapPercent}% of the JVM's max heap.
+   *
+   * <p>When {@code heapPercent >= 100}, returns an unbounded budget so that operators can disable
+   * the limit by setting 100%.
+   *
+   * @param heapPercent percentage of max heap to use as the budget (1–100 inclusive)
+   * @param runtime runtime used to determine the JVM max heap size
+   */
+  public static AutoEmbeddingMemoryBudget fromHeapPercent(int heapPercent, Runtime runtime) {
+    Check.checkArg(
+        heapPercent >= 1 && heapPercent <= 100,
+        "heapPercent must be between 1 and 100 (inclusive), got %s",
+        heapPercent);
+    if (heapPercent >= 100) {
+      return createDefault();
+    }
+    long maxBytes = runtime.getMaxHeapSize().toBytes() * heapPercent / 100;
+    FLOGGER.atInfo().log(
+        "Auto-embedding memory budget set to %d%% of heap = %d bytes", heapPercent, maxBytes);
+    return new AutoEmbeddingMemoryBudget(maxBytes, false);
   }
 
   /**

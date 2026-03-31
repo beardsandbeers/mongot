@@ -868,7 +868,9 @@ public class CommunityMongotBootstrapper {
             Optional.empty(),
             Optional.empty(),
             // Set 0 for now, as we are still working on the mat view collection naming.
-            Optional.of(0L));
+            Optional.of(0L),
+            Optional.empty(),
+            Optional.empty());
     return new MongotConfigs(
         luceneConfig,
         replicationConfig,
