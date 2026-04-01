@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 
 import com.google.common.util.concurrent.RateLimiter;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.DocumentMetadata;
 import com.xgen.mongot.index.EncodedUserData;
@@ -76,20 +77,22 @@ public class LuceneIndexingFailuresTest {
     // need a new directory to work around write lock conflicts from the first writer
     TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
     Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath());
-    var writer = SingleLuceneIndexWriter.createForSearchIndex(
-        directory,
-        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
-        new TieredMergePolicy(),
-        10.0,
-        Optional.empty(),
-        Optional.empty(),
-        LuceneAnalyzer.indexAnalyzer(
-            SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
-        MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
-        indexingMetricsUpdater,
-        Optional.empty(),
-        FeatureFlags.getDefault());
+    var writer =
+        SingleLuceneIndexWriter.createForSearchIndex(
+            directory,
+            new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
+            new TieredMergePolicy(),
+            10.0,
+            Optional.empty(),
+            Optional.empty(),
+            LuceneAnalyzer.indexAnalyzer(
+                SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
+            MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+            indexingMetricsUpdater,
+            Optional.empty(),
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     // This ensures the spy delegates to a writer that has the mocked luceneWriter
@@ -194,20 +197,22 @@ public class LuceneIndexingFailuresTest {
     // need a new directory to work around write lock conflicts from the first writer
     TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
     Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath());
-    var writer = SingleLuceneIndexWriter.createForSearchIndex(
-        directory,
-        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
-        new TieredMergePolicy(),
-        10.0,
-        Optional.empty(),
-        Optional.empty(),
-        LuceneAnalyzer.indexAnalyzer(
-            SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
-        MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
-        indexingMetricsUpdater,
-        Optional.empty(),
-        FeatureFlags.getDefault());
+    var writer =
+        SingleLuceneIndexWriter.createForSearchIndex(
+            directory,
+            new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
+            new TieredMergePolicy(),
+            10.0,
+            Optional.empty(),
+            Optional.empty(),
+            LuceneAnalyzer.indexAnalyzer(
+                SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
+            MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+            indexingMetricsUpdater,
+            Optional.empty(),
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     Field luceneWriterField = SingleLuceneIndexWriter.class.getDeclaredField("luceneWriter");
@@ -260,20 +265,22 @@ public class LuceneIndexingFailuresTest {
     // need a new directory to work around write lock conflicts from the first writer
     TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
     Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath());
-    var writer = SingleLuceneIndexWriter.createForSearchIndex(
-        directory,
-        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
-        new TieredMergePolicy(),
-        10.0,
-        Optional.empty(),
-        Optional.empty(),
-        LuceneAnalyzer.indexAnalyzer(
-            SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
-        MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
-        indexingMetricsUpdater,
-        Optional.empty(),
-        FeatureFlags.getDefault());
+    var writer =
+        SingleLuceneIndexWriter.createForSearchIndex(
+            directory,
+            new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
+            new TieredMergePolicy(),
+            10.0,
+            Optional.empty(),
+            Optional.empty(),
+            LuceneAnalyzer.indexAnalyzer(
+                SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
+            MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+            indexingMetricsUpdater,
+            Optional.empty(),
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     Field luceneWriterField = SingleLuceneIndexWriter.class.getDeclaredField("luceneWriter");
@@ -326,20 +333,22 @@ public class LuceneIndexingFailuresTest {
     // need a new directory to work around write lock conflicts from the first writer
     TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
     Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath());
-    var writer = SingleLuceneIndexWriter.createForSearchIndex(
-        directory,
-        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
-        new TieredMergePolicy(),
-        10.0,
-        Optional.empty(),
-        Optional.empty(),
-        LuceneAnalyzer.indexAnalyzer(
-            SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
-        MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
-        indexingMetricsUpdater,
-        Optional.empty(),
-        FeatureFlags.getDefault());
+    var writer =
+        SingleLuceneIndexWriter.createForSearchIndex(
+            directory,
+            new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
+            new TieredMergePolicy(),
+            10.0,
+            Optional.empty(),
+            Optional.empty(),
+            LuceneAnalyzer.indexAnalyzer(
+                SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
+            MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+            indexingMetricsUpdater,
+            Optional.empty(),
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     // Replace the lucene writer with the mock BEFORE creating the spy
     Field luceneWriterField = SingleLuceneIndexWriter.class.getDeclaredField("luceneWriter");
@@ -392,20 +401,22 @@ public class LuceneIndexingFailuresTest {
     // need a new directory to work around write lock conflicts from the first writer
     TemporaryFolder temporaryFolder = TestUtils.getTempFolder();
     Directory directory = new MMapDirectory(temporaryFolder.getRoot().toPath());
-    var writer = SingleLuceneIndexWriter.createForSearchIndex(
-        directory,
-        new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
-            .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
-        new TieredMergePolicy(),
-        10.0,
-        Optional.empty(),
-        Optional.empty(),
-        LuceneAnalyzer.indexAnalyzer(
-            SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
-        MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
-        indexingMetricsUpdater,
-        Optional.empty(),
-        FeatureFlags.getDefault());
+    var writer =
+        SingleLuceneIndexWriter.createForSearchIndex(
+            directory,
+            new InstrumentedConcurrentMergeScheduler(new SimpleMeterRegistry())
+                .createForIndexPartition(SearchIndex.MOCK_INDEX_GENERATION_ID, 0, 1, false),
+            new TieredMergePolicy(),
+            10.0,
+            Optional.empty(),
+            Optional.empty(),
+            LuceneAnalyzer.indexAnalyzer(
+                SearchIndex.MOCK_INDEX_DEFINITION, AnalyzerRegistryBuilder.empty()),
+            MOCK_INDEX_DEFINITION.createFieldDefinitionResolver(IndexFormatVersion.CURRENT),
+            indexingMetricsUpdater,
+            Optional.empty(),
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     // Spy the writer to mock doLogIndexingFailure method
     var spyWriter = spy(writer);

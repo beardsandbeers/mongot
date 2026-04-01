@@ -206,6 +206,8 @@ public class IndexMetricsUpdater implements Closeable {
     static final String VECTOR_FIELDS_INDEXED = "vectorFieldsIndexed";
     static final String INDEX_TYPE_TAG_NAME = "indexType";
     static final String LARGE_CHANGE_STREAM_EVENTS = "largeChangeStreamEvents";
+    static final String BLOOM_FILTER_ID_POSTING_CREATED = "bloomFilterIdPostingCreated";
+    static final String LUCENE_99_ID_POSTING_CREATED = "lucene99IdPostingCreated";
 
     @VisibleForTesting
     public static final List<Bytes> CHANGE_STREAM_EVENT_SIZE_THRESHOLDS =
@@ -224,6 +226,8 @@ public class IndexMetricsUpdater implements Closeable {
     private final ReplicationOpTimeInfo replicationOpTimeInfo;
     private final Timer batchIndexingTimer;
     private final Map<Bytes, Counter> changeStreamEventSizeCounters;
+    private final Counter bloomFilterIdPostingCreatedCounter;
+    private final Counter lucene99IdPostingCreatedCounter;
 
     @VisibleForTesting
     public IndexingMetricsUpdater(
@@ -270,6 +274,9 @@ public class IndexMetricsUpdater implements Closeable {
       this.sortableStringTruncated = metricsFactory.counter(SORTABLE_STRING_TRUNCATED);
       this.invalidGeometryField = metricsFactory.counter(INVALID_GEOMETRY_FIELD);
       this.vectorFieldsIndexed = metricsFactory.counter(VECTOR_FIELDS_INDEXED);
+      this.bloomFilterIdPostingCreatedCounter =
+          metricsFactory.counter(BLOOM_FILTER_ID_POSTING_CREATED);
+      this.lucene99IdPostingCreatedCounter = metricsFactory.counter(LUCENE_99_ID_POSTING_CREATED);
 
       this.replicationOpTimeInfo = new ReplicationOpTimeInfo();
       this.metricsFactory.perIndexObjectValueGauge(
@@ -352,6 +359,14 @@ public class IndexMetricsUpdater implements Closeable {
       return this.vectorFieldsIndexed;
     }
 
+    public Counter getBloomFilterIdPostingCreatedCounter() {
+      return this.bloomFilterIdPostingCreatedCounter;
+    }
+
+    public Counter getLucene99IdPostingCreatedCounter() {
+      return this.lucene99IdPostingCreatedCounter;
+    }
+    
     public Timer getCommitTimer() {
       return this.commitTimer;
     }
@@ -707,12 +722,14 @@ public class IndexMetricsUpdater implements Closeable {
         long visitedNodes, boolean hasFilter, KnnSearchMode mode) {
       Counter counter =
           switch (mode) {
-            case APPROXIMATE -> hasFilter
-                ? this.vectorSearchVisitedNodesFilteredApproximateCounter
-                : this.vectorSearchVisitedNodesUnfilteredApproximateCounter;
-            case EXACT, FALLBACK_TO_EXACT, FULL_SCAN -> hasFilter
-                ? this.vectorSearchVisitedNodesFilteredExactCounter
-                : this.vectorSearchVisitedNodesUnfilteredExactCounter;
+            case APPROXIMATE ->
+                hasFilter
+                    ? this.vectorSearchVisitedNodesFilteredApproximateCounter
+                    : this.vectorSearchVisitedNodesUnfilteredApproximateCounter;
+            case EXACT, FALLBACK_TO_EXACT, FULL_SCAN ->
+                hasFilter
+                    ? this.vectorSearchVisitedNodesFilteredExactCounter
+                    : this.vectorSearchVisitedNodesUnfilteredExactCounter;
           };
       counter.increment(visitedNodes);
     }
@@ -747,8 +764,8 @@ public class IndexMetricsUpdater implements Closeable {
      * skipped). Called from the search execution path after a successful query (e.g. {@link
      * MeteredSearchIndexReader}), consistent with other query-time distribution metrics.
      *
-     * <p>{@code enabled} is consulted only for {@link CollectorQuery} with a {@link
-     * FacetCollector} so dynamic flag evaluation stays off the hot path for non-facet queries.
+     * <p>{@code enabled} is consulted only for {@link CollectorQuery} with a {@link FacetCollector}
+     * so dynamic flag evaluation stays off the hot path for non-facet queries.
      */
     public void recordTotalStringFacetBucketsIfApplicable(Query query, BooleanSupplier enabled) {
       if (!(query instanceof CollectorQuery collectorQuery)

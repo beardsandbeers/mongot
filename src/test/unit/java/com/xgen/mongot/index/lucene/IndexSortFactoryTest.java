@@ -496,7 +496,8 @@ public class IndexSortFactoryTest {
               this.resolver,
               SearchIndex.mockIndexingMetricsUpdater(indexDefinition.getType()),
               Optional.empty(),
-              FeatureFlags.withDefaults().enable(Feature.SORTED_INDEX).build());
+              FeatureFlags.withDefaults().enable(Feature.SORTED_INDEX).build(),
+              DynamicFeatureFlagRegistry.empty());
 
       // Configure IndexWriter to have multiple segments by forcing a flush every 2 documents.
       this.indexWriter.getLuceneWriter().getConfig().setMaxBufferedDocs(2);

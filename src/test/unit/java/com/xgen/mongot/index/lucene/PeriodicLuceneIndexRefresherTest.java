@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 import com.google.common.collect.ImmutableList;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.analyzer.wrapper.LuceneAnalyzer;
 import com.xgen.mongot.index.lucene.merge.InstrumentedConcurrentMergeScheduler;
@@ -157,7 +158,8 @@ public class PeriodicLuceneIndexRefresherTest {
                 MOCK_INDEX_DEFINITION_GENERATION.generation().indexFormatVersion),
             SearchIndex.mockIndexingMetricsUpdater(MOCK_INDEX_DEFINITION.getType()),
             Optional.empty(),
-            FeatureFlags.getDefault());
+            FeatureFlags.getDefault(),
+            DynamicFeatureFlagRegistry.empty());
 
     luceneIndexWriter.commit(EncodedUserData.EMPTY);
 

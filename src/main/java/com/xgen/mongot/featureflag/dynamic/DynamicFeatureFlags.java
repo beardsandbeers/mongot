@@ -34,7 +34,9 @@ public enum DynamicFeatureFlags {
   COLLECT_MULTI_PARTITION_EMPTY_SEARCH_PRODUCER(
       "mongot.featureFlag.collectMultiPartitionEmptySearchProducer", false),
   ENABLE_10K_BUCKET_LIMIT("mongot.featureFlag.enable10kBucketLimit", false),
-  ENABLE_TOTAL_STRING_FACET_BUCKETS("mongot.featureFlag.enableTotalStringFacetBuckets", false);
+  ENABLE_TOTAL_STRING_FACET_BUCKETS("mongot.featureFlag.enableTotalStringFacetBuckets", false),
+  BLOOM_FILTER_FOR_ID_FIELD("mongot.featureFlag.enableBloomFilterNaturalOrderInitialSync", false),
+  ;
 
   private final String name;
   private final boolean fallback;

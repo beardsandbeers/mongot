@@ -6,6 +6,8 @@ import com.google.errorprone.annotations.Var;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.xgen.mongot.featureflag.Feature;
 import com.xgen.mongot.featureflag.FeatureFlags;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
+import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags;
 import com.xgen.mongot.index.DocsExceededLimitsException;
 import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.EncodedUserData;
@@ -241,7 +243,8 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
       SearchFieldDefinitionResolver resolver,
       IndexMetricsUpdater.IndexingMetricsUpdater indexingMetricsUpdater,
       Optional<IndexDeletionPolicy> indexDeletionPolicy,
-      FeatureFlags featureFlags)
+      FeatureFlags featureFlags,
+      DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry)
       throws IOException {
 
     Similarity similarity = LuceneSimilarity.from(resolver.indexDefinition);
@@ -251,7 +254,13 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
 
     IndexWriterConfig indexWriterConfig =
         new org.apache.lucene.index.IndexWriterConfig(indexAnalyzer)
-            .setCodec(new LuceneCodec(pathToField))
+            .setCodec(
+                LuceneCodec.Factory.forSearchIndexWithBloomFilter(
+                    pathToField,
+                    () ->
+                        dynamicFeatureFlagRegistry.evaluateClusterInvariant(
+                            DynamicFeatureFlags.BLOOM_FILTER_FOR_ID_FIELD),
+                    Optional.of(indexingMetricsUpdater)))
             .setSimilarity(similarity)
             .setMergePolicy(mergePolicy)
             .setRAMBufferSizeMB(ramBufferSizeMb)
@@ -689,13 +698,11 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
   }
 
   /**
-   * Internal method to cancel merges without checking if the writer is open.
-   * This is used by close() to cancel merges during the close process.
+   * Internal method to cancel merges without checking if the writer is open. This is used by
+   * close() to cancel merges during the close process.
    */
   private void cancelMergesInternal() throws IOException {
-    this.logger
-        .atInfo()
-        .log("Cancelling running merges and blocking new merge scheduling");
+    this.logger.atInfo().log("Cancelling running merges and blocking new merge scheduling");
 
     try {
       // Get the per-index merge scheduler
@@ -716,9 +723,7 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
         // aborted; they will be discarded when the IndexWriter is closed.
         boolean allMergesTerminated = perIndexScheduler.cancelMerges();
         if (allMergesTerminated) {
-          this.logger
-              .atInfo()
-              .log("Successfully cancelled all merges");
+          this.logger.atInfo().log("Successfully cancelled all merges");
         } else {
           this.logger
               .atWarn()
@@ -741,10 +746,7 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
         mergeScheduler.close();
       }
     } catch (Exception e) {
-      this.logger
-          .atWarn()
-          .setCause(e)
-          .log("Error during merge cancellation");
+      this.logger.atWarn().setCause(e).log("Error during merge cancellation");
       recordIndexingFailure(e, "cancelMerges");
       throw e;
     }

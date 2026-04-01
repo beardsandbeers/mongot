@@ -14,10 +14,12 @@ _LUCENE_UPSTREAM_ARTIFACTS = append_version(
         "org.apache.lucene:lucene-analysis-phonetic",
         "org.apache.lucene:lucene-analysis-smartcn",
         "org.apache.lucene:lucene-analysis-stempel",
-        # lucene-core and lucene-backward-codecs are also listed here (at the upstream version) so
-        # that transitive dependency resolution in the main maven_install works correctly. At build
-        # time, override_targets redirects these to the fork JARs (see deps.bzl).
+        # lucene-core, lucene-backward-codecs and lucene-codecs are also listed here at the upstream
+        # version to ensure that transitive dependency resolution in the main maven_install works
+        # correctly. At build time, override_targets redirects these to the fork JARs.
+        # See deps.bzl for more details.
         "org.apache.lucene:lucene-backward-codecs",
+        "org.apache.lucene:lucene-codecs",
         "org.apache.lucene:lucene-core",
         "org.apache.lucene:lucene-expressions",
         "org.apache.lucene:lucene-highlighter",
@@ -36,10 +38,14 @@ _LUCENE_UPSTREAM_ARTIFACTS = append_version(
 # branch in the [lucene-mongot](https://github.com/mongodb-forks/lucene-mongot) repository.
 # These are resolved via the separate "lucene_fork" maven_install in deps.bzl and override the
 # upstream artifacts in the main maven_install via override_targets.
-_LUCENE_FORK_VERSION = "9.11.1-1"
+# Changes included in this fork are documented in
+# https://github.com/mongodb-forks/lucene-mongot/blob/mongot_9_11_1/lucene/CHANGES.txt#L6-L12
+# Major change - Support for Bloom Filter for id field
+_LUCENE_FORK_VERSION = "9.11.1-2"
 
 _LUCENE_FORK_ARTIFACT_NAMES = [
     "org.apache.lucene:lucene-backward-codecs",
+    "org.apache.lucene:lucene-codecs",
     "org.apache.lucene:lucene-core",
 ]
 

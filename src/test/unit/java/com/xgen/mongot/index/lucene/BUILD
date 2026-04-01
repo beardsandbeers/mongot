@@ -108,6 +108,7 @@ mongot_java_unit_test_suite(
         "//src/main/java/com/xgen/testing/mongot/index/query/scores",
         "//src/main/java/com/xgen/testing/mongot/index/query/sort",
         "//src/main/java/com/xgen/testing/mongot/mock/index",
+        "@lucene_fork//:org_apache_lucene_lucene_codecs",
         "@maven//:ch_qos_logback_logback_classic",
         "@maven//:ch_qos_logback_logback_core",
         "@maven//:com_github_oshi_oshi_core",

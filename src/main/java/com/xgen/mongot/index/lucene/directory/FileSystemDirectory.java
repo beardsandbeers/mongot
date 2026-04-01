@@ -38,6 +38,8 @@ public class FileSystemDirectory extends FileSwitchDirectory {
   private final Optional<ByteReadCollector> collector;
   private static final Set<String> MMAP_EXTENSIONS =
       Set.of(
+          /* Bloom Filter */
+          "blm",
           /* Term Index */
           "tip",
           /* Term Dictionary */

@@ -155,7 +155,9 @@ class InitializedLuceneSearchIndex implements InitializedSearchIndex {
                 SingleLuceneIndexWriter.createForSearchIndex(
                     directory,
                     searchIndexProperties.mergeScheduler.createForIndexPartition(
-                        generationId, indexPartitionId, definition.getNumPartitions(),
+                        generationId,
+                        indexPartitionId,
+                        definition.getNumPartitions(),
                         featureFlags.isEnabled(Feature.CANCEL_MERGE)),
                     searchIndexProperties.mergePolicy,
                     searchIndexProperties.ramBufferSizeMb,
@@ -167,7 +169,8 @@ class InitializedLuceneSearchIndex implements InitializedSearchIndex {
                     indexMetricsUpdaterBuilder.getIndexingMetricsUpdater(),
                     luceneIndexSnapshotter.map(
                         snapshotter -> snapshotter.getSnapshotDeletionPolicy(indexPartitionId)),
-                    featureFlags),
+                    featureFlags,
+                    dynamicFeatureFlagRegistry),
             luceneIndexWriter ->
                 LuceneSearcherManager.create(
                     luceneIndexWriter.getLuceneWriter(),

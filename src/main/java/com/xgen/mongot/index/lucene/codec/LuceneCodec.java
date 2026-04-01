@@ -2,7 +2,9 @@ package com.xgen.mongot.index.lucene.codec;
 
 import static org.apache.lucene.codecs.lucene99.Lucene99HnswVectorsFormat.DEFAULT_NUM_MERGE_WORKER;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.flogger.FluentLogger;
+import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
 import com.xgen.mongot.index.lucene.codec.flat.BinaryQuantizedFlatVectorsFormat;
@@ -16,10 +18,14 @@ import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.FieldPath;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.KnnVectorsFormat;
+import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.StoredFieldsFormat;
+import org.apache.lucene.codecs.bloom.BloomFilteringPostingsFormat;
 import org.apache.lucene.codecs.lucene99.Lucene99Codec;
 import org.apache.lucene.codecs.lucene99.Lucene99HnswScalarQuantizedVectorsFormat;
 import org.apache.lucene.codecs.lucene99.Lucene99HnswVectorsFormat;
@@ -28,14 +34,27 @@ import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.store.Directory;
 
 /**
- * Customized {@link Lucene99Codec} which utilizes our own {@link LuceneStoredFieldsFormat}. The
- * change is needed to improve Stored Source queries latency by sacrificing some compression
- * improvements introduced in Lucene 8.7. See https://tinyurl.com/mrx22sav for details. Note that we
- * are not modifying the codec name (Lucene99), so Lucene could use the original codec for reads
- * (the codec is looked up by the name encoded with segment's metadata in {@link
- * SegmentInfos#readCommit(Directory, String)} when Lucene opens index for read). That guarantees
- * that our compression changes are compatible with the original codec, and we won't need
- * re-indexing to upgrade to the next major Lucene version in the future.
+ * Customized {@link Lucene99Codec} that overrides stored fields, postings, and KNN vector formats.
+ *
+ * <h3>Stored fields</h3>
+ *
+ * <p>Uses {@link LuceneStoredFieldsFormat} to improve Stored Source query latency by sacrificing
+ * some compression improvements introduced in Lucene 8.7. See <a
+ * href="https://tinyurl.com/mrx22sav">this</a> for details.
+ *
+ * <h3>Postings</h3>
+ *
+ * <p>Delegates to {@link HybridPostingsFormat}, which dynamically selects between a {@link
+ * BloomFilteringPostingsFormat} and the default Lucene99 format for the {@code _id} field based on
+ * a runtime toggle. See {@link HybridPostingsFormat} for details on the per-segment format
+ * selection, metrics, and rollback behavior.
+ *
+ * <h3>Codec name compatibility</h3>
+ *
+ * <p>The codec name is kept as "Lucene99" so that Lucene resolves the original codec for reads (the
+ * name is looked up from segment metadata in {@link SegmentInfos#readCommit(Directory, String)}).
+ * This guarantees that our customizations are compatible with the original codec and no re-indexing
+ * is required to upgrade to the next major Lucene version.
  */
 public class LuceneCodec extends FilterCodec {
 
@@ -46,6 +65,8 @@ public class LuceneCodec extends FilterCodec {
       new VectorIndexingAlgorithm.HnswIndexingAlgorithm();
 
   private static final String CODEC_NAME = "Lucene99";
+
+  private final PostingsFormat postingsFormat;
 
   private final StoredFieldsFormat storedFieldsFormat;
 
@@ -64,10 +85,12 @@ public class LuceneCodec extends FilterCodec {
 
   private final Map<FieldPath, VectorIndexingAlgorithm> fieldConfigs;
 
+  @VisibleForTesting
   public LuceneCodec() {
     this(CODEC_NAME, Map.of());
   }
 
+  @VisibleForTesting
   public LuceneCodec(String codecName) {
     this(codecName, Map.of());
   }
@@ -77,7 +100,16 @@ public class LuceneCodec extends FilterCodec {
   }
 
   private LuceneCodec(String codecName, Map<FieldPath, VectorFieldSpecification> fieldMap) {
-    super(codecName, new Lucene99Codec());
+    this(codecName, fieldMap, new Lucene99Codec(), () -> false, Optional.empty());
+  }
+
+  private LuceneCodec(
+      String codecName,
+      Map<FieldPath, VectorFieldSpecification> fieldMap,
+      Lucene99Codec delegateCodec,
+      BooleanSupplier bloomFilterForIdFieldEnabledSupplier,
+      Optional<IndexMetricsUpdater.IndexingMetricsUpdater> indexingMetricsUpdater) {
+    super(codecName, delegateCodec);
     this.storedFieldsFormat =
         new LuceneStoredFieldsFormat(LuceneStoredFieldsFormat.Mode.BEST_SPEED);
     this.fieldConfigs = new HashMap<>();
@@ -86,6 +118,14 @@ public class LuceneCodec extends FilterCodec {
       VectorFieldSpecification field = fieldMap.get(path);
       this.fieldConfigs.put(path, field.indexingAlgorithm());
     }
+    this.postingsFormat =
+        new HybridPostingsFormat(
+            bloomFilterForIdFieldEnabledSupplier, indexingMetricsUpdater, delegateCodec);
+  }
+
+  @Override
+  public PostingsFormat postingsFormat() {
+    return this.postingsFormat;
   }
 
   @Override
@@ -158,5 +198,20 @@ public class LuceneCodec extends FilterCodec {
       FieldName.TypeField typeField, String luceneField) {
     FieldPath fieldPath = FieldPath.parse(typeField.stripPrefix(luceneField));
     return this.fieldConfigs.getOrDefault(fieldPath, DEFAULT_INDEXING_ALGORITHM);
+  }
+
+  public static class Factory {
+
+    public static LuceneCodec forSearchIndexWithBloomFilter(
+        Map<FieldPath, VectorFieldSpecification> fieldMap,
+        BooleanSupplier bloomFilterForIdFieldEnabled,
+        Optional<IndexMetricsUpdater.IndexingMetricsUpdater> indexingMetricsUpdater) {
+      return new LuceneCodec(
+          CODEC_NAME,
+          fieldMap,
+          new Lucene99Codec(),
+          bloomFilterForIdFieldEnabled,
+          indexingMetricsUpdater);
+    }
   }
 }
