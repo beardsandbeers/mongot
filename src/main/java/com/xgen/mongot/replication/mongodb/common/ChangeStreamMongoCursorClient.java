@@ -99,13 +99,13 @@ public class ChangeStreamMongoCursorClient<E extends Exception>
     switch (this.state) {
       case OPEN_CURSOR:
         this.openCursor();
-      // fall through
+        // fall through
 
       case GET_MORE:
         return this.getMore();
 
       case CLOSED:
-        return Check.unreachable("getNext() called in CLOSED state");
+        throw new IllegalStateException("getNext() called in CLOSED state");
     }
     this.logger.error("Unhandled state: {}", this.state);
     return Check.unreachable("Unhandled state");

@@ -135,7 +135,9 @@ public class DefaultChangeStreamMongoClient<E extends Exception>
     return switch (this.state) {
       case OPEN_CURSOR -> this.openCursor();
       case GET_MORE -> this.getMore();
-      case CLOSED -> Check.unreachable("getNext() on CLOSED");
+      case CLOSED -> {
+        throw new IllegalStateException("getNext() called in CLOSED state");
+      }
     };
   }
 
