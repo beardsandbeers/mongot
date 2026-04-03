@@ -10,6 +10,7 @@ java_test_suite(
     deps = [
         "//src/main/java/com/xgen/mongot/catalogservice",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/status",
         "//src/main/java/com/xgen/mongot/index/synonym",
         "//src/main/java/com/xgen/mongot/server/command/management/definition",

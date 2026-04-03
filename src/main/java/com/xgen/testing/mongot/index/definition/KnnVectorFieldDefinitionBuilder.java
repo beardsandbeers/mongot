@@ -3,8 +3,8 @@ package com.xgen.testing.mongot.index.definition;
 import com.xgen.mongot.index.definition.KnnVectorFieldDefinition;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.Check;
 import java.util.Optional;
 

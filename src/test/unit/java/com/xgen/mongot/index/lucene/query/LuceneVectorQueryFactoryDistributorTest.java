@@ -7,8 +7,9 @@ import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.index.lucene.query.context.VectorQueryFactoryContext;
 import com.xgen.mongot.index.lucene.query.custom.ExactVectorSearchQuery;
 import com.xgen.mongot.index.lucene.query.custom.MongotKnnFloatQuery;
@@ -34,7 +35,6 @@ import com.xgen.testing.mongot.mock.index.SearchIndex;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
@@ -405,9 +405,9 @@ public class LuceneVectorQueryFactoryDistributorTest {
                     "voyage-3-large",
                     "text",
                     internalPath, // Internal path where vectors are stored
+                    1024,
                     VectorSimilarity.EUCLIDEAN,
-                    VectorQuantization.NONE,
-                    Optional.empty())),
+                    VectorAutoEmbedQuantization.FLOAT)),
             FeatureFlags.getDefault(),
             Map.of(userPath, internalPath))
         .assertTranslatedTo(
@@ -477,10 +477,10 @@ public class LuceneVectorQueryFactoryDistributorTest {
                 new VectorAutoEmbedFieldDefinition(
                     "voyage-3-large",
                     "text",
-                    internalVectorPath, // Internal vector path
+                    internalVectorPath,
+                    1024, // Internal vector path
                     VectorSimilarity.EUCLIDEAN,
-                    VectorQuantization.NONE,
-                        Optional.empty()),
+                    VectorAutoEmbedQuantization.FLOAT),
                 VectorIndexFilterFieldDefinition.create(userPath)),
             FeatureFlags.getDefault(),
             Map.of(userPath, internalVectorPath)) // Filter field at user path

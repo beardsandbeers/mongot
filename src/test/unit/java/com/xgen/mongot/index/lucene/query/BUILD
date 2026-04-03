@@ -49,6 +49,7 @@ java_test_suite(
         "//src/main/java/com/xgen/mongot/index/analyzer/definition",
         "//src/main/java/com/xgen/mongot/index/analyzer/wrapper",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/lucene/field",
         "//src/main/java/com/xgen/mongot/index/lucene/query",
         "//src/main/java/com/xgen/mongot/index/lucene/query/context",

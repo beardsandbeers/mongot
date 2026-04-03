@@ -7,7 +7,7 @@ import com.xgen.mongot.index.definition.VectorFieldDefinitionResolver;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
-import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.VectorDataFieldDefinitionBuilder;

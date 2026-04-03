@@ -1,5 +1,6 @@
 package com.xgen.mongot.index.definition;
 
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.VectorDataFieldDefinitionBuilder;
 import java.util.List;

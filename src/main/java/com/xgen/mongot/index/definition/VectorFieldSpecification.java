@@ -6,6 +6,7 @@ import static com.xgen.mongot.index.definition.VectorIndexingAlgorithm.HnswIndex
 import static com.xgen.mongot.index.definition.VectorIndexingAlgorithm.HnswIndexingAlgorithm.MAXIMUM_MAX_EDGES;
 import static com.xgen.mongot.index.definition.VectorIndexingAlgorithm.HnswIndexingAlgorithm.MAXIMUM_NUM_EDGE_CANDIDATES;
 
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseContext;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
@@ -189,8 +190,11 @@ public class VectorFieldSpecification implements DocumentEncodable {
   @Override
   public int hashCode() {
     return Objects.hash(
-        this.numDimensions, this.similarity,
-        this.quantization, this.indexingAlgorithm, this.engine);
+        this.numDimensions,
+        this.similarity,
+        this.quantization,
+        this.indexingAlgorithm,
+        this.engine);
   }
 
   public static VectorFieldSpecification fromBson(DocumentParser parser) throws BsonParseException {
@@ -213,7 +217,7 @@ public class VectorFieldSpecification implements DocumentEncodable {
         parser.getField(Fields.ENGINE).unwrap());
   }
 
-  private static VectorIndexingAlgorithm resolveIndexingAlgorithm(
+  protected static VectorIndexingAlgorithm resolveIndexingAlgorithm(
       DocumentParser parser,
       VectorIndexingAlgorithm.AlgorithmType algorithmType,
       Optional<HnswOptions> maybeHnswOptions)

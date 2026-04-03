@@ -1,6 +1,6 @@
 package com.xgen.testing.mongot.integration.index.serialization;
 
-import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import com.xgen.mongot.util.bson.parser.DocumentEncodable;

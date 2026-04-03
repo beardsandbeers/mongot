@@ -19,7 +19,7 @@ import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexVectorFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
-import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.index.lucene.LuceneSearchManager.QueryInfo;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
 import com.xgen.mongot.index.lucene.field.FieldName;

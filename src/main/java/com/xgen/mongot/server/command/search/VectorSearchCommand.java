@@ -35,9 +35,15 @@ import com.xgen.mongot.index.InitializedVectorIndex;
 import com.xgen.mongot.index.ReaderClosedException;
 import com.xgen.mongot.index.Variables;
 import com.xgen.mongot.index.autoembedding.AutoEmbeddingIndexGeneration;
+import com.xgen.mongot.index.autoembedding.InitializedMaterializedViewIndex;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.StoredSourceDefinition;
+import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
+import com.xgen.mongot.index.definition.VectorAutoEmbedFieldSpecification;
+import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
+import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.index.lucene.explain.explainers.MetadataFeatureExplainer;
 import com.xgen.mongot.index.lucene.explain.tracing.Explain;
 import com.xgen.mongot.index.lucene.explain.tracing.ExplainQueryState;
@@ -152,8 +158,8 @@ public class VectorSearchCommand implements Command {
     // load-shedded queue doesn't reduce load on the search node, so skip load shedding.
     // The instanceof check is required because InvalidVectorQuery.vectorSearchQuery() throws.
     if (this.definition.vectorSearchQueryOrUserError()
-        instanceof VectorSearchCommandDefinition.VectorSearchQueryOrUserError.ValidVectorQuery
-            validQuery) {
+        instanceof
+        VectorSearchCommandDefinition.VectorSearchQueryOrUserError.ValidVectorQuery validQuery) {
       return validQuery.vectorSearchQuery().criteria().getVectorSearchType()
           != VectorSearchCriteria.Type.AUTO_EMBEDDING;
     }
@@ -642,25 +648,6 @@ public class VectorSearchCommand implements Command {
     return queryModel;
   }
 
-  Map<FieldPath, FieldPath> findAutoEmbeddingFieldsMapping(VectorSearchQuery vectorSearchQuery) {
-    // For mat view based index, needs to use raw index definition to find out fields mapping
-    return this.indexCatalog
-        .getIndex(
-            this.definition.db(),
-            this.definition.collectionUuid(),
-            this.definition.viewName(),
-            vectorSearchQuery.index())
-        .filter(indexGeneration -> indexGeneration.getType() == AUTO_EMBEDDING)
-        .map(
-            indexGeneration ->
-                ((AutoEmbeddingIndexGeneration) indexGeneration)
-                    .getMaterializedViewIndexGeneration()
-                    .getIndex()
-                    .getSchemaMetadata()
-                    .autoEmbeddingFieldsMapping())
-        .orElse(Map.of());
-  }
-
   private MongotCursorBatch createExhaustedCursorBatch(BsonArray results)
       throws ExplainTooLargeException {
     var explainResult = Explain.collect();
@@ -784,13 +771,8 @@ public class VectorSearchCommand implements Command {
       throw new EmbeddingProviderTransientException("Embedding service not initialized.");
     }
 
-    // Create EmbeddingRequestContext from IndexDefinition
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext(
-            indexDefinition.getDatabase(),
-            indexDefinition.getName(),
-            indexDefinition.getLastObservedCollectionName());
-
+        prepareEmbeddingRequestContext(vectorSearchQuery, indexDefinition);
     List<VectorOrError> results;
     try {
       results =
@@ -823,6 +805,79 @@ public class VectorSearchCommand implements Command {
         vectorSearchQuery,
         Check.isPresent(result.vector, "vector"),
         findAutoEmbeddingFieldsMapping(vectorSearchQuery));
+  }
+
+  private EmbeddingRequestContext prepareEmbeddingRequestContext(
+      VectorSearchQuery vectorSearchQuery, IndexDefinition indexDefinition)
+      throws InvalidQueryException {
+    // resolve numDimensions & providerOutputDataType for query
+
+    FieldPath sourcePath = vectorSearchQuery.criteria().path();
+    Optional<VectorAutoEmbedFieldDefinition> autoEmbedField =
+        findAutoEmbedFieldDefinitionBySourcePath(vectorSearchQuery, sourcePath);
+    if (autoEmbedField.isPresent()) {
+      // MV-based auto-embedding index: use provider quantization from auto-embed spec.
+      VectorAutoEmbedFieldSpecification spec = autoEmbedField.get().specification();
+      return new EmbeddingRequestContext(
+          indexDefinition.getDatabase(),
+          indexDefinition.getName(),
+          indexDefinition.getLastObservedCollectionName(),
+          spec.numDimensions(),
+          spec.autoEmbedQuantization());
+    }
+    // Type-text index: provider dtype is always float.
+    VectorFieldSpecification spec =
+        indexDefinition
+            .asVectorDefinition()
+            .getMappings()
+            .getFieldDefinition(vectorSearchQuery.criteria().path())
+            .filter(VectorIndexFieldDefinition::isVectorField)
+            .map(def -> def.asVectorField().specification())
+            .orElseThrow(
+                () ->
+                    new InvalidQueryException(
+                        "Vector index for this text based query is invalid: "
+                            + "no embedding field for path '%s'".formatted(sourcePath)));
+
+    return new EmbeddingRequestContext(
+        indexDefinition.getDatabase(),
+        indexDefinition.getName(),
+        indexDefinition.getLastObservedCollectionName(),
+        spec.numDimensions(),
+        VectorAutoEmbedQuantization.FLOAT // type:TEXT → always float32 provider output
+        );
+  }
+
+  private Map<FieldPath, FieldPath> findAutoEmbeddingFieldsMapping(
+      VectorSearchQuery vectorSearchQuery) {
+    // For mat view based index, needs to use raw index definition to find out fields mapping
+    return resolveMaterializedViewIndex(vectorSearchQuery)
+        .map(
+            materializedViewIndex ->
+                materializedViewIndex.getSchemaMetadata().autoEmbeddingFieldsMapping())
+        .orElse(Map.of());
+  }
+
+  private Optional<VectorAutoEmbedFieldDefinition> findAutoEmbedFieldDefinitionBySourcePath(
+      VectorSearchQuery vectorSearchQuery, FieldPath sourcePath) {
+    return resolveMaterializedViewIndex(vectorSearchQuery)
+        .map(materializedViewIndex -> materializedViewIndex.getDefinition().asVectorDefinition())
+        .flatMap(vectorDef -> vectorDef.getMappings().getFieldDefinition(sourcePath))
+        .filter(fieldDef -> fieldDef.getType() == VectorIndexFieldDefinition.Type.AUTO_EMBED)
+        .map(VectorIndexFieldDefinition::asVectorAutoEmbedField);
+  }
+
+  private Optional<InitializedMaterializedViewIndex> resolveMaterializedViewIndex(
+      VectorSearchQuery vectorSearchQuery) {
+    return this.indexCatalog
+        .getIndex(
+            this.definition.db(),
+            this.definition.collectionUuid(),
+            this.definition.viewName(),
+            vectorSearchQuery.index())
+        .filter(indexGeneration -> indexGeneration.getType() == AUTO_EMBEDDING)
+        .map(indexGeneration -> (AutoEmbeddingIndexGeneration) indexGeneration)
+        .map(it -> it.getMaterializedViewIndexGeneration().getIndex());
   }
 
   private void updateVectorSearchQueryCounters(VectorSearchCriteria criteria) {

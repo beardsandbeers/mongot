@@ -1,6 +1,7 @@
 package com.xgen.mongot.embedding.providers.clients;
 
 import static com.xgen.mongot.embedding.providers.clients.VoyageClient.VOYAGE_API_FLEX_TIER;
+import static com.xgen.mongot.embedding.providers.clients.VoyageClient.getOutputDataType;
 import static com.xgen.mongot.util.bson.FloatVector.OriginalType.NATIVE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -25,6 +26,7 @@ import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
 import com.xgen.mongot.embedding.providers.congestion.AimdCongestionControl;
 import com.xgen.mongot.embedding.providers.congestion.DynamicSemaphore;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.bson.Vector;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -46,7 +48,8 @@ import org.mockito.ArgumentCaptor;
 
 public class VoyageClientTest {
   private static EmbeddingRequestContext dummyContext() {
-    return new EmbeddingRequestContext("testdb", "testIndex", "testCollection");
+    return new EmbeddingRequestContext(
+        "testdb", "testIndex", "testCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
   }
 
   private static HttpClient createMockHttpClient() throws Exception {
@@ -505,7 +508,12 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient);
 
     EmbeddingRequestContext dedicatedContext =
-        new EmbeddingRequestContext("tenant123_mydb", "testIndex", "testCollection");
+        new EmbeddingRequestContext(
+            "tenant123_mydb",
+            "testIndex",
+            "testCollection",
+            1024,
+            VectorAutoEmbedQuantization.FLOAT);
 
     voyageClient.embed(List.of("test"), dedicatedContext);
 
@@ -528,7 +536,8 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient);
 
     EmbeddingRequestContext mtmContext =
-        new EmbeddingRequestContext("tenant1_mydb", "testIndex", "testCollection");
+        new EmbeddingRequestContext(
+            "tenant1_mydb", "testIndex", "testCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
 
     voyageClient.embed(List.of("test"), mtmContext);
 
@@ -553,7 +562,8 @@ public class VoyageClientTest {
 
     // Request with tenant2 (which has no credentials)
     EmbeddingRequestContext unknownTenantContext =
-        new EmbeddingRequestContext("tenant2_mydb", "testIndex", "testCollection");
+        new EmbeddingRequestContext(
+            "tenant2_mydb", "testIndex", "testCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
 
     EmbeddingProviderTransientException ex =
         assertThrows(
@@ -572,7 +582,12 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient);
 
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("tenant123_mydb", "testIndex", "testCollection");
+        new EmbeddingRequestContext(
+            "tenant123_mydb",
+            "testIndex",
+            "testCollection",
+            1024,
+            VectorAutoEmbedQuantization.FLOAT);
 
     // Should successfully extract tenant ID and embed
     voyageClient.embed(List.of("test"), context);
@@ -586,7 +601,12 @@ public class VoyageClientTest {
 
     // Database looks like MTM format, but dedicated cluster ignores it
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("tenant123_mydb", "testIndex", "testCollection");
+        new EmbeddingRequestContext(
+            "tenant123_mydb",
+            "testIndex",
+            "testCollection",
+            1024,
+            VectorAutoEmbedQuantization.FLOAT);
 
     voyageClient.embed(List.of("test"), context);
 
@@ -607,7 +627,8 @@ public class VoyageClientTest {
         createMockedVoyageClient(config, mock(HttpClient.class)); // No need for response
 
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("mydb", "testIndex", "testCollection");
+        new EmbeddingRequestContext(
+            "mydb", "testIndex", "testCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
 
     EmbeddingProviderTransientException ex =
         assertThrows(
@@ -770,7 +791,8 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, true);
 
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("myDb", "myIndex", "myCollection");
+        new EmbeddingRequestContext(
+            "myDb", "myIndex", "myCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
@@ -786,15 +808,14 @@ public class VoyageClientTest {
   }
 
   @Test
-  public void testEmbed_includesDefaultOutputDimensionInRequest() throws Exception {
+  public void testEmbed_includesOutputShapeFromEmbeddingRequestContext() throws Exception {
     EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
     HttpClient mockClient = createMockHttpClient();
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, false);
 
-    int expectedOutputDimension = 1024;
-    String expectedOutputDtype = "float";
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("myDb", "myIndex", "myCollection");
+        new EmbeddingRequestContext(
+            "myDb", "myIndex", "myCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
@@ -803,9 +824,29 @@ public class VoyageClientTest {
     String body = extractRequestBody(requestCaptor.getValue());
     BsonDocument doc = BsonDocument.parse(body);
     assertTrue(doc.containsKey("output_dimension"));
-    assertEquals(expectedOutputDimension, doc.get("output_dimension").asNumber().intValue());
+    assertEquals(1024, doc.get("output_dimension").asNumber().intValue());
     assertTrue(doc.containsKey("output_dtype"));
-    assertEquals(expectedOutputDtype, doc.getString("output_dtype").getValue());
+    assertEquals("float", doc.getString("output_dtype").getValue());
+  }
+
+  @Test
+  public void testEmbed_propagatesScalarInt8FromEmbeddingRequestContext() throws Exception {
+    EmbeddingServiceConfig.EmbeddingConfig config = createDedicatedClusterConfig("test-token");
+    HttpClient mockClient = createMockHttpClient();
+    VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, false);
+
+    EmbeddingRequestContext context =
+        new EmbeddingRequestContext(
+            "myDb", "myIndex", "myCollection", 512, VectorAutoEmbedQuantization.SCALAR);
+    voyageClient.embed(List.of("test"), context);
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockClient).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+
+    String body = extractRequestBody(requestCaptor.getValue());
+    BsonDocument doc = BsonDocument.parse(body);
+    assertEquals(512, doc.get("output_dimension").asNumber().intValue());
+    assertEquals("int8", doc.getString("output_dtype").getValue());
   }
 
   @Test
@@ -815,7 +856,8 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, false);
 
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("myDb", "myIndex", "myCollection");
+        new EmbeddingRequestContext(
+            "myDb", "myIndex", "myCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
@@ -833,7 +875,8 @@ public class VoyageClientTest {
     VoyageClient voyageClient = createMockedVoyageClient(config, mockClient, true);
 
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("myDb", "myIndex", "myCollection");
+        new EmbeddingRequestContext(
+            "myDb", "myIndex", "myCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
@@ -854,7 +897,8 @@ public class VoyageClientTest {
 
     String longName = "a".repeat(257);
     EmbeddingRequestContext context =
-        new EmbeddingRequestContext("db", longName, "coll");
+        new EmbeddingRequestContext(
+            "db", longName, "coll", 1024, VectorAutoEmbedQuantization.FLOAT);
     voyageClient.embed(List.of("test"), context);
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
@@ -1077,8 +1121,7 @@ public class VoyageClientTest {
         createMockedVoyageClient(createDedicatedClusterConfig("token"), mockClient);
     Field epochField = VoyageClient.class.getDeclaredField("voyageHttpClientCreatedEpochMs");
     epochField.setAccessible(true);
-    epochField.set(
-        voyageClient, System.currentTimeMillis() - Duration.ofMinutes(11).toMillis());
+    epochField.set(voyageClient, System.currentTimeMillis() - Duration.ofMinutes(11).toMillis());
     voyageClient.renewHttpClientIfStaleForTesting();
     Field httpClientField = VoyageClient.class.getDeclaredField("voyageHttpClient");
     httpClientField.setAccessible(true);
@@ -1094,8 +1137,7 @@ public class VoyageClientTest {
         createMockedVoyageClient(createDedicatedClusterConfig("token"), mockClient);
     Field epochField = VoyageClient.class.getDeclaredField("voyageHttpClientCreatedEpochMs");
     epochField.setAccessible(true);
-    epochField.set(
-        voyageClient, System.currentTimeMillis() - Duration.ofMinutes(11).toMillis());
+    epochField.set(voyageClient, System.currentTimeMillis() - Duration.ofMinutes(11).toMillis());
     voyageClient.renewHttpClientIfStaleForTesting();
     verify(mockClient, timeout(1000)).shutdown();
     voyageClient.renewHttpClientAfterConnectionFailureForTesting(
@@ -1191,5 +1233,13 @@ public class VoyageClientTest {
     httpClientField.setAccessible(true);
     assertNotSame(mockClient, httpClientField.get(voyageClient));
     verify(mockClient, timeout(1000)).shutdown();
+  }
+
+  @Test
+  public void getOutputDataType_mapsQuantization() {
+    assertEquals("float", getOutputDataType(VectorAutoEmbedQuantization.FLOAT));
+    assertEquals("int8", getOutputDataType(VectorAutoEmbedQuantization.SCALAR));
+    assertEquals("float", getOutputDataType(VectorAutoEmbedQuantization.BINARY));
+    assertEquals("binary", getOutputDataType(VectorAutoEmbedQuantization.BINARY_NO_RESCORE));
   }
 }

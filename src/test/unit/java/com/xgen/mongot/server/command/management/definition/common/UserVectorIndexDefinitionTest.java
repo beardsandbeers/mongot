@@ -3,8 +3,8 @@ package com.xgen.mongot.server.command.management.definition.common;
 import static org.junit.Assert.assertEquals;
 
 import com.google.common.truth.Truth;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
 import com.xgen.mongot.util.bson.parser.BsonParseException;

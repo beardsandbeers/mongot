@@ -12,6 +12,7 @@ java_test_suite(
         "//src/main/java/com/xgen/mongot/config/backup",
         "//src/main/java/com/xgen/mongot/config/util",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/util",
         "//src/main/java/com/xgen/mongot/util/bson",

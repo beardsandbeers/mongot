@@ -16,6 +16,7 @@ java_library(
     ],
     deps = [
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/query/sort",
         "//src/main/java/com/xgen/mongot/server/command/management/definition",
         "//src/main/java/com/xgen/mongot/server/command/management/definition/common",

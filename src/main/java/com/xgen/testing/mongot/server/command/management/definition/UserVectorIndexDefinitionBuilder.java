@@ -1,8 +1,8 @@
 package com.xgen.testing.mongot.server.command.management.definition;
 
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.server.command.management.definition.common.UserVectorIndexDefinition;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.VectorDataFieldDefinitionBuilder;

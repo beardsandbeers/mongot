@@ -5,8 +5,10 @@ import static com.xgen.mongot.embedding.utils.AutoEmbeddingDocumentUtils.buildAu
 import static com.xgen.mongot.embedding.utils.AutoEmbeddingDocumentUtils.buildMaterializedViewDocumentEvent;
 
 import com.google.common.base.Supplier;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import com.google.common.collect.SetMultimap;
 import com.google.common.flogger.FluentLogger;
 import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.embedding.AutoEmbeddingMemoryBudget;
@@ -26,9 +28,11 @@ import com.xgen.mongot.embedding.utils.AutoEmbeddingDocumentUtils;
 import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.FieldExceededLimitsException;
 import com.xgen.mongot.index.definition.IndexDefinition;
+import com.xgen.mongot.index.definition.VectorFieldAutoEmbeddingSpecification;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldMapping;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.replication.mongodb.common.IndexingWorkSchedulerFactory.IndexingStrategy;
 import com.xgen.mongot.replication.mongodb.common.SchedulerQueue.Priority;
 import com.xgen.mongot.util.Check;
@@ -39,16 +43,13 @@ import com.xgen.mongot.util.concurrent.NamedExecutorService;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * The embedding indexing work scheduler accepts embedding and indexing work and schedules it to be
@@ -199,7 +200,7 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
 
   @Override
   CompletableFuture<Void> getBatchTasksFuture(IndexingSchedulerBatch batch) {
-    // Replace text fields in event documents with embedded vectors for VectorText indexes.
+    // Replace text fields in event documents with embedded vectors for auto-embedding indexes.
     IndexDefinition indexDefinition = batch.indexer.getIndexDefinition();
 
     ImmutableMap<FieldPath, String> modelNamePerPath = indexDefinition.getModelNamePerPath();
@@ -236,6 +237,8 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
     ImmutableMap<FieldPath, EmbeddingModelConfig> modelConfigPerPath =
         modelConfigPerPathBuilder.build();
     VectorIndexDefinition vectorIndexDefinition = indexDefinition.asVectorDefinition();
+    ImmutableMap<FieldPath, EmbedConfigurationForBatch> embedBatchKeyPerPath =
+        computeEmbedBatchKeyPerPath(vectorIndexDefinition, modelConfigPerPath);
 
     // Check global memory budget before proceeding. If exceeded, fast-fail with a transient
     // exception so the batch can be retried when memory becomes available.
@@ -259,7 +262,7 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
             processSubBatchesSequentially(
                 batch,
                 vectorIndexDefinition,
-                modelConfigPerPath,
+                embedBatchKeyPerPath,
                 matViewCollectionMetadataOpt,
                 subBatchSize);
       } else {
@@ -269,7 +272,7 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
                 batch.events,
                 vectorIndexDefinition,
                 batch.priority,
-                modelConfigPerPath,
+                embedBatchKeyPerPath,
                 matViewCollectionMetadataOpt);
 
         batchFuture =
@@ -313,39 +316,62 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
   private CompletableFuture<Void> processSubBatchesSequentially(
       IndexingSchedulerBatch batch,
       VectorIndexDefinition vectorIndexDefinition,
-      ImmutableMap<FieldPath, EmbeddingModelConfig> modelConfigPerPath,
+      ImmutableMap<FieldPath, EmbedConfigurationForBatch> embedBatchKeyPerPath,
       Optional<MaterializedViewSchemaMetadata> matViewSchemaMetadata,
       int subBatchSize) {
-    List<Pair<List<DocumentEvent>, Map<EmbeddingModelConfig, Set<String>>>> bundles;
+    List<EmbedBundle> bundles;
     try {
       bundles =
           getTextValueBundles(
-              batch.events, vectorIndexDefinition.getMappings(), modelConfigPerPath, subBatchSize);
+              batch.events,
+              vectorIndexDefinition.getMappings(),
+              embedBatchKeyPerPath,
+              subBatchSize);
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
 
+    FLOGGER.atFine().log(
+        "Processing embedding sub-batches: index=%s, generationId=%s, subBatchSize=%d,"
+            + " totalSubBatches=%d, totalEvents=%d",
+        batch.indexer.getIndexDefinition().getName(),
+        batch.generationId,
+        subBatchSize,
+        bundles.size(),
+        batch.events.size());
+
     @Var CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
-    for (Pair<List<DocumentEvent>, Map<EmbeddingModelConfig, Set<String>>> bundle : bundles) {
+    for (int bundleIndex = 0; bundleIndex < bundles.size(); bundleIndex++) {
+      EmbedBundle bundle = bundles.get(bundleIndex);
       // Capture loop variables for use in lambdas.
-      List<DocumentEvent> events = new ArrayList<>(bundle.getLeft());
-      Map<EmbeddingModelConfig, Set<String>> textsPerModel = bundle.getRight();
+      List<DocumentEvent> events = new ArrayList<>(bundle.events());
+      SetMultimap<EmbedConfigurationForBatch, String> textsPerModel = bundle.textsPerBatchKey();
+      int subBatchNumber = bundleIndex + 1;
 
       chain =
           chain
               // Wait for the previous sub-batch flush before issuing the next embedding call.
               .thenComposeAsync(
-                  ignored ->
-                      getEmbeddings(textsPerModel, batch.priority, vectorIndexDefinition)
-                          .thenApplyAsync(
-                              embeddingsPerModel ->
-                                  applyEmbeddingsToEvents(
-                                      events,
-                                      embeddingsPerModel,
-                                      modelConfigPerPath,
-                                      vectorIndexDefinition,
-                                      matViewSchemaMetadata),
-                              this.executor),
+                  ignored -> {
+                    FLOGGER.atFine().log(
+                        "Embedding sub-batch: index=%s, subBatch=%d/%d, eventCount=%d,"
+                            + " embedBatchKeys=%d",
+                        batch.indexer.getIndexDefinition().getName(),
+                        subBatchNumber,
+                        bundles.size(),
+                        events.size(),
+                        textsPerModel.size());
+                    return getEmbeddings(textsPerModel, batch.priority, vectorIndexDefinition)
+                        .thenApplyAsync(
+                            embeddingsPerModel ->
+                                applyEmbeddingsToEvents(
+                                    events,
+                                    embeddingsPerModel,
+                                    embedBatchKeyPerPath,
+                                    vectorIndexDefinition,
+                                    matViewSchemaMetadata),
+                            this.executor);
+                  },
                   this.executor)
               // Index all events in this sub-batch.
               .thenComposeAsync(
@@ -428,22 +454,22 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
       List<DocumentEvent> allEventsInBatch,
       VectorIndexDefinition vectorIndexDefinition,
       SchedulerQueue.Priority priority,
-      ImmutableMap<FieldPath, EmbeddingModelConfig> modelConfigPerPath,
+      ImmutableMap<FieldPath, EmbedConfigurationForBatch> embedBatchKeyPerPath,
       Optional<MaterializedViewSchemaMetadata> matViewSchemaMetadata) {
-    List<Pair<List<DocumentEvent>, Map<EmbeddingModelConfig, Set<String>>>> embedBundles =
+    List<EmbedBundle> embedBundles =
         getTextValueBundles(
             allEventsInBatch,
             vectorIndexDefinition.getMappings(),
-            modelConfigPerPath,
+            embedBatchKeyPerPath,
             MAX_AUTO_EMBED_DOCUMENT_BUNDLE_SIZE);
     List<CompletableFuture<List<DocumentEvent>>> resultFutures = new ArrayList<>();
-    for (Pair<List<DocumentEvent>, Map<EmbeddingModelConfig, Set<String>>> bundle : embedBundles) {
+    for (EmbedBundle bundle : embedBundles) {
       // Needs to create a shallow copy for List<DocumentEvent> to avoid original list to be
       // referenced by CompletableFuture::UniApply even after completing futures, which may cause
       // memory leak.
-      var events = new ArrayList<>(bundle.getLeft());
-      CompletableFuture<Map<EmbeddingModelConfig, Map<String, Vector>>> embeddingsFuture =
-          getEmbeddings(bundle.getRight(), priority, vectorIndexDefinition);
+      var events = new ArrayList<>(bundle.events());
+      CompletableFuture<Map<EmbedConfigurationForBatch, Map<String, Vector>>> embeddingsFuture =
+          getEmbeddings(bundle.textsPerBatchKey(), priority, vectorIndexDefinition);
       resultFutures.add(
           // Change executor to use indexing executor here for better chaining with indexer.
           embeddingsFuture.thenApplyAsync(
@@ -451,7 +477,7 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
                   applyEmbeddingsToEvents(
                       events,
                       embeddingsPerModel,
-                      modelConfigPerPath,
+                      embedBatchKeyPerPath,
                       vectorIndexDefinition,
                       matViewSchemaMetadata),
               this.executor));
@@ -465,20 +491,28 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
    */
   private List<DocumentEvent> applyEmbeddingsToEvents(
       List<DocumentEvent> events,
-      Map<EmbeddingModelConfig, Map<String, Vector>> embeddingsPerModel,
-      ImmutableMap<FieldPath, EmbeddingModelConfig> modelConfigPerPath,
+      Map<EmbedConfigurationForBatch, Map<String, Vector>> embeddingsPerBatchKey,
+      ImmutableMap<FieldPath, EmbedConfigurationForBatch> embedBatchKeyPerPath,
       VectorIndexDefinition vectorIndexDefinition,
       Optional<MaterializedViewSchemaMetadata> matViewSchemaMetadata) {
-    // Only include auto-embed fields (those with model configs), not filter fields
+    FLOGGER.atFine().log(
+        "Applying embeddings to events: index=%s, eventCount=%d, embeddingBatchKeys=%d,"
+            + " autoEmbedFieldPaths=%d",
+        vectorIndexDefinition.getName(),
+        events.size(),
+        embeddingsPerBatchKey.size(),
+        embedBatchKeyPerPath.size());
+
+    // One map per auto-embed path from embedBatchKeyPerPath; empty if no embeddings.
     var embeddingMapPerField =
-        modelConfigPerPath.keySet().stream()
+        embedBatchKeyPerPath.entrySet().stream()
             .collect(
                 ImmutableMap.toImmutableMap(
-                    Function.identity(),
-                    fieldPath ->
+                    Map.Entry::getKey,
+                    e ->
                         ImmutableMap.copyOf(
-                            embeddingsPerModel.getOrDefault(
-                                modelConfigPerPath.get(fieldPath), ImmutableMap.of()))));
+                            embeddingsPerBatchKey.getOrDefault(
+                                e.getValue(), ImmutableMap.<String, Vector>of()))));
     for (int i = 0; i < events.size(); i++) {
       DocumentEvent event = events.get(i);
       if (!containsValidDocument(event)) {
@@ -520,99 +554,100 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
    * Splits Documents events by bundle size, deletion and non-autoembedding(no matching text) events
    * are not limited by bundle size.
    */
-  static List<Pair<List<DocumentEvent>, Map<EmbeddingModelConfig, Set<String>>>>
-      getTextValueBundles(
+  static List<EmbedBundle> getTextValueBundles(
           List<DocumentEvent> events,
           VectorIndexFieldMapping fieldMapping,
-          ImmutableMap<FieldPath, EmbeddingModelConfig> modelConfigPerPath,
+          ImmutableMap<FieldPath, EmbedConfigurationForBatch> embedBatchKeyPerPath,
           int maxDocumentBundleSize) {
-    // Step 1: Gets all (document, Map<EmbeddingModelConfig, Set<String>>) pairs
-    List<Pair<DocumentEvent, Map<EmbeddingModelConfig, Set<String>>>> documentModelTextMapPairs =
-        events.stream()
-            .map(
-                event -> {
-                  // Skip text extraction for filter-only updates - they don't need embeddings
-                  if (containsValidDocument(event) && event.getFilterFieldUpdates().isEmpty()) {
-                    Map<EmbeddingModelConfig, Set<String>> textsPerModel = new HashMap<>();
-                    try {
-                      var autoEmbeddingTextPathMap =
-                          AutoEmbeddingDocumentUtils.getVectorTextPathMap(
-                              event.getDocument().get(), fieldMapping);
-                      for (var entry : autoEmbeddingTextPathMap.entrySet()) {
-                        FieldPath fieldPath = entry.getKey();
-                        Set<String> textsInField = entry.getValue();
+    // Step 1: Gets all (document, Map<EmbedBatchKey, Set<String>>) pairs
+    List<DocumentTexts> documentModelTextMapPairs =
+            events.stream()
+                .map(
+                    event -> {
+                      // Skip text extraction for filter-only updates - they don't need embeddings
+                      if (containsValidDocument(event) && event.getFilterFieldUpdates().isEmpty()) {
+                        SetMultimap<EmbedConfigurationForBatch, String> textsPerBatchKey =
+                            HashMultimap.create();
+                        try {
+                          var autoEmbeddingTextPathMap =
+                              AutoEmbeddingDocumentUtils.getVectorTextPathMap(
+                                  event.getDocument().get(), fieldMapping);
+                          for (var entry : autoEmbeddingTextPathMap.entrySet()) {
+                            FieldPath fieldPath = entry.getKey();
+                            Set<String> textsInField = entry.getValue();
+                            EmbedConfigurationForBatch batchKey =
+                                embedBatchKeyPerPath.get(fieldPath);
+                            Check.checkState(
+                                batchKey != null,
+                                "missing embed batch key for auto-embed path: %s",
+                                fieldPath);
 
-                        // Get reusable embeddings for this field
-                        var reusableForField =
-                            event.getAutoEmbeddings().getOrDefault(fieldPath, ImmutableMap.of());
+                            // Get reusable embeddings for this field
+                            var reusableForField =
+                                event
+                                    .getAutoEmbeddings()
+                                    .getOrDefault(fieldPath, ImmutableMap.of());
 
-                        // Only add texts that don't have reusable embeddings
-                        for (String text : textsInField) {
-                          if (!reusableForField.containsKey(text)) {
-                            textsPerModel
-                                .computeIfAbsent(
-                                    modelConfigPerPath.get(fieldPath), k -> new HashSet<>())
-                                .add(text);
+                            // Only add texts that don't have reusable embeddings
+                            for (String text : textsInField) {
+                              if (!reusableForField.containsKey(text)) {
+                                textsPerBatchKey.put(batchKey, text);
+                              }
+                            }
                           }
+                        } catch (IOException e) {
+                          FLOGGER.atSevere().atMostEvery(1, TimeUnit.MINUTES).withCause(e).log(
+                              "Failed to get string values");
                         }
+                        return new DocumentTexts(event, textsPerBatchKey);
+                      } else {
+                        return new DocumentTexts(
+                            event, HashMultimap.<EmbedConfigurationForBatch, String>create());
                       }
-                    } catch (IOException e) {
-                      FLOGGER.atSevere().atMostEvery(1, TimeUnit.MINUTES).withCause(e).log(
-                          "Failed to get string values");
-                    }
-                    return Pair.of(event, textsPerModel);
-                  } else {
-                    return Pair.of(event, Map.<EmbeddingModelConfig, Set<String>>of());
-                  }
-                })
-            .toList();
+                    })
+                .toList();
 
     // TODO(CLOUDP-331321): Move batching logic into embedding service manager
     // Step 2: For all pair with non empty autoEmbedding text set, partition them by max document
     // bundle size, and aggregate their autoEmbedding text set into one set per partition
-    List<Pair<List<DocumentEvent>, Map<EmbeddingModelConfig, Set<String>>>> documentEventBundles =
+    List<EmbedBundle> documentEventBundles =
         Lists.partition(
                 documentModelTextMapPairs.stream()
-                    .filter(pair -> !pair.getRight().isEmpty())
+                    .filter(pair -> !pair.textsPerBatchKey().isEmpty())
                     .toList(),
                 maxDocumentBundleSize)
             .stream()
             .map(
                 eventBundle ->
-                    Pair.of(
-                        eventBundle.stream().map(Pair::getLeft).toList(),
-                        mergeTextsByModel(eventBundle)))
+                    new EmbedBundle(
+                        eventBundle.stream().map(DocumentTexts::event).toList(),
+                        mergeTextsByBatchKey(eventBundle)))
             .collect(Collectors.toList());
 
     // Step 3: Append all no-op document events without any auto embedding text.
     List<DocumentEvent> noAutoEmbeddingEvents =
         documentModelTextMapPairs.stream()
-            .filter(eventPair -> eventPair.getRight().isEmpty())
-            .map(Pair::getLeft)
+            .filter(eventPair -> eventPair.textsPerBatchKey().isEmpty())
+            .map(DocumentTexts::event)
             .toList();
     if (!noAutoEmbeddingEvents.isEmpty()) {
-      documentEventBundles.add(Pair.of(noAutoEmbeddingEvents, Map.of()));
+      documentEventBundles.add(
+          new EmbedBundle(
+              noAutoEmbeddingEvents,
+              HashMultimap.<EmbedConfigurationForBatch, String>create()));
     }
     return documentEventBundles;
   }
 
-  private CompletableFuture<Map<EmbeddingModelConfig, Map<String, Vector>>> getEmbeddings(
-      Map<EmbeddingModelConfig, Set<String>> stringsToEmbedPerModel,
+  private CompletableFuture<Map<EmbedConfigurationForBatch, Map<String, Vector>>> getEmbeddings(
+      SetMultimap<EmbedConfigurationForBatch, String> stringsToEmbedPerBatchKey,
       Priority priority,
       IndexDefinition indexDefinition) {
-    if (stringsToEmbedPerModel.isEmpty()) {
+    if (stringsToEmbedPerBatchKey.isEmpty()) {
       FLOGGER.atFine().log(
-          "No strings to embed for index %s, skipping embedding call",
-          indexDefinition.getName());
+          "No strings to embed for index %s, skipping embedding call", indexDefinition.getName());
       return CompletableFuture.completedFuture(Map.of());
     }
-
-    // Create EmbeddingRequestContext from IndexDefinition
-    EmbeddingRequestContext context =
-        new EmbeddingRequestContext(
-            indexDefinition.getDatabase(),
-            indexDefinition.getName(),
-            indexDefinition.getLastObservedCollectionName());
 
     EmbeddingServiceManager serviceManager = this.embeddingServiceManagerSupplier.get();
     ServiceTier tier =
@@ -620,32 +655,41 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
             ? ServiceTier.COLLECTION_SCAN
             : ServiceTier.CHANGE_STREAM;
 
-    for (var entry : stringsToEmbedPerModel.entrySet()) {
+    for (var entry : stringsToEmbedPerBatchKey.asMap().entrySet()) {
       FLOGGER.atFine().log(
-          "Requesting embeddings: index=%s, model=%s, tier=%s,"
-              + " stringCount=%d, database=%s, collection=%s",
+          "Requesting embeddings: index=%s, model=%s, tier=%s, numDimensions=%d,"
+              + " quantization=%s, stringCount=%d, database=%s, collection=%s",
           indexDefinition.getName(),
-          entry.getKey().name(),
+          entry.getKey().modelConfig().name(),
           tier,
+          entry.getKey().numDimensions(),
+          entry.getKey().quantization(),
           entry.getValue().size(),
           indexDefinition.getDatabase(),
           indexDefinition.getLastObservedCollectionName());
     }
-    Map<EmbeddingModelConfig, CompletableFuture<Map<String, Vector>>> futuresPerModel =
+    Map<EmbedConfigurationForBatch, CompletableFuture<Map<String, Vector>>> futuresPerBatchKey =
         new HashMap<>();
 
-    for (var entry : stringsToEmbedPerModel.entrySet()) {
-      EmbeddingModelConfig modelConfig = entry.getKey();
-      Set<String> stringsToEmbed = entry.getValue();
+    for (var entry : stringsToEmbedPerBatchKey.asMap().entrySet()) {
+      EmbedConfigurationForBatch batchKey = entry.getKey();
+      Set<String> stringsToEmbed = Set.copyOf(entry.getValue());
 
       if (stringsToEmbed.isEmpty()) {
         continue;
       }
 
       List<String> orderedStrings = new ArrayList<>(stringsToEmbed);
+      EmbeddingRequestContext context =
+          new EmbeddingRequestContext(
+              indexDefinition.getDatabase(),
+              indexDefinition.getName(),
+              indexDefinition.getLastObservedCollectionName(),
+              batchKey.numDimensions(),
+              batchKey.quantization());
       CompletableFuture<Map<String, Vector>> embeddingsFuture =
           serviceManager
-              .embedAsync(orderedStrings, modelConfig, tier, context)
+              .embedAsync(orderedStrings, batchKey.modelConfig(), tier, context)
               .thenApply(
                   embeddingList -> {
                     Map<String, Vector> embeddings = new HashMap<>();
@@ -665,21 +709,24 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
                     }
                     return embeddings;
                   });
-      futuresPerModel.put(modelConfig, embeddingsFuture);
+      futuresPerBatchKey.put(batchKey, embeddingsFuture);
     }
-    return FutureUtils.transposeMap(futuresPerModel);
+    return FutureUtils.transposeMap(futuresPerBatchKey);
   }
 
   /**
-   * Estimates the number of bytes that embeddings for a single document will occupy in memory.
-   * Counts all auto-embed fields and computes {@code numDimensions * Float.BYTES} per field.
-   * TODO(CLOUDP-383889): Use the right quantization from the index definition once we support that.
+   * Estimates payload bytes for all auto-embed vectors on one document (dominant term for batch
+   * memory). {@link VectorIndexFieldDefinition.Type#AUTO_EMBED} uses {@link
+   * VectorAutoEmbedQuantization#estimatedEmbeddingPayloadBytes(int)}; legacy {@link
+   * VectorIndexFieldDefinition.Type#TEXT} uses float32 per dimension.
    */
   private static long estimateBytesPerDoc(VectorIndexDefinition vectorIndexDefinition) {
     return vectorIndexDefinition.getMappings().fieldMap().values().stream()
         .filter(VectorIndexFieldDefinition::isAutoEmbedField)
+        .map(def -> (VectorFieldAutoEmbeddingSpecification) def.asVectorField().specification())
         .mapToLong(
-            field -> (long) field.asVectorField().specification().numDimensions() * Float.BYTES)
+            spec ->
+                spec.autoEmbedQuantization().estimatedEmbeddingPayloadBytes(spec.numDimensions()))
         .sum();
   }
 
@@ -721,14 +768,60 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
         && event.getDocument().isPresent();
   }
 
-  private static Map<EmbeddingModelConfig, Set<String>> mergeTextsByModel(
-      List<Pair<DocumentEvent, Map<EmbeddingModelConfig, Set<String>>>> eventBundle) {
-    Map<EmbeddingModelConfig, Set<String>> merged = new HashMap<>();
-    for (var pair : eventBundle) {
-      for (var entry : pair.getRight().entrySet()) {
-        merged.computeIfAbsent(entry.getKey(), k -> new HashSet<>()).addAll(entry.getValue());
-      }
+  private static SetMultimap<EmbedConfigurationForBatch, String> mergeTextsByBatchKey(
+      List<DocumentTexts> eventBundle) {
+    SetMultimap<EmbedConfigurationForBatch, String> merged = HashMultimap.create();
+    for (var docTexts : eventBundle) {
+      merged.putAll(docTexts.textsPerBatchKey());
     }
     return merged;
   }
+
+  /**
+   * Precomputes {@link EmbedConfigurationForBatch} for each auto-embed path so callers (e.g. {@link
+   * #getTextValueBundles}, {@link #applyEmbeddingsToEvents}) need not re-derive keys from {@link
+   * EmbeddingModelConfig} and field mapping on every use.
+   */
+  static ImmutableMap<FieldPath, EmbedConfigurationForBatch> computeEmbedBatchKeyPerPath(
+      VectorIndexDefinition vectorIndexDefinition,
+      ImmutableMap<FieldPath, EmbeddingModelConfig> modelConfigPerPath) {
+    VectorIndexFieldMapping mappings = vectorIndexDefinition.getMappings();
+    ImmutableMap.Builder<FieldPath, EmbedConfigurationForBatch> builder = ImmutableMap.builder();
+    for (var entry : modelConfigPerPath.entrySet()) {
+      builder.put(
+          entry.getKey(), batchConfigurationForPath(mappings, entry.getKey(), entry.getValue()));
+    }
+    return builder.build();
+  }
+
+  private static EmbedConfigurationForBatch batchConfigurationForPath(
+      VectorIndexFieldMapping mappings, FieldPath path, EmbeddingModelConfig modelConfig) {
+    VectorFieldAutoEmbeddingSpecification spec = autoEmbeddingFieldSpecForPath(mappings, path);
+    return new EmbedConfigurationForBatch(
+        modelConfig, spec.numDimensions(), spec.autoEmbedQuantization());
+  }
+
+  private static VectorFieldAutoEmbeddingSpecification autoEmbeddingFieldSpecForPath(
+      VectorIndexFieldMapping fieldMapping, FieldPath path) {
+    return fieldMapping
+        .getFieldDefinition(path)
+        .filter(VectorIndexFieldDefinition::isAutoEmbedField)
+        .map(def -> (VectorFieldAutoEmbeddingSpecification) def.asVectorField().specification())
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "missing vector field definition for auto-embed path: " + path));
+  }
+
+  record EmbedConfigurationForBatch(
+      EmbeddingModelConfig modelConfig,
+      int numDimensions,
+      VectorAutoEmbedQuantization quantization) {}
+
+  record EmbedBundle(
+      List<DocumentEvent> events,
+      SetMultimap<EmbedConfigurationForBatch, String> textsPerBatchKey) {}
+
+  record DocumentTexts(
+      DocumentEvent event, SetMultimap<EmbedConfigurationForBatch, String> textsPerBatchKey) {}
 }

@@ -17,13 +17,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Utilities for {@link MaterializedViewIndexGeneration}, including detection of when two vector
- * index definitions differ only by Lucene-only parameters (e.g. hnswOptions). When Lucene-only
- * params change, replaceGenerator updates the lease in place (persistLeaseForGeneration) and
- * preserves the resume token (doInitialSync=false). Other changes trigger full replace with
- * doInitialSync=true.
- *
- * <p>Lucene-only params: hnswOptions, numPartitions, indexFeatureVersion. Other fields (path,
- * model, dimensions, filter, etc.) require resync.
+ * index definitions differ only by Lucene-only parameters (e.g. indexingMethod, hnswOptions,
+ * similarity, etc...). When Lucene params change, replaceGenerator updates the lease in place and
+ * preserves the resume token (skipInitialSync=true). Other changes trigger full replace with
+ * skipInitialSync=false.
  */
 public final class MaterializedViewIndexGenerationUtil {
 
@@ -200,7 +197,7 @@ public final class MaterializedViewIndexGenerationUtil {
     return false;
   }
 
-  /** Filter fields have changed (order-independent comparison). */
+  /** AUTO_EMBED field hash changed (path, model, numDimensions, quantization). */
   private static boolean autoEmbedFieldChanged(
       VectorIndexDefinition oldDef, VectorIndexDefinition newDef) {
     String oldHash = MaterializedViewCollectionResolver.computeHash(oldDef);

@@ -13,8 +13,9 @@ import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
-import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.index.version.Generation;
 import com.xgen.mongot.index.version.MaterializedViewGeneration;
 import com.xgen.mongot.index.version.MaterializedViewGenerationId;
@@ -71,17 +72,19 @@ public class MaterializedViewIndexGenerationTest {
             "voyage-3-large",
             "text",
             FieldPath.parse("desc"),
+            512,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
+            VectorAutoEmbedQuantization.FLOAT);
     VectorAutoEmbedFieldDefinition autoEmbedCustomHnsw =
         new VectorAutoEmbedFieldDefinition(
             "voyage-3-large",
             "text",
             FieldPath.parse("desc"),
+            512,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new VectorFieldSpecification.HnswOptions(32, 200)));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(
+                new VectorFieldSpecification.HnswOptions(32, 200)));
 
     VectorIndexDefinition defV1 =
         VectorIndexDefinitionBuilder.builder()
@@ -134,9 +137,9 @@ public class MaterializedViewIndexGenerationTest {
             "voyage-3-large",
             "text",
             FieldPath.parse("desc"),
+            512,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
+            VectorAutoEmbedQuantization.FLOAT);
     VectorIndexDefinition def =
         VectorIndexDefinitionBuilder.builder()
             .indexId(INDEX_ID)
@@ -161,9 +164,9 @@ public class MaterializedViewIndexGenerationTest {
             "voyage-3-large",
             "text",
             FieldPath.parse("desc"),
+            512,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
+            VectorAutoEmbedQuantization.FLOAT);
     VectorIndexDefinition defV1 =
         VectorIndexDefinitionBuilder.builder()
             .indexId(INDEX_ID)
@@ -216,17 +219,17 @@ public class MaterializedViewIndexGenerationTest {
             "voyage-3-large",
             "text",
             FieldPath.parse("desc"),
+            512,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
+            VectorAutoEmbedQuantization.FLOAT);
     VectorAutoEmbedFieldDefinition autoEmbedVoyage35 =
         new VectorAutoEmbedFieldDefinition(
             "voyage-3.5",
             "text",
             FieldPath.parse("desc"),
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
+            VectorAutoEmbedQuantization.FLOAT);
 
     VectorIndexDefinition defV1 =
         VectorIndexDefinitionBuilder.builder()

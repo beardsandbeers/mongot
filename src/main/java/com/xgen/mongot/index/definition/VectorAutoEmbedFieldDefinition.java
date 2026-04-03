@@ -1,141 +1,96 @@
 package com.xgen.mongot.index.definition;
 
 import static com.xgen.mongot.index.definition.VectorIndexFieldDefinition.Type.AUTO_EMBED;
-import static com.xgen.mongot.index.definition.VectorIndexingAlgorithm.HnswIndexingAlgorithm.DEFAULT_HNSW_OPTIONS;
-import static com.xgen.mongot.index.definition.VectorTextFieldSpecification.DEFAULT_MODALITY;
 
-import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
-import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import com.xgen.mongot.util.bson.parser.DocumentParser;
-import com.xgen.mongot.util.bson.parser.Field;
 import java.util.Objects;
-import java.util.Optional;
 import org.bson.BsonDocument;
 import org.jetbrains.annotations.TestOnly;
 
-/**
- * Part of auto embedding Vector Index definition that represents a field with embedding model
- * options.
- */
+/** Auto-embedding field definition with embedding model options. */
 public class VectorAutoEmbedFieldDefinition extends VectorIndexVectorFieldDefinition {
-  private static final VectorSimilarity DEFAULT_VECTOR_SIMILARITY = VectorSimilarity.DOT_PRODUCT;
-  private static final VectorQuantization DEFAULT_VECTOR_QUANTIZATION = VectorQuantization.NONE;
 
-  private static class Fields {
-    // no need to include hnswOptions, compression fields & indexingMethod because those fields are
-    // defined in VectorFieldSpecification
-    static final Field.Required<String> MODEL = Field.builder("model").stringField().required();
-    static final Field.Required<String> MODALITY =
-        Field.builder("modality")
-            .stringField()
-            .validate(
-                modality ->
-                    modality.equalsIgnoreCase(DEFAULT_MODALITY)
-                        ? java.util.Optional.empty()
-                        : java.util.Optional.of("must be '" + DEFAULT_MODALITY + "'"))
-            .required();
-    private static final Field.WithDefault<VectorSimilarity> AUTO_EMBEDDING_SIMILARITY =
-        Field.builder("similarity")
-            .enumField(VectorSimilarity.class)
-            .asCamelCase()
-            .optional()
-            .withDefault(DEFAULT_VECTOR_SIMILARITY);
+  private final VectorAutoEmbedFieldSpecification specification;
+
+  public VectorAutoEmbedFieldDefinition(
+      FieldPath path, VectorAutoEmbedFieldSpecification specification) {
+    super(path);
+    this.specification = specification;
   }
-
-  private final VectorTextFieldSpecification specification;
 
   public VectorAutoEmbedFieldDefinition(
       String modelName,
       String modality,
-      FieldPath textPath,
+      FieldPath autoEmbedPath,
+      int numDimensions,
       VectorSimilarity similarity,
-      VectorQuantization quantization,
-      Optional<VectorFieldSpecification.HnswOptions> hnswOptions) {
-    super(textPath);
-    // TODO(CLOUDP-388224): proper handling of flat index for indexingMethod
-    VectorIndexingAlgorithm.HnswIndexingAlgorithm indexingAlgorithm =
-        hnswOptions
-            .map(VectorIndexingAlgorithm.HnswIndexingAlgorithm::new)
-            .orElseGet(VectorIndexingAlgorithm.HnswIndexingAlgorithm::new);
+      VectorAutoEmbedQuantization autoEmbedQuantization,
+      VectorIndexingAlgorithm indexingAlgorithm) {
+    super(autoEmbedPath);
     this.specification =
-        new VectorTextFieldSpecification(
-            validateAndGet(modelName).collectionScan().modelConfig().getOutputDimensions(),
+        new VectorAutoEmbedFieldSpecification(
+            numDimensions,
             similarity,
-            quantization,
+            autoEmbedQuantization,
             indexingAlgorithm,
             modelName,
             modality);
   }
 
-  public VectorAutoEmbedFieldDefinition(String modelName, String modality, FieldPath textPath) {
-    this(
-        modelName,
-        modality,
-        textPath,
-        DEFAULT_VECTOR_SIMILARITY,
-        DEFAULT_VECTOR_QUANTIZATION,
-        Optional.empty());
+  @TestOnly
+  public VectorAutoEmbedFieldDefinition(
+      String modelName,
+      String modality,
+      FieldPath autoEmbedPath,
+      int numDimensions,
+      VectorSimilarity similarity,
+      VectorAutoEmbedQuantization autoEmbedQuantization) {
+    super(autoEmbedPath);
+    this.specification =
+        new VectorAutoEmbedFieldSpecification(
+            numDimensions,
+            similarity,
+            autoEmbedQuantization,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(),
+            modelName,
+            modality);
   }
 
   @TestOnly
   public VectorAutoEmbedFieldDefinition(String modelName, FieldPath textPath) {
     this(
         modelName,
-        DEFAULT_MODALITY,
+        VectorAutoEmbedFieldSpecification.DEFAULT_MODALITY,
         textPath,
-        DEFAULT_VECTOR_SIMILARITY,
-        DEFAULT_VECTOR_QUANTIZATION,
-        Optional.empty());
-  }
-
-  @TestOnly
-  public VectorAutoEmbedFieldDefinition(FieldPath textPath) {
-    this("voyage-3-large", DEFAULT_MODALITY, textPath);
+        1024,
+        VectorSimilarity.DOT_PRODUCT,
+        VectorAutoEmbedQuantization.FLOAT,
+        new VectorIndexingAlgorithm.HnswIndexingAlgorithm());
   }
 
   @Override
-  public VectorTextFieldSpecification specification() {
+  public VectorAutoEmbedFieldSpecification specification() {
     return this.specification;
   }
 
   @Override
   public BsonDocument toBson() {
-    Optional<VectorFieldSpecification.HnswOptions> maybeHnswOptions =
-        this.specification.indexingAlgorithm()
-                instanceof VectorIndexingAlgorithm.HnswIndexingAlgorithm h
-            ? Optional.of(h.options())
-            : Optional.empty();
     return BsonDocumentBuilder.builder()
         .field(VectorIndexFieldDefinition.Fields.TYPE, AUTO_EMBED)
         .field(VectorIndexFieldDefinition.Fields.PATH, this.path)
-        .field(Fields.MODEL, this.specification.modelName().toLowerCase())
-        .field(Fields.MODALITY, this.specification.modality().toLowerCase())
-        .field(VectorFieldSpecification.Fields.SIMILARITY, this.specification.similarity())
-        .field(VectorFieldSpecification.Fields.QUANTIZATION, this.specification.quantization())
-        .fieldOmitDefaultValue(
-            VectorFieldSpecification.Fields.HNSW_OPTIONS, maybeHnswOptions, DEFAULT_HNSW_OPTIONS)
+        .join(this.specification.toBson())
         .build();
   }
 
   public static VectorAutoEmbedFieldDefinition fromBson(DocumentParser parser)
       throws BsonParseException {
-    FieldPath textPath = parser.getField(VectorIndexFieldDefinition.Fields.PATH).unwrap();
-    String modelName = parser.getField(Fields.MODEL).unwrap().toLowerCase();
-    String modality = parser.getField(Fields.MODALITY).unwrap().toLowerCase();
-    VectorQuantization quantization =
-        parser.getField(VectorFieldSpecification.Fields.QUANTIZATION).unwrap();
-    VectorSimilarity similarity = parser.getField(Fields.AUTO_EMBEDDING_SIMILARITY).unwrap();
-    Optional<VectorFieldSpecification.HnswOptions> maybeHnswOptions =
-        parser.getField(VectorFieldSpecification.Fields.HNSW_OPTIONS).unwrap();
+    FieldPath autoEmbedPath = parser.getField(VectorIndexFieldDefinition.Fields.PATH).unwrap();
     return new VectorAutoEmbedFieldDefinition(
-        modelName, modality, textPath, similarity, quantization, maybeHnswOptions);
-  }
-
-  private static EmbeddingModelConfig validateAndGet(String modelName) {
-    return EmbeddingModelCatalog.resolveModelConfigOrDefault(modelName);
+        autoEmbedPath, VectorAutoEmbedFieldSpecification.fromBson(parser));
   }
 
   @Override
@@ -152,8 +107,7 @@ public class VectorAutoEmbedFieldDefinition extends VectorIndexVectorFieldDefini
       return false;
     }
     return Objects.equals(this.path, that.path)
-        && Objects.equals(this.specification, that.specification)
-        && Objects.equals(this.specification.hashCode(), that.specification.hashCode());
+        && Objects.equals(this.specification, that.specification);
   }
 
   @Override

@@ -37,11 +37,11 @@ import java.util.UUID;
  */
 public class MaterializedViewCollectionResolver {
 
+  public static final String MV_COLLECTION_SCHEMA_NAMESPACE = "_autoEmbed";
   private static final String DELIM = "-";
   // Using a character not allowed in field attributes to avoid collisions.
   private static final String HASH_STRING_DELIM = ";";
   private static final int NAMESPACE_EXISTS_ERROR_CODE = 48;
-  private static final String MV_COLLECTION_SCHEMA_NAMESPACE = "_autoEmbed";
   private static final String MV_DATABASE_NAME = "__mdb_internal_search";
 
   // Length of the hash in bytes before hex encoding (16 bytes -> 32 hex chars). We need to
@@ -252,18 +252,17 @@ public class MaterializedViewCollectionResolver {
 
     StringBuilder sb = new StringBuilder();
     for (var field : sortedFields) {
-      // Include path, model name, modality and num dimensions in hash as those fields impact the
-      // embeddings generated.
-      // TODO(CLOUDP-382790): Ensure any other relevant field params are added to the hash
-      // TODO(CLOUDP-388224): add quantization to the hash
-      // function before launch.
+      // Include path, model name, modality, num dimensions, and quantization in hash as those
+      // fields impact the embeddings generated or how they are stored.
       sb.append(field.getPath().toString())
           .append(HASH_STRING_DELIM)
           .append(field.specification().modelName())
           .append(HASH_STRING_DELIM)
           .append(field.specification().modality())
           .append(HASH_STRING_DELIM)
-          .append(field.specification().numDimensions());
+          .append(field.specification().numDimensions())
+          .append(HASH_STRING_DELIM)
+          .append(field.specification().autoEmbedQuantization());
       // For future reference: Include additional field params conditionally for newer hash versions
       // as needed. Note that default values need careful handling to ensure that simply bumping the
       // hash version doesn't change the hash value for all indexes.

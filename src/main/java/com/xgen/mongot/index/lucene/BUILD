@@ -92,6 +92,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/analyzer/definition",
         "//src/main/java/com/xgen/mongot/index/analyzer/wrapper",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/lucene/backing",
         "//src/main/java/com/xgen/mongot/index/lucene/blobstore",
         "//src/main/java/com/xgen/mongot/index/lucene/config",

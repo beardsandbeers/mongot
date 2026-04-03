@@ -1,12 +1,13 @@
 package com.xgen.mongot.index.definition;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 import com.xgen.mongot.index.definition.VectorFieldSpecification.HnswOptions;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.VectorDataFieldDefinitionBuilder;
-import java.util.Optional;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -22,7 +23,7 @@ public class VectorTextTest {
             .similarity(VectorSimilarity.EUCLIDEAN)
             .quantization(VectorQuantization.NONE)
             .build();
-    Assert.assertNotSame(dataField.getType(), VectorIndexFieldDefinition.Type.TEXT);
+    Assert.assertNotSame(VectorIndexFieldDefinition.Type.TEXT, dataField.getType());
   }
 
   @Test
@@ -43,6 +44,8 @@ public class VectorTextTest {
     Assert.assertEquals(1024, textField.specification().numDimensions());
     Assert.assertEquals(VectorSimilarity.DOT_PRODUCT, textField.specification().similarity());
     Assert.assertEquals(VectorQuantization.NONE, textField.specification().quantization());
+    Assert.assertEquals(
+        VectorAutoEmbedQuantization.FLOAT, textField.specification().autoEmbedQuantization());
   }
 
   // VectorAutoEmbedFieldDefinition.equals uses Objects.equals(this.specification,
@@ -58,19 +61,19 @@ public class VectorTextTest {
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(32, 200)));
+            VectorAutoEmbedQuantization.FLOAT);
     VectorAutoEmbedFieldDefinition b =
         new VectorAutoEmbedFieldDefinition(
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(32, 200)));
-    assertTrue(a.equals(b));
-    assertTrue(b.equals(a));
+            VectorAutoEmbedQuantization.FLOAT);
+    assertEquals(a, b);
+    assertEquals(b, a);
   }
 
   @Test
@@ -81,19 +84,19 @@ public class VectorTextTest {
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
+            VectorAutoEmbedQuantization.FLOAT);
     VectorAutoEmbedFieldDefinition b =
         new VectorAutoEmbedFieldDefinition(
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
-    assertTrue(a.equals(b));
-    assertTrue(b.equals(a));
+            VectorAutoEmbedQuantization.FLOAT);
+    assertEquals(a, b);
+    assertEquals(b, a);
   }
 
   @Test
@@ -104,19 +107,20 @@ public class VectorTextTest {
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(16, 100)));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(16, 100)));
     VectorAutoEmbedFieldDefinition b =
         new VectorAutoEmbedFieldDefinition(
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.empty());
-    assertTrue(a.equals(b));
-    assertTrue(b.equals(a));
+            VectorAutoEmbedQuantization.FLOAT);
+    assertEquals(a, b);
+    assertEquals(b, a);
   }
 
   @Test
@@ -127,19 +131,21 @@ public class VectorTextTest {
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(64, 200)));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(64, 200)));
     VectorAutoEmbedFieldDefinition customHnsw =
         new VectorAutoEmbedFieldDefinition(
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(32, 200)));
-    assertFalse(defaultHnsw.equals(customHnsw));
-    assertFalse(customHnsw.equals(defaultHnsw));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(32, 200)));
+    assertNotEquals(defaultHnsw, customHnsw);
+    assertNotEquals(customHnsw, defaultHnsw);
   }
 
   @Test
@@ -149,19 +155,21 @@ public class VectorTextTest {
             "dummy",
             "text",
             FieldPath.parse("desc"),
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(32, 200)));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(32, 200)));
     VectorAutoEmbedFieldDefinition b =
         new VectorAutoEmbedFieldDefinition(
             "dummy",
             "text",
             FieldPath.parse("title"),
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(32, 200)));
-    assertFalse(a.equals(b));
-    assertFalse(b.equals(a));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(32, 200)));
+    assertNotEquals(a, b);
+    assertNotEquals(b, a);
   }
 
   @Test
@@ -172,17 +180,34 @@ public class VectorTextTest {
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(16, 100)));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(16, 100)));
     VectorAutoEmbedFieldDefinition same =
         new VectorAutoEmbedFieldDefinition(
             "dummy",
             "text",
             path,
+            1024,
             VectorSimilarity.DOT_PRODUCT,
-            VectorQuantization.NONE,
-            Optional.of(new HnswOptions(16, 100)));
-    assertTrue(withCustomHnsw.equals(same));
+            VectorAutoEmbedQuantization.FLOAT,
+            new VectorIndexingAlgorithm.HnswIndexingAlgorithm(new HnswOptions(16, 100)));
+    assertEquals(withCustomHnsw, same);
+  }
+
+  @Test
+  public void estimatedEmbeddingPayloadBytes_matchesExpectedPerQuantization() {
+    int dims = 256;
+    assertEquals(
+        (long) dims * Float.BYTES,
+        VectorAutoEmbedQuantization.FLOAT.estimatedEmbeddingPayloadBytes(dims));
+    assertEquals(dims, VectorAutoEmbedQuantization.SCALAR.estimatedEmbeddingPayloadBytes(dims));
+    assertEquals(
+        (long) dims * Float.BYTES,
+        VectorAutoEmbedQuantization.BINARY.estimatedEmbeddingPayloadBytes(dims));
+    assertEquals(
+        dims / 8,
+        VectorAutoEmbedQuantization.BINARY_NO_RESCORE.estimatedEmbeddingPayloadBytes(dims));
   }
 }

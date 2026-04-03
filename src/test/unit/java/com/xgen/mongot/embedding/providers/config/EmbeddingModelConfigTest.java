@@ -9,7 +9,7 @@ import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.Embedd
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.VoyageEmbeddingCredentials;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.VoyageModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig.WorkloadParams;
-import com.xgen.mongot.embedding.providers.configs.VoyageModelVectorParams;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import java.util.Optional;
@@ -38,7 +38,7 @@ public class EmbeddingModelConfigTest {
           Optional.of(1000),
           Optional.of(100_000),
           Optional.of("text"),
-          Optional.of(VoyageModelVectorParams.Quantization.SCALAR));
+          Optional.of(VectorAutoEmbedQuantization.SCALAR));
 
   private static final EmbeddingServiceConfig.ErrorHandlingConfig BASE_ERROR_CONFIG =
       new EmbeddingServiceConfig.ErrorHandlingConfig(10, 200L, 50L, 0.1);
@@ -228,28 +228,9 @@ public class EmbeddingModelConfigTest {
   }
 
   @Test
-  public void testVoyageModelConfig_parsesConfCallQuantization_allLiterals()
-      throws BsonParseException {
-    assertParsedQuantization("float", VoyageModelVectorParams.Quantization.NONE);
-    assertParsedQuantization("scalar", VoyageModelVectorParams.Quantization.SCALAR);
-    assertParsedQuantization("binary", VoyageModelVectorParams.Quantization.BINARY);
-    assertParsedQuantization(
-        "binaryNoRescore", VoyageModelVectorParams.Quantization.BINARY_NO_RESCORE);
-  }
-
-  @Test
-  public void testVoyageModelConfig_quantization_toBson_encodesConfCallLiterals() {
-    assertQuantizationWire(VoyageModelVectorParams.Quantization.NONE, "float");
-    assertQuantizationWire(VoyageModelVectorParams.Quantization.SCALAR, "scalar");
-    assertQuantizationWire(VoyageModelVectorParams.Quantization.BINARY, "binary");
-    assertQuantizationWire(
-        VoyageModelVectorParams.Quantization.BINARY_NO_RESCORE, "binaryNoRescore");
-  }
-
-  @Test
   public void testVoyageModelConfig_quantization_roundTrip_allValues() throws BsonParseException {
-    for (VoyageModelVectorParams.Quantization quantization :
-        VoyageModelVectorParams.Quantization.values()) {
+
+    for (VectorAutoEmbedQuantization quantization : VectorAutoEmbedQuantization.values()) {
       VoyageModelConfig original =
           new VoyageModelConfig(
               Optional.of(512),
@@ -297,7 +278,7 @@ public class EmbeddingModelConfigTest {
             Optional.empty(),
             Optional.empty(),
             Optional.of("text"),
-            Optional.of(VoyageModelVectorParams.Quantization.SCALAR));
+            Optional.of(VectorAutoEmbedQuantization.SCALAR));
     BsonDocument root = new BsonDocument();
     BsonDocument encoded = original.toBson();
     encoded.keySet().forEach(k -> root.put(k, encoded.get(k)));
@@ -434,30 +415,6 @@ public class EmbeddingModelConfigTest {
     assertEquals(Optional.empty(), result.query().rpsPerProvider());
     assertEquals(Optional.empty(), result.changeStream().rpsPerProvider());
     assertEquals(Optional.empty(), result.collectionScan().rpsPerProvider());
-  }
-
-  private static void assertParsedQuantization(
-      String wire, VoyageModelVectorParams.Quantization expected) throws BsonParseException {
-    BsonDocument root = new BsonDocument();
-    root.put("_provider", new BsonString("VOYAGE"));
-    root.put("quantization", new BsonString(wire));
-    VoyageModelConfig parsed =
-        VoyageModelConfig.fromBson(
-            BsonDocumentParser.fromRoot(root).allowUnknownFields(true).build());
-    assertEquals(Optional.of(expected), parsed.quantization);
-  }
-
-  private static void assertQuantizationWire(
-      VoyageModelVectorParams.Quantization quantization, String expectedWire) {
-    VoyageModelConfig config =
-        new VoyageModelConfig(
-            Optional.of(512),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.of(quantization));
-    assertEquals(expectedWire, config.toBson().getString("quantization").getValue());
   }
 
   private static void assertQuantizationParseFails(String wire) {

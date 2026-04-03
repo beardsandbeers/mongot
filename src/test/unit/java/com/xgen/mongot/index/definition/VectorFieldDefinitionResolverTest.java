@@ -4,6 +4,7 @@ import static com.xgen.mongot.index.definition.VectorIndexFieldDefinition.Type;
 import static com.xgen.mongot.index.definition.VectorSimilarity.EUCLIDEAN;
 
 import com.google.common.truth.Truth;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.VectorIndexDefinitionBuilder;

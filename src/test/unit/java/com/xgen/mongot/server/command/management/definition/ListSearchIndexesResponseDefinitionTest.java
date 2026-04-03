@@ -2,8 +2,8 @@ package com.xgen.mongot.server.command.management.definition;
 
 import static com.xgen.testing.BsonSerializationTestSuite.fromEncodable;
 
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.server.command.management.definition.ListSearchIndexesResponseDefinition.Cursor;
 import com.xgen.mongot.server.command.management.definition.ListSearchIndexesResponseDefinition.DefinitionVersion;
 import com.xgen.mongot.server.command.management.definition.ListSearchIndexesResponseDefinition.HostIndexStatusDetail;

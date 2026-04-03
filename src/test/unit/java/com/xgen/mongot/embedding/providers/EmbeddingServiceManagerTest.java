@@ -22,6 +22,7 @@ import com.xgen.mongot.embedding.exceptions.EmbeddingProviderTransientException;
 import com.xgen.mongot.embedding.providers.clients.ClientInterface;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.util.bson.Vector;
 import com.xgen.mongot.util.concurrent.Executors;
 import com.xgen.mongot.util.concurrent.NamedScheduledExecutorService;
@@ -41,7 +42,8 @@ import org.mockito.Mockito;
 
 public class EmbeddingServiceManagerTest {
   private static EmbeddingRequestContext dummyContext() {
-    return new EmbeddingRequestContext("testdb", "testIndex", "testCollection");
+    return new EmbeddingRequestContext(
+        "testdb", "testIndex", "testCollection", 1024, VectorAutoEmbedQuantization.FLOAT);
   }
 
   private static final EmbeddingServiceConfig.EmbeddingConfig VOYAGE_3_CONFIG =

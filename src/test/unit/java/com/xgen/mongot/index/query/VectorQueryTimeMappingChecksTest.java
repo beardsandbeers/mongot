@@ -2,8 +2,8 @@ package com.xgen.mongot.index.query;
 
 import com.xgen.mongot.index.definition.VectorFieldDefinitionResolver;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.TestUtils;
 import com.xgen.testing.mongot.index.definition.VectorDataFieldDefinitionBuilder;

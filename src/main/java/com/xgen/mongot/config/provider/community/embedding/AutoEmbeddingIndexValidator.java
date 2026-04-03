@@ -28,6 +28,9 @@ import org.bson.BsonValue;
  */
 public class AutoEmbeddingIndexValidator {
 
+  // temporary, to be removed after allowing advanced configs in community
+  public static final String AUTO_EMBED_INDEX_FIELD_TYPE = "autoEmbed";
+
   /**
    * Runs validations for auto-embedding indexes on community. Works for both vector and search
    * index definitions.
@@ -51,25 +54,49 @@ public class AutoEmbeddingIndexValidator {
       case VectorIndexDefinition vectorIndex -> {
         validateNoMixedVectorTypes(vectorIndex);
         if (definitionBson.isPresent()) {
-          validateNoHnswOptionsInAutoEmbedFields(definitionBson.get());
+          validateUnsupportedAutoEmbedOptions(definitionBson.get());
         }
       }
       case SearchIndexDefinition searchIndex -> validateSearchNoMixedVectorTypes(searchIndex);
     }
   }
 
+  /** Unsupported auto-embed field options on community. */
+  private static final List<UnsupportedOption> UNSUPPORTED_AUTO_EMBED_OPTIONS =
+      List.of(
+          new UnsupportedOption(
+              "indexingMethod",
+              "indexingMethod is not supported for auto-embedding indexes on community. "
+                  + "Omit indexingMethod to use default HNSW."),
+          new UnsupportedOption(
+              "hnswOptions",
+              "hnswOptions is not supported for auto-embedding indexes on community. "
+                  + "Omit hnswOptions to use default HNSW settings."),
+          new UnsupportedOption(
+              "similarity",
+              "similarity is not supported for auto-embedding indexes on community. "
+                  + "Omit similarity to use the default (dotProduct)."),
+          new UnsupportedOption(
+              "quantization",
+              "quantization is not supported for auto-embedding indexes on community. "
+                  + "Omit quantization to use the default (float)."),
+          new UnsupportedOption(
+              "numDimensions",
+              "numDimensions is not supported for auto-embedding indexes on community. "
+                  + "The embedding model determines dimensions automatically."));
+
+  private record UnsupportedOption(String fieldName, String errorMessage) {}
+
   /**
-   * Validates that the raw definition BSON does not contain hnswOptions in any autoEmbed field.
-   * Call this before parsing so that any explicit hnswOptions (including default values) is
-   * rejected on community. We use a BSON walk here instead of parser-level rejection to avoid
-   * touching the shared parser or introducing parse-context flags; once community allows
-   * hnswOptions, this method will be removed.
+   * Rejects raw definition BSON that contains unsupported options in any autoEmbed field on
+   * community. Call before parsing. BSON walk avoids touching shared parser; remove when community
+   * allows these options.
    *
-   * @param definitionBson the raw index definition document (e.g. has "fields" array)
-   * @throws InvalidIndexDefinitionException if any autoEmbed field contains hnswOptions
+   * @param definitionBson raw index definition (e.g. has "fields" array)
+   * @throws InvalidIndexDefinitionException if any autoEmbed field has unsupported options
    */
   @VisibleForTesting
-  public static void validateNoHnswOptionsInAutoEmbedFields(BsonDocument definitionBson)
+  public static void validateUnsupportedAutoEmbedOptions(BsonDocument definitionBson)
       throws InvalidIndexDefinitionException {
     BsonValue fieldsValue = definitionBson.get("fields");
     if (fieldsValue == null || !fieldsValue.isArray()) {
@@ -81,14 +108,15 @@ public class AutoEmbeddingIndexValidator {
         continue;
       }
       BsonDocument field = v.asDocument();
-      if (!field.containsKey("type") || !field.get("type").isString()) {
-        continue;
-      }
-      if ("autoEmbed".equalsIgnoreCase(field.getString("type").getValue())
-          && field.containsKey("hnswOptions")) {
-        throw new InvalidIndexDefinitionException(
-            "hnswOptions is not supported for auto-embedding indexes on community. "
-                + "Omit hnswOptions to use default HNSW settings.");
+      // check params for autoEmbed fields and skip filter fields
+      if (field.containsKey("type")
+          && field.get("type").isString()
+          && AUTO_EMBED_INDEX_FIELD_TYPE.equalsIgnoreCase(field.getString("type").getValue())) {
+        for (UnsupportedOption option : UNSUPPORTED_AUTO_EMBED_OPTIONS) {
+          if (field.containsKey(option.fieldName())) {
+            throw new InvalidIndexDefinitionException(option.errorMessage());
+          }
+        }
       }
     }
   }

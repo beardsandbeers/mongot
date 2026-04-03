@@ -32,6 +32,7 @@ java_library(
     deps = [
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/ingestion/handlers",
         "//src/main/java/com/xgen/mongot/index/ingestion/stored",
         "//src/main/java/com/xgen/mongot/index/lucene/config",

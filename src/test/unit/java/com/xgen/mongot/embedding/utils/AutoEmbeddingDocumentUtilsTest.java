@@ -1012,7 +1012,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1030,7 +1030,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1047,7 +1047,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1066,7 +1066,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1082,7 +1082,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1099,7 +1099,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1119,7 +1119,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1141,7 +1141,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and multiple filter fields
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("size")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
@@ -1167,7 +1167,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Setup: index with auto-embed field "text" and filter field "color"
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
 
@@ -1190,7 +1190,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Arrange
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("tags")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
     BsonDocument bsonDoc =
@@ -1222,7 +1222,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Arrange
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("tags")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());
     BsonDocument bsonDoc =
@@ -1246,7 +1246,7 @@ public class AutoEmbeddingDocumentUtilsTest {
     // Arrange
     List<VectorIndexFieldDefinition> fields =
         List.of(
-            new VectorAutoEmbedFieldDefinition(FieldPath.parse("text")),
+            new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse("text")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("color")),
             new VectorIndexFilterFieldDefinition(FieldPath.parse("tags")));
     VectorIndexFieldMapping mappings = VectorIndexFieldMapping.create(fields, Optional.empty());

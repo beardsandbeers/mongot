@@ -3,17 +3,19 @@ package com.xgen.testing.mongot.index.definition;
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.StoredSourceDefinition;
 import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
+import com.xgen.mongot.index.definition.VectorAutoEmbedFieldSpecification;
 import com.xgen.mongot.index.definition.VectorDataFieldDefinition;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSearchEngine;
 import com.xgen.mongot.index.definition.VectorSimilarity;
 import com.xgen.mongot.index.definition.VectorTextFieldDefinition;
 import com.xgen.mongot.index.definition.ViewDefinition;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -264,7 +266,7 @@ public class VectorIndexDefinitionBuilder {
 
   public VectorIndexDefinitionBuilder withAutoEmbedField(String path) {
     VectorAutoEmbedFieldDefinition vectorText =
-        new VectorAutoEmbedFieldDefinition(FieldPath.parse(path));
+        new VectorAutoEmbedFieldDefinition("voyage-3-large", FieldPath.parse(path));
     this.fields.add(vectorText);
     return this;
   }
@@ -273,6 +275,24 @@ public class VectorIndexDefinitionBuilder {
     VectorAutoEmbedFieldDefinition vectorText =
         new VectorAutoEmbedFieldDefinition(modelName, FieldPath.parse(path));
     this.fields.add(vectorText);
+    return this;
+  }
+
+  public VectorIndexDefinitionBuilder withAutoEmbedField(
+      String path,
+      String modelName,
+      int numDimensions,
+      VectorAutoEmbedQuantization autoEmbedQuantization,
+      VectorSimilarity similarity) {
+    VectorAutoEmbedFieldDefinition field =
+        new VectorAutoEmbedFieldDefinition(
+            modelName,
+            VectorAutoEmbedFieldSpecification.DEFAULT_MODALITY,
+            FieldPath.parse(path),
+            numDimensions,
+            similarity,
+            autoEmbedQuantization);
+    this.fields.add(field);
     return this;
   }
 

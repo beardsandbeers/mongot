@@ -13,6 +13,7 @@ import com.google.common.truth.Truth;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.BsonDeserializationTestSuite;
 import com.xgen.testing.BsonDeserializationTestSuite.TestSpecWrapper;

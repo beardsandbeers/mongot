@@ -3,8 +3,8 @@ package com.xgen.mongot.index.lucene;
 import static com.xgen.mongot.index.lucene.VectorIndexingAndQueryingTestHarness.buildVectorIndexDefinition;
 
 import com.googlecode.junittoolbox.ParallelParameterized;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.bson.Vector;
 import java.util.ArrayList;
 import java.util.Arrays;

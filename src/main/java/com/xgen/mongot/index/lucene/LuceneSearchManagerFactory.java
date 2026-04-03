@@ -8,7 +8,7 @@ import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.FieldDefinitionResolver;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
-import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.index.lucene.LuceneFacetCollectorSearchManager.FacetCollectorQueryInfo;
 import com.xgen.mongot.index.lucene.LuceneFacetGenericDrillSidewaysSearchManager.GenericDrillSidewaysResultFacetCollectorQueryInfo;
 import com.xgen.mongot.index.lucene.quantization.BinaryQuantizedVectorRescorer;

@@ -1,5 +1,6 @@
 package com.xgen.mongot.embedding.providers.configs;
 
+import com.google.common.collect.ImmutableMap;
 import com.xgen.mongot.util.bson.FloatVector;
 import com.xgen.mongot.util.bson.Vector;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
 
@@ -131,9 +133,9 @@ public class VoyageApiSchema {
           Field.builder("usage").classField(EmbedUsage::fromBson).allowUnknownFields().required();
     }
 
-    public static EmbedResponse fromBson(DocumentParser parser, String voyageOutputDataType)
+    public static EmbedResponse fromBson(DocumentParser parser, String outputDataType)
         throws BsonParseException {
-      VOYAGE_PARSE_OUTPUT_DTYPE.set(voyageOutputDataType);
+      VOYAGE_PARSE_OUTPUT_DTYPE.set(outputDataType);
       try {
         return new EmbedResponse(
             parser.getField(Fields.OBJECT_TYPE).unwrap(),
@@ -256,22 +258,25 @@ public class VoyageApiSchema {
         ByteBuffer byteBuffer = ByteBuffer.wrap(decoded).order(ByteOrder.LITTLE_ENDIAN);
         String dtype =
             Optional.ofNullable(VOYAGE_PARSE_OUTPUT_DTYPE.get())
-                .orElse("float")
+                .orElse(VoyageEmbeddingDType.FLOAT.getName())
                 .toLowerCase(Locale.ROOT);
-        return switch (dtype) {
-          case "float" -> {
+
+        VoyageEmbeddingDType embeddingDType = VoyageEmbeddingDType.fromName(dtype).orElse(null);
+        if (embeddingDType == null) {
+          return context.handleSemanticError(
+              "Unsupported Voyage output_dtype for embedding decode: " + dtype);
+        }
+
+        return switch (embeddingDType) {
+          case FLOAT -> {
             if (byteBuffer.remaining() % Float.BYTES != 0) {
               yield context.handleSemanticError(
                   "float embedding byte length is not a multiple of 4");
             }
             yield parseFloatVector(byteBuffer);
           }
-          case "int8", "uint8" -> parseInt8Vector(byteBuffer);
-          case "binary" -> parseVoyageBitPackedVector(byteBuffer, true);
-          case "ubinary" -> parseVoyageBitPackedVector(byteBuffer, false);
-          default ->
-              context.handleSemanticError(
-                  "Unsupported Voyage output_dtype for embedding decode: " + dtype);
+          case INT8 -> parseInt8Vector(byteBuffer);
+          case BINARY -> parseVoyageBitPackedVector(byteBuffer);
         };
       } catch (IllegalArgumentException e) {
         return context.handleSemanticError("Invalid base64 for embedding");
@@ -318,6 +323,40 @@ public class VoyageApiSchema {
     public final int totalTokens;
   }
 
+  /**
+   * Supported Voyage {@code output_dtype} values for embedding decode. Lives in the {@code configs}
+   * package so both API schema and client code can share the same set of wire values without
+   * introducing a dependency cycle between {@code configs} and {@code clients}.
+   */
+  public enum VoyageEmbeddingDType {
+    FLOAT("float"),
+    INT8("int8"),
+    BINARY("binary");
+
+    private static final ImmutableMap<String, VoyageEmbeddingDType> NAME_TO_DTYPE =
+        ImmutableMap.copyOf(
+            java.util.Arrays.stream(values())
+                .collect(
+                    java.util.stream.Collectors.toMap(
+                        VoyageEmbeddingDType::getName,
+                        Function.identity(),
+                        (existing, replacement) -> existing)));
+
+    private final String name;
+
+    VoyageEmbeddingDType(String name) {
+      this.name = name;
+    }
+
+    public String getName() {
+      return this.name;
+    }
+
+    static Optional<VoyageEmbeddingDType> fromName(String name) {
+      return Optional.ofNullable(NAME_TO_DTYPE.get(name));
+    }
+  }
+
   private static Vector parseFloatVector(ByteBuffer bsonInput) {
     FloatBuffer floatBuffer = bsonInput.asFloatBuffer();
     float[] vector = new float[floatBuffer.remaining()];
@@ -338,16 +377,12 @@ public class VoyageApiSchema {
    * href="https://docs.voyageai.com/docs/flexible-dimensions-and-quantization">offset binary</a>:
    * API values are signed int8 where {@code stored = (unsignedPackedByte - 128)}. We recover the
    * raw packed byte with {@code unsignedPackedByte = stored + 128} before {@link Vector#fromBits}.
-   *
-   * <p>{@code ubinary} uses raw unsigned packed bytes (0–255) with no offset.
    */
-  private static Vector parseVoyageBitPackedVector(ByteBuffer byteBuffer, boolean offsetBinary) {
+  private static Vector parseVoyageBitPackedVector(ByteBuffer byteBuffer) {
     byte[] bytes = new byte[byteBuffer.remaining()];
     byteBuffer.get(bytes);
-    if (offsetBinary) {
-      for (int i = 0; i < bytes.length; i++) {
-        bytes[i] = (byte) (bytes[i] + 128);
-      }
+    for (int i = 0; i < bytes.length; i++) {
+      bytes[i] = (byte) (bytes[i] + 128);
     }
     return Vector.fromBits(bytes);
   }

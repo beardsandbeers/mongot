@@ -50,6 +50,7 @@ java_test_suite(
         "//src/main/java/com/xgen/mongot/index/analyzer/custom",
         "//src/main/java/com/xgen/mongot/index/analyzer/definition",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/path/string",
         "//src/main/java/com/xgen/mongot/index/query/sort",
         "//src/main/java/com/xgen/mongot/index/version",

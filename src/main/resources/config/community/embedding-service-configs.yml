@@ -12,6 +12,8 @@ configs:
       modelConfig:
         batchSize: 1000
         batchTokenLimit: 120000
+        outputDimensions: 1024
+        quantization: float
       errorHandlingConfig:
         maxRetries: 50
         initialRetryWaitMs: 200
@@ -27,6 +29,8 @@ configs:
       modelConfig:
         batchSize: 1000
         batchTokenLimit: 320000
+        outputDimensions: 1024
+        quantization: float
       errorHandlingConfig:
         maxRetries: 50
         initialRetryWaitMs: 200
@@ -42,6 +46,8 @@ configs:
       modelConfig:
         batchSize: 1000
         batchTokenLimit: 1000000
+        outputDimensions: 1024
+        quantization: float
       errorHandlingConfig:
         maxRetries: 50
         initialRetryWaitMs: 200
@@ -55,6 +61,8 @@ configs:
       modelConfig:
         batchSize: 1000
         batchTokenLimit: 120000
+        outputDimensions: 1024
+        quantization: float
       errorHandlingConfig:
         maxRetries: 50
         initialRetryWaitMs: 200

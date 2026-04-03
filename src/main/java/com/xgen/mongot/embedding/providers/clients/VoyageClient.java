@@ -13,6 +13,7 @@ import com.xgen.mongot.embedding.providers.configs.EmbeddingModelConfig;
 import com.xgen.mongot.embedding.providers.configs.EmbeddingServiceConfig;
 import com.xgen.mongot.embedding.providers.configs.VoyageApiSchema;
 import com.xgen.mongot.embedding.providers.congestion.DynamicSemaphore;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.metrics.MetricsFactory;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.bson.JsonCodec;
@@ -50,8 +51,10 @@ import org.slf4j.LoggerFactory;
 public class VoyageClient implements ClientInterface {
   private static final Logger LOG = LoggerFactory.getLogger(VoyageClient.class);
   private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
+
   /** Wall-clock interval after which the {@link HttpClient} is replaced to refresh connections. */
   private static final Duration HTTP_CLIENT_REFRESH_INTERVAL = Duration.ofMinutes(10);
+
   private static final Duration HTTP_CLIENT_SHUTDOWN_AWAIT = Duration.ofSeconds(5);
   private static final Duration HTTP_CLIENT_SHUTDOWN_NOW_AWAIT = Duration.ofSeconds(2);
   private static final String BATCH_SIZE_TOO_LARGE_ERROR_MESSAGE =
@@ -75,6 +78,7 @@ public class VoyageClient implements ClientInterface {
   private final boolean truncation;
 
   private volatile HttpClient voyageHttpClient;
+
   /**
    * Epoch millis when {@link #voyageHttpClient} was created; compared to {@link
    * #HTTP_CLIENT_REFRESH_INTERVAL} for renewal.
@@ -89,13 +93,6 @@ public class VoyageClient implements ClientInterface {
   private static final int MAX_INDEX_NAME_LENGTH = 256;
 
   @VisibleForTesting public static final String VOYAGE_API_FLEX_TIER = "flex";
-
-  /** Default Voyage output shape until dimensions/datatype are read from model config per tier. */
-  // TODO(CLOUDP-392610): remove after EmbeddingRequestContext
-  private static final int DEFAULT_OUTPUT_DIMENSIONS = 1024;
-
-  // TODO(CLOUDP-392610): remove after EmbeddingRequestContext
-  private static final String DEFAULT_OUTPUT_DATATYPE = "float";
 
   VoyageClient(
       EmbeddingModelConfig embeddingModelConfig,
@@ -192,7 +189,7 @@ public class VoyageClient implements ClientInterface {
             this.modelId,
             response.statusCode(),
             filteredInput.size());
-        var vectorResponse = extractVectorsFromResponse(response, inputs);
+        var vectorResponse = extractVectorsFromResponse(response, inputs, context);
         isAck = true;
         return vectorResponse;
       } catch (HttpTimeoutException e) {
@@ -364,8 +361,8 @@ public class VoyageClient implements ClientInterface {
   /**
    * Replaces the client after connection/TLS failures so Failsafe retries do not reuse bad state.
    *
-   * <p>{@code culpritClient} is the {@link HttpClient} used for the failed {@code send}; if
-   * another thread already renewed, {@link #voyageHttpClient} will differ and we skip duplicate
+   * <p>{@code culpritClient} is the {@link HttpClient} used for the failed {@code send}; if another
+   * thread already renewed, {@link #voyageHttpClient} will differ and we skip duplicate
    * replace/shutdown.
    */
   private void renewHttpClientAfterConnectionFailure(Throwable cause, HttpClient culpritClient) {
@@ -436,8 +433,7 @@ public class VoyageClient implements ClientInterface {
   }
 
   @VisibleForTesting
-  void renewHttpClientAfterConnectionFailureForTesting(
-      Throwable cause, HttpClient culpritClient) {
+  void renewHttpClientAfterConnectionFailureForTesting(Throwable cause, HttpClient culpritClient) {
     renewHttpClientAfterConnectionFailure(cause, culpritClient);
   }
 
@@ -532,6 +528,8 @@ public class VoyageClient implements ClientInterface {
             .orElse("mongot/UNKNOWN (UNKNOWN)");
 
     requestBuilder.header("User-Agent", userAgent);
+
+    String outputDataType = getOutputDataType(context.autoEmbedQuantization());
     BsonDocument body =
         new VoyageApiSchema.EmbedRequest(
                 this.modelId,
@@ -543,8 +541,8 @@ public class VoyageClient implements ClientInterface {
                     ? Optional.of(buildBillingMetadata(context))
                     : Optional.empty(),
                 this.serviceTierApiValue,
-                Optional.of(DEFAULT_OUTPUT_DIMENSIONS),
-                Optional.of(DEFAULT_OUTPUT_DATATYPE))
+                Optional.of(context.outputDimension()),
+                Optional.of(outputDataType))
             .toBson();
 
     return requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body.toJson())).build();
@@ -569,7 +567,7 @@ public class VoyageClient implements ClientInterface {
   }
 
   private List<VectorOrError> extractVectorsFromResponse(
-      HttpResponse<String> response, List<String> inputs)
+      HttpResponse<String> response, List<String> inputs, EmbeddingRequestContext context)
       throws EmbeddingProviderTransientException,
           EmbeddingProviderBatchingException,
           HttpTimeoutException {
@@ -603,12 +601,13 @@ public class VoyageClient implements ClientInterface {
           String.format("Got non OK status from response, status code: %s", statusCode));
     }
     try {
+      String outputDataType = getOutputDataType(context.autoEmbedQuantization());
       var embedResponse =
           VoyageApiSchema.EmbedResponse.fromBson(
               BsonDocumentParser.fromRoot(JsonCodec.fromJson(response.body()))
                   .allowUnknownFields(true)
                   .build(),
-              DEFAULT_OUTPUT_DATATYPE);
+              outputDataType);
       this.inputTokenDistribution.record(embedResponse.embedUsage.totalTokens);
       List<VectorOrError> results = new ArrayList<>();
       var iterator = embedResponse.data.iterator();
@@ -623,6 +622,17 @@ public class VoyageClient implements ClientInterface {
     } catch (BsonParseException e) {
       throw new EmbeddingProviderTransientException(e);
     }
+  }
+
+  public static String getOutputDataType(VectorAutoEmbedQuantization quantization) {
+    return switch (quantization) {
+      case VectorAutoEmbedQuantization.FLOAT, VectorAutoEmbedQuantization.BINARY ->
+          VoyageApiSchema.VoyageEmbeddingDType.FLOAT.getName();
+      case VectorAutoEmbedQuantization.SCALAR ->
+          VoyageApiSchema.VoyageEmbeddingDType.INT8.getName();
+      case VectorAutoEmbedQuantization.BINARY_NO_RESCORE ->
+          VoyageApiSchema.VoyageEmbeddingDType.BINARY.getName();
+    };
   }
 
   // For test only.

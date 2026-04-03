@@ -37,9 +37,9 @@ public final class VectorIndexDefinition implements IndexDefinition {
 
     /**
      * Optional top-level path to the array field containing embedded documents with vector fields.
-     * When present, the vector fields in {@link #FIELDS} whose path is under this root are
-     * indexed as nested, and each array element is written as a separate Lucene document in a
-     * block. Only one nested root is allowed per index.
+     * When present, the vector fields in {@link #FIELDS} whose path is under this root are indexed
+     * as nested, and each array element is written as a separate Lucene document in a block. Only
+     * one nested root is allowed per index.
      */
     public static final Field.Optional<FieldPath> NESTED_ROOT =
         Field.builder("nestedRoot")
@@ -475,20 +475,14 @@ public final class VectorIndexDefinition implements IndexDefinition {
   private ImmutableMap<FieldPath, String> calculateAutoEmbeddingModelName(
       List<VectorIndexFieldDefinition> fields) {
     ImmutableMap.Builder<FieldPath, String> builder = ImmutableMap.builder();
-    fields.stream()
-        .filter(
-            vectorFieldDefinition ->
-                (vectorFieldDefinition.getType() == VectorIndexFieldDefinition.Type.TEXT
-                    || vectorFieldDefinition.getType()
-                        == VectorIndexFieldDefinition.Type.AUTO_EMBED))
-        .forEach(
-            vectorTextDef ->
-                builder.put(
-                    vectorTextDef.path,
-                    Check.instanceOf(
-                            vectorTextDef.asVectorField().specification(),
-                            VectorTextFieldSpecification.class)
-                        .modelName()));
+    for (VectorIndexFieldDefinition field : fields) {
+      if (field.isAutoEmbedField()
+          && field.asVectorField().specification()
+              instanceof VectorFieldAutoEmbeddingSpecification autoEmbedSpec) {
+
+        builder.put(field.getPath(), autoEmbedSpec.modelName());
+      }
+    }
     return builder.build();
   }
 }

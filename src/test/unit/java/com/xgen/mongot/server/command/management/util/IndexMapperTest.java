@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.server.command.management.definition.common.UserVectorIndexDefinition;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.VectorIndexDefinitionBuilder;
@@ -36,7 +37,7 @@ public class IndexMapperTest {
             .addVectorField(
                 256,
                 com.xgen.mongot.index.definition.VectorSimilarity.COSINE,
-                com.xgen.mongot.index.definition.VectorQuantization.NONE,
+                VectorQuantization.NONE,
                 "sections.embedding")
             .addFilterField("sections.name");
     UserVectorIndexDefinition userDef =

@@ -10,14 +10,13 @@ import com.xgen.mongot.index.definition.SearchAutoEmbedFieldDefinition;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
 import com.xgen.mongot.index.definition.SearchIndexVectorFieldDefinition;
 import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
+import com.xgen.mongot.index.definition.VectorAutoEmbedFieldSpecification;
 import com.xgen.mongot.index.definition.VectorDataFieldDefinition;
 import com.xgen.mongot.index.definition.VectorFieldSpecification;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldMapping;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
-import com.xgen.mongot.index.definition.VectorIndexVectorFieldDefinition;
-import com.xgen.mongot.index.definition.VectorIndexingAlgorithm;
 import com.xgen.mongot.util.FieldPath;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,15 +34,19 @@ public class AutoEmbeddingIndexDefinitionUtils {
    * VectorIndexDefinition with following changes:
    *
    * <p>1. Converts VectorIndexFieldDefinition fields from AUTO_EMBED TO VECTOR type by input
-   * materializedView schemaFieldsMapping
+   * materializedView schemaFieldsMapping. The mapping from VectorProviderQuantization to
+   * VectorQuantization happens in VectorAutoEmbedFieldDefinition::fromBson, and the lucene
+   * quantization type will be stored in autoEmbedField.specification().
    *
    * <p>For example: {'title': {'path': 'title', 'type': 'autoEmbed', 'model': 'voyage-4',
-   * 'modality': 'text'}, 'plot': {'path': 'plot', 'type': 'filter'}}
+   * 'modality': 'text', 'quantization': 'float', numDimensions: 1024, similarity: 'dotProduct'},
+   * 'plot': {'path': 'plot', 'type': 'filter'}}
    *
    * <p>will be converted to:
    *
    * <p>{'_autoEmbed.title': {'path': '_autoEmbed.title', 'type': 'vector', 'numDimensions': 1024,
-   * 'similarity': 'dotProduct'}, 'plot': {'path': 'plot', 'type': 'filter'}}
+   * 'similarity': 'dotProduct', 'quantization': 'none', numDimensions: 1024, similarity:
+   * 'dotProduct'}, 'plot': {'path': 'plot', 'type': 'filter'}}
    *
    * <p>2. Replaces the collection UUID with the materialized view collection UUID, updates database
    * name.
@@ -152,22 +155,18 @@ public class AutoEmbeddingIndexDefinitionUtils {
         .forEach(
             field -> {
               if (field.getType() == VectorIndexFieldDefinition.Type.AUTO_EMBED) {
-                var specification = field.asVectorAutoEmbedField().specification();
-                // TODO(CLOUDP-388224): proper handling of flat index for indexingMethod
-                Optional<VectorFieldSpecification.HnswOptions> hnswOptions =
-                    specification.indexingAlgorithm()
-                            instanceof VectorIndexingAlgorithm.HnswIndexingAlgorithm h
-                        ? Optional.of(h.options())
-                        : Optional.empty();
+                var autoEmbedField = field.asVectorAutoEmbedField();
+                var specification = autoEmbedField.specification();
                 updatedFieldDefinitions.add(
                     new VectorAutoEmbedFieldDefinition(
                         specification.modelName(),
                         specification.modality(),
                         getMatViewFieldPath(
                             field.getPath(), schemaMetadata.autoEmbeddingFieldsMapping()),
+                        specification.numDimensions(),
                         specification.similarity(),
-                        specification.quantization(),
-                        hnswOptions));
+                        specification.autoEmbedQuantization(),
+                        specification.indexingAlgorithm()));
                 // Use Filter field definition for internal Hash Field. Derived Definition should
                 // exclude hash fields, this is only for auto-embedding resync process.
                 updatedFieldDefinitions.add(
@@ -198,11 +197,11 @@ public class AutoEmbeddingIndexDefinitionUtils {
         .map(
             field -> {
               if (field.getType() == VectorIndexFieldDefinition.Type.AUTO_EMBED) {
-                VectorIndexVectorFieldDefinition autoEmbedField = field.asVectorField();
+                VectorAutoEmbedFieldDefinition autoEmbedField = field.asVectorAutoEmbedField();
                 return new VectorDataFieldDefinition(
                     getMatViewFieldPath(
                         field.getPath(), schemaMetadata.autoEmbeddingFieldsMapping()),
-                    autoEmbedField.specification());
+                    toVectorFieldSpecification(autoEmbedField.specification()));
               }
               return field;
             })
@@ -258,5 +257,14 @@ public class AutoEmbeddingIndexDefinitionUtils {
         original.stringFacetFieldDefinition(),
         original.tokenFieldDefinition(),
         original.uuidFieldDefinition());
+  }
+
+  public static VectorFieldSpecification toVectorFieldSpecification(
+      VectorAutoEmbedFieldSpecification spec) {
+    return new VectorFieldSpecification(
+        spec.numDimensions(),
+        spec.similarity(),
+        spec.autoEmbedQuantization().toLuceneQuantization(),
+        spec.indexingAlgorithm());
   }
 }

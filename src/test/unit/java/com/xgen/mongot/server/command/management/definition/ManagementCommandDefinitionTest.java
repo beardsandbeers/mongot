@@ -6,8 +6,8 @@ import static com.xgen.testing.BsonSerializationTestSuite.fromEncodable;
 
 import com.xgen.mongot.index.definition.IndexDefinition;
 import com.xgen.mongot.index.definition.IndexDefinition.Type;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.server.command.management.definition.common.NamedSearchIndex;
 import com.xgen.mongot.server.command.management.definition.common.UserIndexDefinition;
 import com.xgen.mongot.server.command.management.definition.common.UserSearchIndexDefinition;

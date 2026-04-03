@@ -2,10 +2,14 @@ load("//bazel/java:test.bzl", "java_test_suite")
 
 java_test_suite(
     name = "embedding",
-    srcs = ["AutoEmbeddingMemoryBudgetTest.java"],
+    srcs = [
+        "AutoEmbeddingMemoryBudgetTest.java",
+        "EmbeddingRequestContextTest.java",
+    ],
     tags = ["unit"],
     deps = [
         "//src/main/java/com/xgen/mongot/embedding",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "@maven//:com_google_flogger_flogger_system_backend",  # keep
         "@maven//:com_google_truth_truth",
         "@maven//:junit_junit",

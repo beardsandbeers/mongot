@@ -1,5 +1,7 @@
 package com.xgen.mongot.index.definition;
 
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import java.util.Objects;
 
 /**
@@ -9,10 +11,9 @@ import java.util.Objects;
  * generate vectors from text. This is used for auto-embedding features where text queries need to
  * be converted to vectors.
  */
-public class VectorTextFieldSpecification extends VectorFieldSpecification {
-  public static final String DEFAULT_MODALITY = "text";
+public final class VectorTextFieldSpecification extends VectorFieldSpecification
+    implements VectorFieldAutoEmbeddingSpecification {
   private final String modelName;
-  private final String modality;
 
   public VectorTextFieldSpecification(
       int numDimensions,
@@ -22,19 +23,6 @@ public class VectorTextFieldSpecification extends VectorFieldSpecification {
       String modelName) {
     super(numDimensions, similarity, quantization, indexingAlgorithm);
     this.modelName = modelName;
-    this.modality = DEFAULT_MODALITY;
-  }
-
-  public VectorTextFieldSpecification(
-      int numDimensions,
-      VectorSimilarity similarity,
-      VectorQuantization quantization,
-      VectorIndexingAlgorithm indexingAlgorithm,
-      String modelName,
-      String modality) {
-    super(numDimensions, similarity, quantization, indexingAlgorithm);
-    this.modelName = modelName;
-    this.modality = modality;
   }
 
   /**
@@ -46,13 +34,9 @@ public class VectorTextFieldSpecification extends VectorFieldSpecification {
     return this.modelName;
   }
 
-  /**
-   * Returns the modality of data ingested into the vector field for auto-embedding index.
-   *
-   * @return the modality
-   */
-  public String modality() {
-    return this.modality;
+  @Override
+  public VectorAutoEmbedQuantization autoEmbedQuantization() {
+    return VectorAutoEmbedQuantization.FLOAT;
   }
 
   @Override
@@ -64,12 +48,11 @@ public class VectorTextFieldSpecification extends VectorFieldSpecification {
       return false;
     }
     VectorTextFieldSpecification that = (VectorTextFieldSpecification) o;
-    return Objects.equals(this.modelName, that.modelName)
-        && Objects.equals(this.modality, that.modality);
+    return Objects.equals(this.modelName, that.modelName);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(super.hashCode(), this.modelName + this.modality);
+    return Objects.hash(super.hashCode(), this.modelName);
   }
 }

@@ -63,6 +63,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/analyzer/definition",
         "//src/main/java/com/xgen/mongot/index/definition",
+        "//src/main/java/com/xgen/mongot/index/definition/quantization",
         "//src/main/java/com/xgen/mongot/index/lucene/explain/information",
         "//src/main/java/com/xgen/mongot/index/path/string",
         "//src/main/java/com/xgen/mongot/index/query/sort",

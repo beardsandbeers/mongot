@@ -277,37 +277,7 @@ public class VoyageApiSchemaTest {
     public void decodeInt8Scalar() throws Exception {
       byte[] payload = new byte[] {-5, 10};
       Vector expected = Vector.fromBytes(payload);
-      assertEquals(
-          expected,
-          decodeResponse("int8", payload).data.get(0).embedding);
-    }
-
-    @Test
-    public void decodeUint8Scalar() throws Exception {
-      byte[] payload = new byte[] {(byte) 200, (byte) 255};
-      Vector expected = Vector.fromBytes(payload);
-      assertEquals(
-          expected,
-          decodeResponse("uint8", payload).data.get(0).embedding);
-    }
-
-    @Test
-    public void decodeUint8Scalar_uppercaseOutputDtype() throws Exception {
-      byte[] payload = new byte[] {0, 127};
-      Vector expected = Vector.fromBytes(payload);
-      assertEquals(
-          expected,
-          decodeResponse("UINT8", payload).data.get(0).embedding);
-    }
-
-    @Test
-    public void decodeUbinaryBitPacked() throws Exception {
-      // One packed byte (e.g. eight quantized bits); ubinary is raw unsigned on the wire.
-      byte[] payload = new byte[] {77};
-      Vector expected = Vector.fromBits(payload);
-      assertEquals(
-          expected,
-          decodeResponse("ubinary", payload).data.get(0).embedding);
+      assertEquals(expected, decodeResponse("int8", payload).data.get(0).embedding);
     }
 
     @Test
@@ -316,16 +286,13 @@ public class VoyageApiSchemaTest {
       byte signedWire = (byte) (77 - 128);
       byte[] payload = new byte[] {signedWire};
       Vector expected = Vector.fromBits(new byte[] {77});
-      assertEquals(
-          expected,
-          decodeResponse("binary", payload).data.get(0).embedding);
+      assertEquals(expected, decodeResponse("binary", payload).data.get(0).embedding);
     }
 
     @Test
     public void unsupportedOutputDtypeThrows() {
       byte[] payload = new byte[] {0, 0, 0, 0};
-      assertThrows(
-          BsonParseException.class, () -> decodeResponse("float16", payload));
+      assertThrows(BsonParseException.class, () -> decodeResponse("float16", payload));
     }
 
     private static EmbedResponse decodeResponse(String voyageOutputDtype, byte[] rawEmbeddingBytes)
@@ -338,8 +305,7 @@ public class VoyageApiSchemaTest {
               base64);
       BsonDocument doc = BsonDocument.parse(json);
       return EmbedResponse.fromBson(
-          BsonDocumentParser.fromRoot(doc).allowUnknownFields(true).build(),
-          voyageOutputDtype);
+          BsonDocumentParser.fromRoot(doc).allowUnknownFields(true).build(), voyageOutputDtype);
     }
   }
 }

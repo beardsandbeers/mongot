@@ -2,6 +2,7 @@ package com.xgen.mongot.embedding.providers.configs;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.hash.Hashing;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
@@ -515,7 +516,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
     public final Optional<Integer> outputDimensions;
     public final Optional<TruncationOption> truncation;
     public final Optional<String> modality;
-    public final Optional<VoyageModelVectorParams.Quantization> quantization;
+    public final Optional<VectorAutoEmbedQuantization> quantization;
 
     public VoyageModelConfig(
         Optional<Integer> outputDimensions,
@@ -537,7 +538,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
         Optional<Integer> batchSize,
         Optional<Integer> batchTokenLimit,
         Optional<String> modality,
-        Optional<VoyageModelVectorParams.Quantization> quantization) {
+        Optional<VectorAutoEmbedQuantization> quantization) {
       this.outputDimensions = outputDimensions;
       this.truncation = truncation;
       this.batchSize = batchSize;
@@ -574,7 +575,7 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           .field(Fields.OUTPUT_DIMENSIONS, this.outputDimensions)
           .field(Fields.TRUNCATION, this.truncation)
           .field(Fields.MODALITY, this.modality)
-          .field(Fields.QUANTIZATION, this.quantization)
+          .field(Fields.QUANTIZATION, this.quantization.map(VectorAutoEmbedQuantization::getName))
           .build();
     }
 
@@ -585,7 +586,21 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
           parser.getField(Fields.BATCH_SIZE).unwrap(),
           parser.getField(Fields.BATCH_TOKEN_LIMIT).unwrap(),
           parser.getField(Fields.MODALITY).unwrap(),
-          parser.getField(Fields.QUANTIZATION).unwrap());
+          parseQuantization(parser));
+    }
+
+    private static Optional<VectorAutoEmbedQuantization> parseQuantization(DocumentParser parser)
+        throws BsonParseException {
+      Optional<String> quantization = parser.getField(Fields.QUANTIZATION).unwrap();
+      if (quantization.isEmpty()) {
+        return Optional.empty();
+      }
+      Optional<VectorAutoEmbedQuantization> vectorAutoEmbedQuantization =
+          VectorAutoEmbedQuantization.fromName(quantization.get());
+
+      return vectorAutoEmbedQuantization.isPresent()
+          ? vectorAutoEmbedQuantization
+          : parser.getContext().handleSemanticError("invalid quantization value");
     }
 
     public static class Fields {
@@ -603,13 +618,8 @@ public class EmbeddingServiceConfig implements DocumentEncodable {
               .noDefault();
       static final Field.Optional<String> MODALITY =
           Field.builder("modality").stringField().optional().noDefault();
-      static final Field.Optional<VoyageModelVectorParams.Quantization> QUANTIZATION =
-          Field.builder("quantization")
-              .classField(
-                  VoyageModelVectorParams::parseQuantizationFromModelConfigWire,
-                  VoyageModelVectorParams.QUANTIZATION_MODEL_CONFIG_WIRE_ENCODER)
-              .optional()
-              .noDefault();
+      static final Field.Optional<String> QUANTIZATION =
+          Field.builder("quantization").stringField().optional().noDefault();
     }
 
     @Override

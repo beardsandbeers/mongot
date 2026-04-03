@@ -1,8 +1,9 @@
 package com.xgen.mongot.index.definition;
 
-import static com.xgen.mongot.index.definition.VectorTextFieldSpecification.DEFAULT_MODALITY;
+import static com.xgen.mongot.index.definition.VectorAutoEmbedFieldSpecification.DEFAULT_MODALITY;
 
 import com.xgen.mongot.embedding.providers.configs.EmbeddingModelCatalog;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.parser.BsonDocumentBuilder;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
@@ -21,7 +22,8 @@ import org.bson.BsonDocument;
 public final class SearchAutoEmbedFieldDefinition implements FieldTypeDefinition {
 
   private static final VectorSimilarity DEFAULT_VECTOR_SIMILARITY = VectorSimilarity.DOT_PRODUCT;
-  private static final VectorQuantization DEFAULT_VECTOR_QUANTIZATION = VectorQuantization.NONE;
+  private static final VectorAutoEmbedQuantization DEFAULT_VECTOR_QUANTIZATION =
+      VectorAutoEmbedQuantization.FLOAT;
 
   private static class Fields {
     static final Field.Required<String> MODEL = Field.builder("model").stringField().required();
@@ -41,13 +43,12 @@ public final class SearchAutoEmbedFieldDefinition implements FieldTypeDefinition
   }
 
   private final FieldPath sourceField;
-  private final VectorTextFieldSpecification specification;
+  private final VectorAutoEmbedFieldSpecification specification;
 
-  public SearchAutoEmbedFieldDefinition(
-      String modelName, String modality, FieldPath sourceField) {
+  public SearchAutoEmbedFieldDefinition(String modelName, String modality, FieldPath sourceField) {
     this.sourceField = sourceField;
     this.specification =
-        new VectorTextFieldSpecification(
+        new VectorAutoEmbedFieldSpecification(
             resolveModelDimensions(modelName),
             DEFAULT_VECTOR_SIMILARITY,
             DEFAULT_VECTOR_QUANTIZATION,
@@ -72,7 +73,7 @@ public final class SearchAutoEmbedFieldDefinition implements FieldTypeDefinition
     return this.sourceField;
   }
 
-  public VectorTextFieldSpecification specification() {
+  public VectorAutoEmbedFieldSpecification specification() {
     return this.specification;
   }
 
@@ -122,7 +123,7 @@ public final class SearchAutoEmbedFieldDefinition implements FieldTypeDefinition
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.specification.modelName(), this.specification.modality(),
-        this.sourceField);
+    return Objects.hash(
+        this.specification.modelName(), this.specification.modality(), this.sourceField);
   }
 }

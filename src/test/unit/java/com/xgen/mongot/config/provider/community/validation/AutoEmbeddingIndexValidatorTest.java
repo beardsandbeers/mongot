@@ -16,9 +16,10 @@ import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
 import com.xgen.mongot.index.definition.VectorDataFieldDefinition;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFieldDefinition;
-import com.xgen.mongot.index.definition.VectorQuantization;
 import com.xgen.mongot.index.definition.VectorSimilarity;
 import com.xgen.mongot.index.definition.VectorTextFieldDefinition;
+import com.xgen.mongot.index.definition.quantization.VectorAutoEmbedQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import com.xgen.testing.mongot.index.definition.DocumentFieldDefinitionBuilder;
 import com.xgen.testing.mongot.index.definition.FieldDefinitionBuilder;
@@ -383,30 +384,7 @@ public class AutoEmbeddingIndexValidatorTest {
   }
 
   @Test
-  public void validateNoHnswOptionsInAutoEmbedFields_definitionWithoutFields_doesNotThrow()
-      throws InvalidIndexDefinitionException {
-    BsonDocument definition = new BsonDocument();
-    AutoEmbeddingIndexValidator.validateNoHnswOptionsInAutoEmbedFields(definition);
-  }
-
-  @Test
-  public void validateNoHnswOptionsInAutoEmbedFields_autoEmbedFieldWithoutHnswOptions_doesNotThrow()
-      throws InvalidIndexDefinitionException {
-    BsonDocument autoEmbedField =
-        new BsonDocument()
-            .append("type", new BsonString("autoEmbed"))
-            .append("path", new BsonString("desc"))
-            .append("model", new BsonString("voyage-4-lite"))
-            .append("modality", new BsonString("text"));
-    BsonArray fields = new BsonArray();
-    fields.add(autoEmbedField);
-    BsonDocument definition = new BsonDocument("fields", fields);
-    AutoEmbeddingIndexValidator.validateNoHnswOptionsInAutoEmbedFields(definition);
-  }
-
-  @Test
-  public void
-      validateNoHnswOptionsInAutoEmbedFields_autoEmbedFieldWithHnswOptions_throwsException() {
+  public void validateUnsupportedAutoEmbedOptions_hnswOptions_throwsException() {
     BsonDocument hnswOptions =
         new BsonDocument()
             .append("maxEdges", new BsonInt32(32))
@@ -425,9 +403,117 @@ public class AutoEmbeddingIndexValidatorTest {
     InvalidIndexDefinitionException exception =
         assertThrows(
             InvalidIndexDefinitionException.class,
-            () -> AutoEmbeddingIndexValidator.validateNoHnswOptionsInAutoEmbedFields(definition));
+            () -> AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition));
 
     assertThat(exception.getMessage()).contains("hnswOptions is not supported");
+  }
+
+  @Test
+  public void validateUnsupportedAutoEmbedOptions_indexingMethod_throwsException() {
+    BsonDocument autoEmbedField =
+        new BsonDocument()
+            .append("type", new BsonString("autoEmbed"))
+            .append("path", new BsonString("desc"))
+            .append("model", new BsonString("voyage-4-lite"))
+            .append("modality", new BsonString("text"))
+            .append("indexingMethod", new BsonString("flat"));
+    BsonArray fields = new BsonArray();
+    fields.add(autoEmbedField);
+    BsonDocument definition = new BsonDocument("fields", fields);
+
+    InvalidIndexDefinitionException exception =
+        assertThrows(
+            InvalidIndexDefinitionException.class,
+            () -> AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition));
+
+    assertThat(exception.getMessage()).contains("indexingMethod is not supported");
+  }
+
+  @Test
+  public void validateUnsupportedAutoEmbedOptions_similarity_throwsException() {
+    BsonDocument autoEmbedField =
+        new BsonDocument()
+            .append("type", new BsonString("autoEmbed"))
+            .append("path", new BsonString("desc"))
+            .append("model", new BsonString("voyage-4-lite"))
+            .append("modality", new BsonString("text"))
+            .append("similarity", new BsonString("dotProduct"));
+    BsonArray fields = new BsonArray();
+    fields.add(autoEmbedField);
+    BsonDocument definition = new BsonDocument("fields", fields);
+
+    InvalidIndexDefinitionException exception =
+        assertThrows(
+            InvalidIndexDefinitionException.class,
+            () -> AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition));
+
+    assertThat(exception.getMessage()).contains("similarity is not supported");
+  }
+
+  @Test
+  public void validateUnsupportedAutoEmbedOptions_quantization_throwsException() {
+    BsonDocument autoEmbedField =
+        new BsonDocument()
+            .append("type", new BsonString("autoEmbed"))
+            .append("path", new BsonString("desc"))
+            .append("model", new BsonString("voyage-4-lite"))
+            .append("modality", new BsonString("text"))
+            .append("quantization", new BsonString(VectorAutoEmbedQuantization.SCALAR.getName()));
+    BsonArray fields = new BsonArray();
+    fields.add(autoEmbedField);
+    BsonDocument definition = new BsonDocument("fields", fields);
+
+    InvalidIndexDefinitionException exception =
+        assertThrows(
+            InvalidIndexDefinitionException.class,
+            () -> AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition));
+
+    assertThat(exception.getMessage()).contains("quantization is not supported");
+  }
+
+  @Test
+  public void validateUnsupportedAutoEmbedOptions_numDimensions_throwsException() {
+    BsonDocument autoEmbedField =
+        new BsonDocument()
+            .append("type", new BsonString("autoEmbed"))
+            .append("path", new BsonString("desc"))
+            .append("model", new BsonString("voyage-4-lite"))
+            .append("modality", new BsonString("text"))
+            .append("numDimensions", new BsonInt32(1024));
+    BsonArray fields = new BsonArray();
+    fields.add(autoEmbedField);
+    BsonDocument definition = new BsonDocument("fields", fields);
+
+    InvalidIndexDefinitionException exception =
+        assertThrows(
+            InvalidIndexDefinitionException.class,
+            () -> AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition));
+
+    assertThat(exception.getMessage()).contains("numDimensions is not supported");
+  }
+
+  @Test
+  public void validateUnsupportedAutoEmbedOptions_noUnsupportedOptions_succeeds()
+      throws InvalidIndexDefinitionException {
+    BsonDocument autoEmbedField =
+        new BsonDocument()
+            .append("type", new BsonString("autoEmbed"))
+            .append("path", new BsonString("desc"))
+            .append("model", new BsonString("voyage-4-lite"))
+            .append("modality", new BsonString("text"));
+    BsonArray fields = new BsonArray();
+    fields.add(autoEmbedField);
+    BsonDocument definition = new BsonDocument("fields", fields);
+
+    // Should not throw
+    AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition);
+  }
+
+  @Test
+  public void validateUnsupportedAutoEmbedOptions_emptyDefinition_succeeds()
+      throws InvalidIndexDefinitionException {
+    BsonDocument definition = new BsonDocument();
+    AutoEmbeddingIndexValidator.validateUnsupportedAutoEmbedOptions(definition);
   }
 
   private VectorIndexDefinition createVectorIndexWithModel(String modelName) {

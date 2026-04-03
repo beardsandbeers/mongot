@@ -2,7 +2,7 @@ package com.xgen.mongot.index.lucene;
 
 import static com.xgen.mongot.index.IndexMetricsUpdater.QueryingMetricsUpdater;
 
-import com.xgen.mongot.index.definition.VectorQuantization;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.operators.ApproximateVectorSearchCriteria;
 import com.xgen.mongot.index.query.operators.VectorSearchCriteria;

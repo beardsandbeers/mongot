@@ -2,6 +2,7 @@ package com.xgen.mongot.index.definition;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.xgen.mongot.index.definition.quantization.VectorQuantization;
 import com.xgen.mongot.util.FieldPath;
 import java.util.List;
 import java.util.Optional;

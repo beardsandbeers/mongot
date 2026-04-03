@@ -1,4 +1,4 @@
-package com.xgen.mongot.index.definition;
+package com.xgen.mongot.index.definition.quantization;
 
 import com.xgen.mongot.index.lucene.field.FieldName;
 
