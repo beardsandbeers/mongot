@@ -153,11 +153,21 @@ public class MaterializedViewGenerator extends ReplicationIndexManager {
   /** Initializes the replication loop. Called by becomeLeader() to start replication. */
   private synchronized void initReplication() {
     super.init();
+    // If init() transitioned to a terminal state (e.g. stale index detected → SHUT_DOWN),
+    // clear the leader flag since a terminal generator cannot act as leader.
+    State state = this.getState();
+    if (state == State.SHUT_DOWN || state == State.FAILED) {
+      this.isLeader = false;
+      this.matViewIndex.setLeaderMode(false);
+    }
   }
 
   @Override
   public synchronized CompletableFuture<Void> shutdown() {
     this.matViewIndex.setLeaderMode(false);
+    // Once shutdown, this generator is no longer the leader, as becomeLeader will be no-op because
+    // of shutdown checks in ReplicationIndexManager
+    this.isLeader = false;
     return super.shutdown();
   }
 

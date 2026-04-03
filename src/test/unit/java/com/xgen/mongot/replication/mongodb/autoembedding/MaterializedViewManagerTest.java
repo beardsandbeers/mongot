@@ -32,6 +32,7 @@ import com.xgen.mongot.cursor.MongotCursorManager;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadata;
 import com.xgen.mongot.embedding.config.MaterializedViewCollectionMetadataCatalog;
 import com.xgen.mongot.embedding.mongodb.common.AutoEmbeddingMongoClient;
+import com.xgen.mongot.embedding.mongodb.leasing.DynamicLeaderLeaseManager;
 import com.xgen.mongot.embedding.mongodb.leasing.LeaseManager;
 import com.xgen.mongot.embedding.mongodb.leasing.StaticLeaderLeaseManager;
 import com.xgen.mongot.featureflag.FeatureFlags;
@@ -48,6 +49,7 @@ import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.index.version.MaterializedViewGeneration;
 import com.xgen.mongot.index.version.MaterializedViewGenerationId;
 import com.xgen.mongot.index.version.UserIndexVersion;
+import com.xgen.mongot.replication.mongodb.ReplicationIndexManager;
 import com.xgen.mongot.replication.mongodb.common.AutoEmbeddingMaterializedViewConfig;
 import com.xgen.mongot.replication.mongodb.common.ClientSessionRecord;
 import com.xgen.mongot.replication.mongodb.common.DecodingWorkScheduler;
@@ -165,6 +167,74 @@ public class MaterializedViewManagerTest {
     verify(mocks.materializedViewGeneratorFactory, never()).create(any());
     // Verify that both index generations point to the same index.
     assertEquals(materializedViewindexGeneration.getIndex(), newIndexGeneration.getIndex());
+  }
+
+  /**
+   * When the existing generator is in FAILED state and a new index generation arrives with the same
+   * definition version, we should create a new generator because a failed generator cannot be
+   * reused.
+   */
+  @Test
+  public void testUpdateExistingIndex_failedGenerator_sameVersion_replacesGenerator()
+      throws Exception {
+    Mocks mocks = Mocks.create();
+
+    // Add an index.
+    var gen1 = MOCK_MAT_VIEW_GENERATION_ID;
+    var materializedViewIndexGeneration =
+        mockMatViewIndexGeneration(mockMatViewDefinitionGeneration(gen1));
+    MaterializedViewGenerator materializedViewGenerator =
+        mocks.mockMaterializedViewGenerator(materializedViewIndexGeneration);
+    mocks.addIndexForReplication(materializedViewIndexGeneration);
+
+    // Simulate the generator entering FAILED state.
+    doReturn(ReplicationIndexManager.State.FAILED).when(materializedViewGenerator).getState();
+
+    // Add a new generation of the same index with the same definition version.
+    var gen2 =
+        new MaterializedViewGenerationId(
+            MOCK_MAT_VIEW_GENERATION_ID.indexId,
+            MOCK_MAT_VIEW_GENERATION_ID.generation.incrementUser());
+    var newIndexGeneration = mockMatViewIndexGeneration(mockMatViewDefinitionGeneration(gen2));
+    mocks.mockMaterializedViewGenerator(newIndexGeneration);
+    mocks.addIndexForReplication(newIndexGeneration);
+
+    // Verify that the old generator was shut down and a new one was created.
+    verify(materializedViewGenerator).shutdown();
+  }
+
+  /**
+   * When the existing generator is in SHUT_DOWN state and a new index generation arrives with the
+   * same definition version, we should create a new generator because a shut-down generator cannot
+   * be restarted.
+   */
+  @Test
+  public void testUpdateExistingIndex_shutDownGenerator_sameVersion_replacesGenerator()
+      throws Exception {
+    Mocks mocks = Mocks.create();
+
+    // Add an index.
+    var gen1 = MOCK_MAT_VIEW_GENERATION_ID;
+    var materializedViewIndexGeneration =
+        mockMatViewIndexGeneration(mockMatViewDefinitionGeneration(gen1));
+    MaterializedViewGenerator materializedViewGenerator =
+        mocks.mockMaterializedViewGenerator(materializedViewIndexGeneration);
+    mocks.addIndexForReplication(materializedViewIndexGeneration);
+
+    // Simulate the generator entering SHUT_DOWN state.
+    doReturn(ReplicationIndexManager.State.SHUT_DOWN).when(materializedViewGenerator).getState();
+
+    // Add a new generation of the same index with the same definition version.
+    var gen2 =
+        new MaterializedViewGenerationId(
+            MOCK_MAT_VIEW_GENERATION_ID.indexId,
+            MOCK_MAT_VIEW_GENERATION_ID.generation.incrementUser());
+    var newIndexGeneration = mockMatViewIndexGeneration(mockMatViewDefinitionGeneration(gen2));
+    mocks.mockMaterializedViewGenerator(newIndexGeneration);
+    mocks.addIndexForReplication(newIndexGeneration);
+
+    // Verify that the old generator was shut down and a new one was created.
+    verify(materializedViewGenerator).shutdown();
   }
 
   @Test
@@ -617,6 +687,33 @@ public class MaterializedViewManagerTest {
     mocks.manager.dropIndex(newAutoEmbeddingIndexGeneration.getGenerationId());
     // Verify no exception is thrown
     assertTrue(mocks.manager.isReplicationSupported());
+  }
+
+  @Test
+  public void followerMode_refreshStatus_skipsStatusUpdateForLeaderGenerator() {
+    // When a generator has transitioned to leader mode, refreshStatus should NOT overwrite
+    // its index status with the follower poll result.
+    Mocks mocks = Mocks.createFollower();
+    MaterializedViewIndexGeneration matViewIndexGen =
+        mockMatViewIndexGeneration(MOCK_INDEX_DEFINITION_GENERATION);
+    AutoEmbeddingIndexGeneration autoEmbeddingIndexGeneration =
+        mock(AutoEmbeddingIndexGeneration.class);
+    when(autoEmbeddingIndexGeneration.getMaterializedViewIndexGeneration())
+        .thenReturn(matViewIndexGen);
+    when(autoEmbeddingIndexGeneration.getGenerationId())
+        .thenReturn(matViewIndexGen.getGenerationId());
+    mocks.manager.add(autoEmbeddingIndexGeneration);
+
+    // Simulate the generator transitioning to leader mode.
+    var generator = mocks.manager.getMatViewGenerator(matViewIndexGen.getGenerationId());
+    assertTrue("Generator should exist", generator.isPresent());
+    doReturn(true).when(generator.get()).isLeader();
+
+    // Run the status refresh.
+    mocks.runnableCaptor.orElseThrow().getValue().run();
+
+    // setStatus should NOT be called because the generator is a leader.
+    verify(matViewIndexGen.getIndex(), never()).setStatus(any(IndexStatus.class));
   }
 
   @Test
@@ -1294,6 +1391,126 @@ public class MaterializedViewManagerTest {
     assertNull("u1 generatorId should be cleaned", catalog.genIdByMatViewGenId.get(canonicalKeyU1));
   }
 
+  // ==================== Dynamic Leader Lease Acquisition Tests ====================
+
+  @Test
+  public void dynamicLeader_acquireLease_skipsGeneratorInFailedState() {
+    // When a generator is in FAILED state and the lease becomes acquirable,
+    // refreshStatus should skip leadership acquisition for that generator.
+    Mocks mocks = Mocks.createDynamicFollowerWithAcquirableLeases();
+
+    MaterializedViewIndexGeneration matViewIndexGen =
+        mockMatViewIndexGeneration(MOCK_INDEX_DEFINITION_GENERATION);
+    MaterializedViewGenerator generator = mocks.mockMaterializedViewGenerator(matViewIndexGen);
+    mocks.addIndexForReplication(matViewIndexGen);
+
+    // Simulate the generator entering FAILED state.
+    doReturn(ReplicationIndexManager.State.FAILED).when(generator).getState();
+
+    // Configure pollFollowerStatuses to return this generation as acquirable.
+    MaterializedViewGenerationId matViewGenId = matViewIndexGen.getGenerationId();
+    when(mocks.leaseManager.pollFollowerStatuses())
+        .thenReturn(
+            new LeaseManager.FollowerPollResult(
+                Map.of(matViewGenId, IndexStatus.unknown()), Set.of(matViewGenId)));
+
+    // Run the status refresh (which calls refreshStatus -> acquirableLeases loop).
+    mocks.runnableCaptor.orElseThrow().getValue().run();
+
+    // tryAcquireLeadership should NOT be called because the generator is in FAILED state.
+    verify(mocks.leaseManager, never()).tryAcquireLeadership(any());
+    verify(generator, never()).becomeLeader();
+  }
+
+  @Test
+  public void dynamicLeader_acquireLease_skipsGeneratorInShutDownState() {
+    // When a generator is in SHUT_DOWN state and the lease becomes acquirable,
+    // refreshStatus should skip leadership acquisition for that generator.
+    Mocks mocks = Mocks.createDynamicFollowerWithAcquirableLeases();
+
+    MaterializedViewIndexGeneration matViewIndexGen =
+        mockMatViewIndexGeneration(MOCK_INDEX_DEFINITION_GENERATION);
+    MaterializedViewGenerator generator = mocks.mockMaterializedViewGenerator(matViewIndexGen);
+    mocks.addIndexForReplication(matViewIndexGen);
+
+    // Simulate the generator entering SHUT_DOWN state.
+    doReturn(ReplicationIndexManager.State.SHUT_DOWN).when(generator).getState();
+
+    // Configure pollFollowerStatuses to return this generation as acquirable.
+    MaterializedViewGenerationId matViewGenId = matViewIndexGen.getGenerationId();
+    when(mocks.leaseManager.pollFollowerStatuses())
+        .thenReturn(
+            new LeaseManager.FollowerPollResult(
+                Map.of(matViewGenId, IndexStatus.unknown()), Set.of(matViewGenId)));
+
+    // Run the status refresh.
+    mocks.runnableCaptor.orElseThrow().getValue().run();
+
+    // tryAcquireLeadership should NOT be called because the generator is in SHUT_DOWN state.
+    verify(mocks.leaseManager, never()).tryAcquireLeadership(any());
+    verify(generator, never()).becomeLeader();
+  }
+
+  @Test
+  public void dynamicLeader_acquireLease_succeedsForHealthyGenerator() {
+    // When a generator is in INITIAL_SYNC state (healthy) and the lease becomes acquirable,
+    // refreshStatus should attempt and succeed in acquiring leadership.
+    Mocks mocks = Mocks.createDynamicFollowerWithAcquirableLeases();
+
+    MaterializedViewIndexGeneration matViewIndexGen =
+        mockMatViewIndexGeneration(MOCK_INDEX_DEFINITION_GENERATION);
+    MaterializedViewGenerator generator = mocks.mockMaterializedViewGenerator(matViewIndexGen);
+    mocks.addIndexForReplication(matViewIndexGen);
+
+    // Generator is in a healthy state.
+    doReturn(ReplicationIndexManager.State.INITIAL_SYNC).when(generator).getState();
+
+    // Configure pollFollowerStatuses to return this generation as acquirable.
+    MaterializedViewGenerationId matViewGenId = matViewIndexGen.getGenerationId();
+    when(mocks.leaseManager.pollFollowerStatuses())
+        .thenReturn(
+            new LeaseManager.FollowerPollResult(
+                Map.of(matViewGenId, IndexStatus.unknown()), Set.of(matViewGenId)));
+    when(mocks.leaseManager.tryAcquireLeadership(matViewGenId)).thenReturn(true);
+
+    // Run the status refresh.
+    mocks.runnableCaptor.orElseThrow().getValue().run();
+
+    // tryAcquireLeadership should be called and becomeLeader() invoked.
+    verify(mocks.leaseManager).tryAcquireLeadership(matViewGenId);
+    verify(generator).becomeLeader();
+  }
+
+  // ==================== getMatViewGenerator Tests ====================
+
+  @Test
+  public void getMatViewGenerator_returnsGenerator_whenMetadataAndGeneratorExist() {
+    Mocks mocks = Mocks.create();
+
+    MaterializedViewIndexGeneration matViewIndexGen =
+        mockMatViewIndexGeneration(MOCK_INDEX_DEFINITION_GENERATION);
+    mocks.mockMaterializedViewGenerator(matViewIndexGen);
+    mocks.addIndexForReplication(matViewIndexGen);
+
+    MaterializedViewGenerationId matViewGenId = matViewIndexGen.getGenerationId();
+    Optional<MaterializedViewGenerator> result = mocks.manager.getMatViewGenerator(matViewGenId);
+    assertTrue("Generator should be present", result.isPresent());
+  }
+
+  @Test
+  public void getMatViewGenerator_returnsEmpty_whenNoMetadata() {
+    Mocks mocks = Mocks.create();
+
+    // Query for a generationId that was never added — metadata catalog returns empty.
+    MaterializedViewGenerationId unknownGenId =
+        new MaterializedViewGenerationId(
+            new ObjectId(), new MaterializedViewGeneration(Generation.CURRENT));
+    when(mocks.metadataCatalog.getMetadataIfPresent(unknownGenId)).thenReturn(Optional.empty());
+
+    Optional<MaterializedViewGenerator> result = mocks.manager.getMatViewGenerator(unknownGenId);
+    assertFalse("Generator should be empty when no metadata exists", result.isPresent());
+  }
+
   // ==================== Dynamic Leader with Unexpired Lease Tests ====================
 
   @Test
@@ -1544,6 +1761,8 @@ public class MaterializedViewManagerTest {
                 MaterializedViewIndexGeneration matViewIndexGen = invocation.getArgument(0);
                 MaterializedViewGenerator mockGenerator = mock(MaterializedViewGenerator.class);
                 when(mockGenerator.getIndexGeneration()).thenReturn(matViewIndexGen);
+                when(mockGenerator.getState())
+                    .thenReturn(ReplicationIndexManager.State.INITIAL_SYNC);
                 when(mockGenerator.shutdown()).thenReturn(CompletableFuture.completedFuture(null));
                 return mockGenerator;
               });
@@ -1641,6 +1860,96 @@ public class MaterializedViewManagerTest {
           mockLeaseManager,
           IndexStatus.unknown(), // expectedStatus
           Optional.empty(),
+          createMockMetadataCatalog());
+    }
+
+    /**
+     * Creates Mocks configured for dynamic leader election as a follower with acquirable leases.
+     * Uses a plain LeaseManager mock (not StaticLeaderLeaseManager) so the dynamic leader election
+     * path in refreshStatus() is exercised. The status refresh runnable is captured so tests can
+     * invoke it directly and verify acquirable lease handling.
+     */
+    private static Mocks createDynamicFollowerWithAcquirableLeases() {
+      NamedExecutorService executorService = mock(NamedExecutorService.class);
+      when(executorService.getName()).thenReturn("indexing");
+      try {
+        when(executorService.awaitTermination(anyLong(), any())).thenReturn(true);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+
+      InitialSyncQueue initialSyncQueue = mock(InitialSyncQueue.class);
+      when(initialSyncQueue.shutdown()).thenReturn(COMPLETED_FUTURE);
+
+      SteadyStateManager steadyStateManager = mock(SteadyStateManager.class);
+      when(steadyStateManager.shutdown()).thenReturn(COMPLETED_FUTURE);
+
+      MaterializedViewManager.MaterializedViewGeneratorFactory materializedViewGeneratorFactory =
+          mock(MaterializedViewManager.MaterializedViewGeneratorFactory.class);
+      when(materializedViewGeneratorFactory.shutdown())
+          .thenReturn(CompletableFuture.completedFuture(null));
+
+      NamedScheduledExecutorService commitExecutor = mockScheduledExecutor("index-commit");
+      NamedScheduledExecutorService heartbeatExecutor =
+          mockScheduledExecutor("mat-view-leader-heartbeat");
+      NamedScheduledExecutorService optimeUpdaterExecutor =
+          mockScheduledExecutor("mat-view-optime-updater");
+
+      // Status refresh executor — capture the refresh runnable
+      NamedScheduledExecutorService statusRefreshExecutor =
+          mock(NamedScheduledExecutorService.class);
+      when(statusRefreshExecutor.getName()).thenReturn("mat-view-status-refresh");
+      ScheduledFuture<?> mockFuture = mock(ScheduledFuture.class);
+      ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+      doReturn(mockFuture)
+          .when(statusRefreshExecutor)
+          .scheduleWithFixedDelay(runnableCaptor.capture(), anyLong(), anyLong(), any());
+      try {
+        when(statusRefreshExecutor.awaitTermination(anyLong(), any())).thenReturn(true);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+
+      // Use a DynamicLeaderLeaseManager mock so the instanceof check in refreshStatus() passes
+      // and the acquirable leases loop is exercised
+      DynamicLeaderLeaseManager mockLeaseManager = mock(DynamicLeaderLeaseManager.class);
+      doNothing().when(mockLeaseManager).drop(any());
+      when(mockLeaseManager.dropLease(any(String.class))).thenReturn(COMPLETED_FUTURE);
+      when(mockLeaseManager.isLeader(any())).thenReturn(false);
+      when(mockLeaseManager.getLeaderGenerationIds()).thenReturn(Set.of());
+
+      // Track added generation IDs to return from getFollowerGenerationIds
+      Set<MaterializedViewGenerationId> addedGenerationIds = ConcurrentHashMap.newKeySet();
+      doAnswer(
+              invocation -> {
+                MaterializedViewIndexGeneration indexGen = invocation.getArgument(0);
+                addedGenerationIds.add(indexGen.getGenerationId());
+                return null;
+              })
+          .when(mockLeaseManager)
+          .add(any(), anyBoolean());
+      when(mockLeaseManager.getFollowerGenerationIds())
+          .thenAnswer(invocation -> addedGenerationIds);
+      // Default pollFollowerStatuses — no acquirable leases. Tests override this per-case.
+      when(mockLeaseManager.pollFollowerStatuses())
+          .thenReturn(new LeaseManager.FollowerPollResult(Map.of(), Set.of()));
+
+      return new Mocks(
+          executorService,
+          mock(IndexingWorkSchedulerFactory.class),
+          mock(DecodingWorkScheduler.class),
+          mock(MongotCursorManager.class),
+          Map.of(),
+          initialSyncQueue,
+          steadyStateManager,
+          materializedViewGeneratorFactory,
+          commitExecutor,
+          heartbeatExecutor,
+          statusRefreshExecutor,
+          optimeUpdaterExecutor,
+          mockLeaseManager,
+          IndexStatus.unknown(),
+          Optional.of(runnableCaptor),
           createMockMetadataCatalog());
     }
 

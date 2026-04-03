@@ -4,6 +4,7 @@ import static com.xgen.testing.mongot.mock.index.MaterializedViewIndex.mockMatVi
 import static com.xgen.testing.mongot.mock.index.MaterializedViewIndex.mockMatViewIndexGeneration;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -98,15 +99,20 @@ public class MaterializedViewGeneratorTest {
 
     generator.shutdown().get();
 
-    verify(matViewIndex).setLeaderMode(false);
+    // setLeaderMode(false) may be called more than once: once by initReplication()'s terminal
+    // state guard (if init fails before shutdown completes) and once by shutdown() itself.
+    verify(matViewIndex, atLeastOnce()).setLeaderMode(false);
   }
 
   @Test
-  public void becomeLeader_andShutdown_lifecycle() throws Exception {
+  public void shutdown_clearsIsLeader() throws Exception {
     MaterializedViewGenerator generator = createGenerator();
     generator.becomeLeader();
-    assertTrue(generator.isLeader());
+    assertTrue("Should be leader after becomeLeader()", generator.isLeader());
+
     generator.shutdown().get();
+
+    assertFalse("Should not be leader after shutdown()", generator.isLeader());
   }
 
   private MaterializedViewGenerator createGenerator() {

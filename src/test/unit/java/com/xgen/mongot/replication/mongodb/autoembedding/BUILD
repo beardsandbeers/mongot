@@ -19,6 +19,7 @@ java_test_suite(
         "//src/main/java/com/xgen/mongot/index/definition",
         "//src/main/java/com/xgen/mongot/index/status",
         "//src/main/java/com/xgen/mongot/index/version",
+        "//src/main/java/com/xgen/mongot/replication/mongodb",
         "//src/main/java/com/xgen/mongot/replication/mongodb/autoembedding",
         "//src/main/java/com/xgen/mongot/replication/mongodb/common",
         "//src/main/java/com/xgen/mongot/replication/mongodb/initialsync",

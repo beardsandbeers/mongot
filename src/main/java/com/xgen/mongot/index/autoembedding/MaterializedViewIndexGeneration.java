@@ -63,6 +63,10 @@ public class MaterializedViewIndexGeneration extends IndexGeneration {
    * <p>An example of when we can re-use the current MaterializedViewGenerator is when a new index
    * generation was created because we fell off the oplog.
    *
+   * <p>Note: This method only compares definition versions. The caller is responsible for checking
+   * whether the existing generator is in a terminal state (e.g. FAILED or SHUT_DOWN) that requires
+   * a new generator regardless of definition version.
+   *
    * @param newIndexGeneration the new index generation to compare against.
    * @return whether we need to spin up a new MaterializedViewGenerator.
    */
