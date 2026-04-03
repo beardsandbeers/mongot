@@ -872,8 +872,9 @@ public class EmbeddingIndexingWorkSchedulerTest {
     var generationId =
         new MaterializedViewGenerationId(
             indexId, new MaterializedViewGeneration(Generation.CURRENT));
-    // bytesPerDoc = 1024 dims * 4 bytes = 4096; budget fits exactly one doc's batch
-    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(4096, false);
+    // embeddingBytesPerDoc = 1024 dims * 4 bytes = 4096; input BSON ~95 bytes → ~4191 total.
+    // Budget of 5000 fits exactly one doc's batch.
+    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(5000, false);
 
     EmbeddingIndexingWorkScheduler scheduler =
         schedulerForMaterializedViewIndexWithBudget(
@@ -918,7 +919,7 @@ public class EmbeddingIndexingWorkSchedulerTest {
     var generationId =
         new MaterializedViewGenerationId(
             indexId, new MaterializedViewGeneration(Generation.CURRENT));
-    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(4096, false);
+    AutoEmbeddingMemoryBudget budget = new AutoEmbeddingMemoryBudget(5000, false);
 
     // FakeEmbeddingClientFactory with "aString" as a transient failure trigger
     EmbeddingIndexingWorkScheduler scheduler =
@@ -968,7 +969,8 @@ public class EmbeddingIndexingWorkSchedulerTest {
     var generationId =
         new MaterializedViewGenerationId(
             indexId, new MaterializedViewGeneration(Generation.CURRENT));
-    // bytesPerDoc = 1024 dims * 4 bytes = 4096; per-batch budget of 4096 → subBatchSize = 1
+    // embeddingBytesPerDoc = 1024 dims * 4 bytes = 4096; input BSON bytes are also included in the
+    // estimate, so bytesPerDoc > 4096. With a per-batch budget of 4096 → subBatchSize = 1.
     long perBatchBudget = 4096;
 
     EmbeddingIndexingWorkScheduler scheduler =
@@ -1015,6 +1017,66 @@ public class EmbeddingIndexingWorkSchedulerTest {
 
     // 2 intermediate sub-batch commits + 1 final commit from finalize = 3 total
     verify(indexer, times(3)).commit();
+  }
+
+  @Test
+  public void testPerBatchBudgetUsesParallelPathWhenBatchFitsWithinBudget() throws Exception {
+    MeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ObjectId indexId = new ObjectId();
+    var generationId =
+        new MaterializedViewGenerationId(
+            indexId, new MaterializedViewGeneration(Generation.CURRENT));
+    // embeddingBytesPerDoc = 1024 dims * 4 bytes = 4096; input BSON bytes (~65 bytes each) are
+    // also included, so estimatedBatchBytes ≈ 8322 for 2 docs — well under the budget of 16384.
+    // Batch fits within budget → parallel path, no intermediate commits.
+    long perBatchBudget = 16384;
+
+    EmbeddingIndexingWorkScheduler scheduler =
+        schedulerForMaterializedViewIndexWithBudget(
+            Suppliers.ofInstance(
+                new EmbeddingServiceManager(
+                    List.of(TEST_EMBEDDING_CONFIG_V3_LARGE),
+                    new FakeEmbeddingClientFactory(),
+                    Executors.singleThreadScheduledExecutor("indexing", meterRegistry),
+                    meterRegistry,
+                    Optional.empty())),
+            generationId,
+            AutoEmbeddingMemoryBudget.createDefault(),
+            perBatchBudget);
+
+    VectorIndexDefinition vectorIndexDefinition =
+        VectorIndexDefinitionBuilder.builder().withAutoEmbedField(indexId + ".a").build();
+    DocumentIndexer indexer = mockDocumentRequiresAutoEmbedding(vectorIndexDefinition);
+
+    BsonDocument inner1 =
+        new BsonDocument("_id", new BsonString("id1")).append("a", new BsonString("text1"));
+    BsonDocument inner2 =
+        new BsonDocument("_id", new BsonString("id2")).append("a", new BsonString("text2"));
+    RawBsonDocument rawDoc1 =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), inner1));
+    RawBsonDocument rawDoc2 =
+        BsonUtils.documentToRaw(new BsonDocument(indexId.toString(), inner2));
+    DocumentEvent event1 =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawDoc1), indexId), rawDoc1);
+    DocumentEvent event2 =
+        DocumentEvent.createInsert(
+            DocumentMetadata.fromMetadataNamespace(Optional.of(rawDoc2), indexId), rawDoc2);
+
+    scheduler
+        .schedule(
+            new ArrayList<>(List.of(event1, event2)),
+            SchedulerQueue.Priority.STEADY_STATE_CHANGE_STREAM,
+            indexer,
+            generationId,
+            Optional.of(new ObjectId()),
+            Optional.of(COMMIT_USER_DATA),
+            IGNORE_METRICS)
+        .get(5, TimeUnit.SECONDS);
+
+    // Batch fits within budget → parallel path → only 1 final commit from finalize, no
+    // intermediate sub-batch commits.
+    verify(indexer, times(1)).commit();
   }
 
   @Test

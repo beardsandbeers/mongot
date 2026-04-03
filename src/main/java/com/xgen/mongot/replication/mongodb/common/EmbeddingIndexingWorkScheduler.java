@@ -252,11 +252,18 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
     CompletableFuture<Void> batchFuture;
     try {
       if (this.indexingStrategy == IndexingStrategy.EMBEDDING_MATERIALIZED_VIEW
-          && this.perBatchBudgetBytes != Long.MAX_VALUE) {
-        // Per-batch budget is configured: divide the batch into sub-batches and pipeline embedding
-        // with flushing. The next sub-batch's embedding call is only issued after the previous
-        // sub-batch has been committed to MongoDB.
-        long bytesPerDoc = estimateBytesPerDoc(vectorIndexDefinition);
+          && this.perBatchBudgetBytes != Long.MAX_VALUE
+          && estimatedBatchBytes > this.perBatchBudgetBytes) {
+        // Per-batch budget is configured and the batch exceeds it: divide the batch into
+        // sub-batches and pipeline embedding with flushing. The next sub-batch's embedding call is
+        // only issued after the previous sub-batch has been committed to MongoDB. If the batch fits
+        // within the budget, fall through to the parallel path to preserve the original behavior.
+        long embeddableDocCount =
+            batch.events.stream()
+                .filter(e -> containsValidDocument(e) && e.getFilterFieldUpdates().isEmpty())
+                .count();
+        long bytesPerDoc =
+            embeddableDocCount > 0 ? estimatedBatchBytes / embeddableDocCount : 0;
         int subBatchSize = computeSubBatchSize(bytesPerDoc, this.perBatchBudgetBytes);
         batchFuture =
             processSubBatchesSequentially(
@@ -731,36 +738,37 @@ final class EmbeddingIndexingWorkScheduler extends IndexingWorkScheduler {
   }
 
   /**
-   * Estimates the total embedding memory for a batch of events, counting only events that will
-   * actually produce embeddings (non-deletes, non-filter-only updates with a valid document). This
-   * is an approximation that assumes that the embeddings are the dominant factor in memory usage.
+   * Estimates the total memory for a batch of events in bytes, accounting for both the input
+   * documents (held in memory while embeddings are computed) and the embedding output vectors.
+   * Only events that will actually produce embeddings are counted (non-deletes, non-filter-only
+   * updates with a valid document).
    */
   private static long estimateBatchMemoryBytes(
       List<DocumentEvent> events, VectorIndexDefinition vectorIndexDefinition) {
-    long bytesPerDoc = estimateBytesPerDoc(vectorIndexDefinition);
-    if (bytesPerDoc == 0) {
-      return 0;
+    long embeddingBytesPerDoc = estimateBytesPerDoc(vectorIndexDefinition);
+    @Var long totalBytes = 0;
+    for (DocumentEvent event : events) {
+      if (!containsValidDocument(event) || event.getFilterFieldUpdates().isPresent()) {
+        continue;
+      }
+      // Input document bytes (held in memory throughout the embedding call).
+      totalBytes += event.getDocument().get().getByteBuffer().remaining();
+      // Embedding output bytes (one float[] per auto-embed field).
+      totalBytes += embeddingBytesPerDoc;
     }
-    long docsWithEmbeddings =
-        events.stream()
-            .filter(e -> containsValidDocument(e) && e.getFilterFieldUpdates().isEmpty())
-            .count();
-    return docsWithEmbeddings * bytesPerDoc;
+    return totalBytes;
   }
 
   /**
-   * Computes the sub-batch size (in number of documents) based on {@link
-   * #PER_BATCH_AUTO_EMBEDDING_MEMORY_BUDGET_BYTES}. Falls back to {@link
-   * #MAX_AUTO_EMBED_DOCUMENT_BUNDLE_SIZE} when the budget is unbounded or {@code bytesPerDoc} is
-   * zero.
+   * Computes the sub-batch size (in number of documents) from the per-batch memory budget.
+   * Returns {@link Integer#MAX_VALUE} when the budget is unbounded or {@code bytesPerDoc} is zero,
+   * which causes all events to be treated as a single sub-batch.
    */
   private static int computeSubBatchSize(long bytesPerDoc, long perBatchBudgetBytes) {
     if (perBatchBudgetBytes == Long.MAX_VALUE || bytesPerDoc == 0) {
-      return MAX_AUTO_EMBED_DOCUMENT_BUNDLE_SIZE;
+      return Integer.MAX_VALUE;
     }
-    return (int)
-        Math.max(
-            1, Math.min(MAX_AUTO_EMBED_DOCUMENT_BUNDLE_SIZE, perBatchBudgetBytes / bytesPerDoc));
+    return (int) Math.max(1, Math.min((long) Integer.MAX_VALUE, perBatchBudgetBytes / bytesPerDoc));
   }
 
   private static boolean containsValidDocument(DocumentEvent event) {
