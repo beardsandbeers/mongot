@@ -58,6 +58,18 @@ public class Errors {
   public static final Error SEARCH_REQUEST_REJECTED_DUE_TO_OVERLOAD =
       new Error(489, "SearchRequestRejectedDueToOverload");
 
+  public static final Error USER_WRITES_BLOCKED = new Error(371, "UserWritesBlocked");
+
+  // SystemOverloadedError category — server under resource pressure.
+  public static final Error ADMISSION_QUEUE_OVERFLOW = new Error(433, "AdmissionQueueOverflow");
+  public static final Error RATE_LIMIT_EXCEEDED = new Error(449, "RateLimitExceeded");
+  public static final Error POOLED_CONNECTION_ACQUISITION_REJECTED =
+      new Error(450, "PooledConnectionAcquisitionRejected");
+  public static final Error INTERRUPTED_DUE_TO_OVERLOAD =
+      new Error(473, "InterruptedDueToOverload");
+
+  public static final Error EXCEEDED_DISK_LIMIT = new Error(14031, "ExceededDiskLimit");
+
   public static final Error BSON_OBJECT_TOO_LARGE = new Error(10334, "BSONObjectTooLarge");
 
   public static final Error IDL_UNKNOWN_FIELD = new Error(40415, "IDLUnknownField");
@@ -71,6 +83,15 @@ public class Errors {
       Set.of(
           6, 7, 63, 89, 91, 133, 150, 189, 234, 262, 462, 489, 9001, 10107, 11600, 11602, 13388,
           13435, 13436);
+
+  // SystemOverloadedError codes that are not already in RETRYABLE_ERROR_CODES (462 and 489 are).
+  // These indicate the server is under resource pressure and writes should be retried.
+  public static final Set<Integer> SYSTEM_OVERLOADED_ERROR_CODES =
+      Set.of(
+          Errors.ADMISSION_QUEUE_OVERFLOW.code,
+          Errors.RATE_LIMIT_EXCEEDED.code,
+          Errors.POOLED_CONNECTION_ACQUISITION_REJECTED.code,
+          Errors.INTERRUPTED_DUE_TO_OVERLOAD.code);
 
   public static final Set<Integer> NON_INVALIDATING_ERROR_CODES =
       Set.of(

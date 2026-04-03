@@ -431,6 +431,8 @@ public class MaterializedViewWriter implements IndexWriter {
             "MV write rejected by fencing: a newer leader has written to this document");
       }
       // Not a fencing rejection — retry the failed + unattempted operations.
+      // Disk-full and write-blocked cases are detected and wrapped as transient by
+      // MongoClientOperationExecutor before reaching here.
       this.partialBulkWriteErrors.increment();
       var failedOperations = filterFailedOperations(documents, e.getWriteErrors());
       LOG.warn(

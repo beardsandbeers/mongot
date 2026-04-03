@@ -1,5 +1,6 @@
 package com.xgen.mongot.embedding.utils;
 
+import com.mongodb.MongoBulkWriteException;
 import com.mongodb.MongoCursorNotFoundException;
 import com.mongodb.MongoException;
 import com.mongodb.MongoNodeIsRecoveringException;
@@ -40,6 +41,9 @@ public class MongoClientOperationExecutor {
   private final ConcurrentHashMap<String, Timer> timerCache = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<String, Counter> successCounterCache = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<String, Counter> failureCounterCache = new ConcurrentHashMap<>();
+  private final Counter mongodDiskFullErrors;
+  private final Counter mongodUserWritesBlockedErrors;
+  private final Counter mongodSystemOverloadErrors;
 
   /**
    * Creates a new MongoClientOperationExecutor.
@@ -70,6 +74,9 @@ public class MongoClientOperationExecutor {
     this.requestLatencyMetricName = resourceName + ".requestLatency";
     this.failedRequestsMetricName = resourceName + ".failedRequests";
     this.successfulRequestsMetricName = resourceName + ".successfulRequests";
+    this.mongodDiskFullErrors = metricsFactory.counter("mongodDiskFullErrors");
+    this.mongodUserWritesBlockedErrors = metricsFactory.counter("mongodUserWritesBlockedErrors");
+    this.mongodSystemOverloadErrors = metricsFactory.counter("mongodSystemOverloadErrors");
   }
 
   /**
@@ -105,6 +112,44 @@ public class MongoClientOperationExecutor {
       return result;
 
     } catch (Exception e) {
+      // Detect transient server conditions across all operation types and callsites.
+      // These are temporary (disk can be freed, auto-scaling kicks in, load subsides), so wrap
+      // as transient so the upper retry loop can back off and retry.
+      if (isDiskFull(e)) {
+        this.mongodDiskFullErrors.increment();
+        throw new MaterializedViewTransientException(e);
+      }
+      if (isUserWritesBlocked(e)) {
+        this.mongodUserWritesBlockedErrors.increment();
+        throw new MaterializedViewTransientException(e);
+      }
+      if (isSystemOverloaded(e)) {
+        this.mongodSystemOverloadErrors.increment();
+        throw new MaterializedViewTransientException(e);
+      }
+      if (e instanceof MongoBulkWriteException bulkEx) {
+        boolean hasDiskFull =
+            bulkEx.getWriteErrors().stream()
+                .anyMatch(err -> err.getCode() == Errors.EXCEEDED_DISK_LIMIT.code);
+        boolean hasUserWritesBlocked =
+            bulkEx.getWriteErrors().stream()
+                .anyMatch(err -> err.getCode() == Errors.USER_WRITES_BLOCKED.code);
+        boolean hasSystemOverload =
+            bulkEx.getWriteErrors().stream()
+                .anyMatch(err -> Errors.SYSTEM_OVERLOADED_ERROR_CODES.contains(err.getCode()));
+        if (hasDiskFull) {
+          this.mongodDiskFullErrors.increment();
+        }
+        if (hasUserWritesBlocked) {
+          this.mongodUserWritesBlockedErrors.increment();
+        }
+        if (hasSystemOverload) {
+          this.mongodSystemOverloadErrors.increment();
+        }
+        if (hasDiskFull || hasUserWritesBlocked || hasSystemOverload) {
+          throw new MaterializedViewTransientException(e);
+        }
+      }
       failureCounter.increment();
       throw e;
 
@@ -120,6 +165,19 @@ public class MongoClientOperationExecutor {
           operation.run();
           return null;
         });
+  }
+
+  private static boolean isDiskFull(Throwable e) {
+    return e instanceof MongoException me && me.getCode() == Errors.EXCEEDED_DISK_LIMIT.code;
+  }
+
+  private static boolean isUserWritesBlocked(Throwable e) {
+    return e instanceof MongoException me && me.getCode() == Errors.USER_WRITES_BLOCKED.code;
+  }
+
+  private static boolean isSystemOverloaded(Throwable e) {
+    return e instanceof MongoException me
+        && Errors.SYSTEM_OVERLOADED_ERROR_CODES.contains(me.getCode());
   }
 
   private static boolean isRetryable(Throwable e) {
