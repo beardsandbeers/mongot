@@ -107,4 +107,9 @@ public class VectorQueryTimeMappingChecks implements QueryTimeMappingChecks {
   public boolean supportsFilter() {
     return true;
   }
+
+  @Override
+  public boolean indexedForExists(FieldPath path, Optional<FieldPath> embeddedRoot) {
+    return isIndexedAsVectorFilter(path, embeddedRoot);
+  }
 }

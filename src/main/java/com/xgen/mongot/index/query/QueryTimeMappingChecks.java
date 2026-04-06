@@ -36,4 +36,15 @@ public interface QueryTimeMappingChecks {
   boolean indexedAsUuid(FieldPath path, Optional<FieldPath> embeddedRoot);
 
   boolean supportsFilter(); // 'true' for vector indexes, 'false' for search indexes
+
+  /**
+   * Checks whether the given field is indexed in a way that supports {@code $exists} queries.
+   *
+   * <p>For vector indexes this requires the field to be a {@code filter} field. For search indexes
+   * the default returns {@code true} because any indexed field populates the field-names meta
+   * field.
+   */
+  default boolean indexedForExists(FieldPath path, Optional<FieldPath> embeddedRoot) {
+    return true;
+  }
 }

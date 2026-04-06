@@ -62,4 +62,23 @@ public class MappingCompatibilityValidator {
       }
     }
   }
+
+  /**
+   * Validates that a field used in an {@code $exists} filter is actually present in the index. For
+   * vector indexes this means the field must be defined as a {@code filter} field; for search
+   * indexes the default {@link QueryTimeMappingChecks#indexedForExists} returns {@code true} so no
+   * additional check is needed.
+   */
+  public static void validateExists(
+      FieldPath path,
+      Optional<FieldPath> embeddedRoot,
+      QueryTimeMappingChecks mappingChecks)
+      throws InvalidQueryException {
+    boolean hasFilter = mappingChecks.supportsFilter();
+    InvalidQueryException.validate(
+        mappingChecks.indexedForExists(path, embeddedRoot),
+        "Path '%s' needs to be indexed as %s",
+        path,
+        hasFilter ? "filter" : "token");
+  }
 }

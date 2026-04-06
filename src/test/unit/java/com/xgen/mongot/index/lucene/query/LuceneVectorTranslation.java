@@ -47,6 +47,12 @@ class LuceneVectorTranslation {
     this.directory.close();
   }
 
+  LuceneVectorTranslation(VectorIndexDefinition indexDefinition) {
+    this.indexDefinition = indexDefinition;
+    this.featureFlags = FeatureFlags.getDefault();
+    this.autoEmbeddingFieldsMapping = Map.of();
+  }
+
   LuceneVectorTranslation(List<VectorIndexFieldDefinition> definitions) {
     this.indexDefinition = getIndexDefinition(definitions);
     this.featureFlags = FeatureFlags.getDefault();

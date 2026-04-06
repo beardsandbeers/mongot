@@ -171,6 +171,11 @@ public class VectorSearchFilterQueryFactory {
           singleQueryContext.getEmbeddedRoot(),
           this.factoryContext.getQueryTimeMappingChecks(),
           comparisonOperator.getValueType());
+    } else if (operator instanceof ExistsOperator) {
+      MappingCompatibilityValidator.validateExists(
+          path,
+          singleQueryContext.getEmbeddedRoot(),
+          this.factoryContext.getQueryTimeMappingChecks());
     }
 
     return switch (operator) {

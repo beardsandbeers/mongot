@@ -9,6 +9,7 @@ import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.index.IndexMetricsUpdater;
 import com.xgen.mongot.index.definition.VectorAutoEmbedFieldDefinition;
 import com.xgen.mongot.index.definition.VectorFieldDefinitionResolver;
+import com.xgen.mongot.index.definition.VectorIndexCapabilities;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexFilterFieldDefinition;
 import com.xgen.mongot.index.definition.VectorSimilarity;
@@ -29,6 +30,7 @@ import com.xgen.testing.mongot.index.query.operators.mql.MqlFilterOperatorBuilde
 import com.xgen.testing.mongot.index.query.operators.mql.ValueBuilder;
 import com.xgen.testing.mongot.mock.index.SearchIndex;
 import java.util.List;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class VectorSearchFilterQueryFactoryTest {
@@ -155,5 +157,79 @@ public class VectorSearchFilterQueryFactoryTest {
     assertTrue(
         "Expected field name in error message, got: " + exception.getMessage(),
         exception.getMessage().contains("description"));
+  }
+
+  @Test
+  public void existsOnIndexedFilterField_success() throws Exception {
+    FieldPath vectorPath = FieldPath.parse("embedding");
+    FieldPath filterPath = FieldPath.parse("category");
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index("test")
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .path(vectorPath)
+                    .numCandidates(20)
+                    .limit(10)
+                    .queryVector(Vector.fromFloats(new float[] {1f, 2f, 3f}, NATIVE))
+                    .filter(
+                        new ClauseFilter(
+                            ClauseBuilder.simpleClause()
+                                .path(filterPath)
+                                .addOperator(
+                                    MqlFilterOperatorBuilder.exists().value(true).build())
+                                .build()))
+                    .build())
+            .build();
+
+    VectorIndexDefinition definition =
+        VectorIndexDefinitionBuilder.builder()
+            .withEuclideanVectorField("embedding", 3)
+            .withFilterPath("category")
+            .indexFeatureVersion(VectorIndexCapabilities.CURRENT_FEATURE_VERSION)
+            .build();
+
+    new LuceneVectorTranslation(definition).translate(query);
+  }
+
+  @Test
+  public void existsOnNonIndexedField_throwsException() throws Exception {
+    FieldPath vectorPath = FieldPath.parse("embedding");
+    FieldPath unindexedPath = FieldPath.parse("not_a_filter");
+
+    var query =
+        VectorQueryBuilder.builder()
+            .index("test")
+            .criteria(
+                ApproximateVectorQueryCriteriaBuilder.builder()
+                    .path(vectorPath)
+                    .numCandidates(20)
+                    .limit(10)
+                    .queryVector(Vector.fromFloats(new float[] {1f, 2f, 3f}, NATIVE))
+                    .filter(
+                        new ClauseFilter(
+                            ClauseBuilder.simpleClause()
+                                .path(unindexedPath)
+                                .addOperator(
+                                    MqlFilterOperatorBuilder.exists().value(true).build())
+                                .build()))
+                    .build())
+            .build();
+
+    VectorIndexDefinition definition =
+        VectorIndexDefinitionBuilder.builder()
+            .withEuclideanVectorField("embedding", 3)
+            .withFilterPath("category")
+            .indexFeatureVersion(VectorIndexCapabilities.CURRENT_FEATURE_VERSION)
+            .build();
+
+    var exception =
+        assertThrows(
+            InvalidQueryException.class,
+            () -> new LuceneVectorTranslation(definition).translate(query));
+
+    Assert.assertEquals(
+        "Path 'not_a_filter' needs to be indexed as filter", exception.getMessage());
   }
 }
