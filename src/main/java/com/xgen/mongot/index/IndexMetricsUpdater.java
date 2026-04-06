@@ -1315,6 +1315,7 @@ public class IndexMetricsUpdater implements Closeable {
       static final String CHANGE_STREAM_BATCH_TOTAL_APPLICABLE_BYTES =
           "changeStream_batchTotalApplicableBytes";
       static final String CHANGE_STREAM_BATCH_GET_MORE_TIMER = "changeStream_getMoreDurations";
+      static final String TOTAL_APPLICABLE_BYTES = "totalApplicableBytes";
 
       private final PerIndexMetricsFactory metricsFactory;
       private final DistributionSummary collScanBatchTotalApplicableDocuments;
@@ -1323,6 +1324,7 @@ public class IndexMetricsUpdater implements Closeable {
       private final DistributionSummary changeStreamBatchTotalApplicableBytes;
       private final Timer collScanBatchGetMoreTimer;
       private final Timer changeStreamBatchGetMoreTimer;
+      private final Counter totalApplicableBytes;
 
       InitialSyncMetrics(PerIndexMetricsFactory metricsFactory, Tags tags) {
         this.metricsFactory = metricsFactory;
@@ -1355,6 +1357,8 @@ public class IndexMetricsUpdater implements Closeable {
 
         this.changeStreamBatchGetMoreTimer =
             this.metricsFactory.timer(CHANGE_STREAM_BATCH_GET_MORE_TIMER, tags);
+
+        this.totalApplicableBytes = this.metricsFactory.counter(TOTAL_APPLICABLE_BYTES, tags);
       }
 
       public DistributionSummary getCollectionScanBatchTotalApplicableDocuments() {
@@ -1379,6 +1383,10 @@ public class IndexMetricsUpdater implements Closeable {
 
       public Timer getChangeStreamBatchGetMoreTimer() {
         return this.changeStreamBatchGetMoreTimer;
+      }
+
+      public Counter getTotalApplicableBytes() {
+        return this.totalApplicableBytes;
       }
 
       @Override

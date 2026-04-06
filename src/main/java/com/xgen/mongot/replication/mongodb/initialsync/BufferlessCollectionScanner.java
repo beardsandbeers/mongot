@@ -299,14 +299,18 @@ public class BufferlessCollectionScanner {
           .getCollectionScanBatchTotalApplicableDocuments()
           .record(documentEvents.size());
 
+      long byteTotal =
+          documentEvents.stream()
+              .flatMap(event -> event.getDocument().stream())
+              .map(document -> document.getByteBuffer().remaining())
+              .reduce(0L, Long::sum, Long::sum);
+
       this.context
           .getInitialSyncMetricsUpdater()
           .getCollectionScanBatchTotalApplicableBytes()
-          .record(
-              documentEvents.stream()
-                  .flatMap(event -> event.getDocument().stream())
-                  .map(document -> document.getByteBuffer().remaining())
-                  .reduce(0L, Long::sum, Long::sum));
+          .record(byteTotal);
+
+      this.context.getInitialSyncMetricsUpdater().getTotalApplicableBytes().increment(byteTotal);
     }
   }
 

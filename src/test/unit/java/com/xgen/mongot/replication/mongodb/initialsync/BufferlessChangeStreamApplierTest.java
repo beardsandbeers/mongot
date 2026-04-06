@@ -137,6 +137,14 @@ public class BufferlessChangeStreamApplierTest {
               .getInitialSyncMetrics()
               .getChangeStreamBatchTotalApplicableDocuments()
               .count());
+
+      Assert.assertTrue(
+          indexMetricsUpdater
+          .getReplicationMetricsUpdater()
+          .getInitialSyncMetrics()
+          .getTotalApplicableBytes()
+          .count()
+          > 0);
     }
   }
 

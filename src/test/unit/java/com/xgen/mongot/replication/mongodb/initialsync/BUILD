@@ -5,6 +5,7 @@ java_test_suite(
     srcs = [
         "BufferlessChangeStreamApplierTest.java",
         "BufferlessCollectionScannerTest.java",
+        "BufferlessInitialSyncManagerTest.java",
         "DefaultInitialSyncMongoClientTest.java",
         "InitialSyncNamespaceChangeCheckTest.java",
         "InitialSyncQueueTest.java",

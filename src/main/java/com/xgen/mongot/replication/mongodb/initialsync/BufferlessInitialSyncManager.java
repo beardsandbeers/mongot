@@ -22,6 +22,7 @@ import com.xgen.mongot.util.BsonUtils;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.Crash;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import java.time.Clock;
 import java.time.Duration;
@@ -43,12 +44,16 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
   private final Duration collectionScanTime;
   private final Optional<InitialSyncResumeInfo> resumeInfo;
 
+  private static final long _100_MB = 100L * 1024 * 1024;
+  private static final long _1_GB = 1024L * 1024 * 1024;
+
   /* Tracks the duration of a collection scan */
   private final Timer collectionScanTimer;
   /* Tracks the duration of applying change stream events */
   private final Timer changeStreamTimer;
   private final InitialSyncMongoClient mongoClient;
   private final Counter fsyncErrorCounter;
+  private final MetricsFactory metricsFactory;
 
   @VisibleForTesting
   BufferlessInitialSyncManager(
@@ -76,6 +81,7 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
     this.changeStreamTimer = metricsFactory.timer("changeStreamTime");
     this.mongoClient = mongoClient;
     this.fsyncErrorCounter = metricsFactory.counter("fsyncError");
+    this.metricsFactory = metricsFactory;
   }
 
   static InitialSyncManagerFactory factory(
@@ -101,6 +107,16 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
             mvMetadataCatalog,
             metricsFactory,
             avoidNaturalOrderScanSyncSourceChangeResync);
+  }
+
+  static String getSizeBucket(long totalBytes) {
+    if (totalBytes < _100_MB) {
+      return "lt_100MB";
+    } else if (totalBytes < _1_GB) {
+      return "100MB_1GB";
+    } else {
+      return "gt_1GB";
+    }
   }
 
   private static BufferlessInitialSyncManager create(
@@ -248,6 +264,12 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
           }
         });
 
+    double bytesBeforeSync = this
+        .context
+        .getInitialSyncMetricsUpdater()
+        .getTotalApplicableBytes()
+        .count();
+
     try (changeStreamApplier) {
       // Continue the initial sync until the entire collection has been scanned.
       @Var boolean continueSync = true;
@@ -274,10 +296,39 @@ public class BufferlessInitialSyncManager implements InitialSyncManager {
 
     Optional<ChangeStreamResumeInfo> changeStreamResumeInfo = changeStreamApplier.getResumeInfo();
 
+    long totalBytesProcessed = (long) (this.context.getInitialSyncMetricsUpdater()
+            .getTotalApplicableBytes().count() - bytesBeforeSync);
+    String sizeBucket = getSizeBucket(totalBytesProcessed);
+    Tags sizeCategoryTag = Tags.of("sizeCategory", sizeBucket);
+
+    double elapsedSeconds = stopwatch.elapsed().toMillis() / 1000.0;
+    if (elapsedSeconds > 0) {
+      // Record the throughput in a histogram
+      // Specify the buckets in the histogram so we don't have an explosion in the data.
+      // Right now, with the size CategoryTag, we will have around 7*3 buckets.
+      this.metricsFactory
+          .histogram(
+              "completedSyncThroughputBytesPerSec",
+              sizeCategoryTag,
+              1_000_000,     // 1 MB/s
+              3_000_000,     // 3 MB/s
+              10_000_000,    // 10 MB/s
+              30_000_000,    // 30 MB/s
+              100_000_000,   // 100 MB/s
+              209_715_200,   // 200 MiB/s
+              314_572_800    // 300 MiB/s
+          )
+          .record(totalBytesProcessed / elapsedSeconds);
+    }
+
     this.logger
         .atInfo()
         .addKeyValue("useNaturalOrderScan", this.context.useNaturalOrderScan())
         .addKeyValue("duration", stopwatch)
+        .addKeyValue("totalBytesProcessed", totalBytesProcessed)
+        .addKeyValue("sizeCategory", sizeBucket)
+        .addKeyValue("throughputBytesPerSec",
+            elapsedSeconds > 0 ? totalBytesProcessed / elapsedSeconds : 0)
         .addKeyValue("indexId", this.context.getIndexId())
         .addKeyValue("generationId", this.context.getGenerationId())
         .log("Completed initial sync. Beginning first commit.");

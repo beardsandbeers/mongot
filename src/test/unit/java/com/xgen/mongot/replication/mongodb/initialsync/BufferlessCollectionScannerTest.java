@@ -718,5 +718,13 @@ public class BufferlessCollectionScannerTest {
             .getInitialSyncMetrics()
             .getCollectionScanBatchTotalApplicableDocuments()
             .count());
+
+    Assert.assertTrue(
+        indexMetricsUpdater
+            .getReplicationMetricsUpdater()
+            .getInitialSyncMetrics()
+            .getTotalApplicableBytes()
+            .count()
+            > 0);
   }
 }

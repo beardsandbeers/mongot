@@ -397,6 +397,11 @@ public class BufferlessChangeStreamApplier implements AutoCloseable {
           .getInitialSyncMetricsUpdater()
           .getChangeStreamBatchTotalApplicableBytes()
           .record(documentEventBatch.applicableDocumentsTotalBytes);
+
+      this.context
+          .getInitialSyncMetricsUpdater()
+          .getTotalApplicableBytes()
+          .increment(documentEventBatch.applicableDocumentsTotalBytes);
     }
   }
 
