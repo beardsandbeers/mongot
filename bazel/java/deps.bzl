@@ -55,7 +55,9 @@ COMPILE_ONLY_ARTIFACTS = [
 
 JMH_VERSION = "1.37"
 QUICKCHECK_VERSION = "1.0"
-DOCKER_JAVA_VERSION = "3.5.3"
+
+# 3.7.1+ depends on httpclient5 5.5.1, which uses httpcore5 5.3.6 (fixes CVE-2025-8671, CLOUDP-393895).
+DOCKER_JAVA_VERSION = "3.7.1"
 TEST_ONLY_ARTIFACTS = (
     # These maven artifacts will marked testonly and therefore fail the build if they are indirect
     # dependencies of any production Mongot code. However, the transitive dependencies of these
