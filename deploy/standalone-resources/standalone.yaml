@@ -1,0 +1,22 @@
+mode: standalone
+storage:
+  dataPath: ./data
+  sourceStore:
+    engine: sqlite
+    synchronous: full
+server:
+  grpc:
+    address: 127.0.0.1:27029
+ingestion:
+  writeCompletion: indexed
+  maxInFlightRequests: 64
+  maxDocumentBytes: 16777216
+  maxBatchDocuments: 1000
+  maxBatchBytes: 33554432
+  maxQueuedBytes: 268435456
+  maxUnindexedLogBytes: 10737418240
+  minFreeDiskBytes: 268435456
+  commitIntervalMillis: 1000
+  retryRetentionHours: 24
+querying:
+  refreshIntervalMillis: 1000

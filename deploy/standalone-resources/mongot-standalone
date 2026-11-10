@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STANDALONE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${OSTYPE}" == darwin* ]]; then
+  STANDALONE_JAVA="${STANDALONE_DIR}/bin/jdk/Contents/Home/bin/java"
+else
+  STANDALONE_JAVA="${STANDALONE_DIR}/bin/jdk/bin/java"
+fi
+
+source "${STANDALONE_DIR}/bc-fips-env.sh"
+bc_fips_configure "${STANDALONE_DIR}/lib"
+
+exec "${STANDALONE_JAVA}" \
+  -XX:+ExitOnOutOfMemoryError \
+  -Djava.security.egd=file:/dev/urandom \
+  --add-modules=jdk.incubator.vector \
+  --enable-preview \
+  --enable-native-access=ALL-UNNAMED \
+  ${BC_FIPS_FLAGS[@]+"${BC_FIPS_FLAGS[@]}"} \
+  -cp "${STANDALONE_DIR}/lib/*:${STANDALONE_DIR}/bin/mongot_standalone_deploy.jar" \
+  com.xgen.mongot.standalone.MongotStandalone "$@"

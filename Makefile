@@ -18,6 +18,7 @@ NOCOLOR = \033[0m
 ONPREM_CONTAINER_VERSION ?= preview
 
 DOCKER_BUILD_OPTS ?=
+STANDALONE_IMAGE ?= mongot-standalone:local
 
 # default platform
 PLATFORM ?= linux_x86_64
@@ -36,6 +37,22 @@ build.deploy.community:
 	@$(call BAZEL) build \
 		--platforms=//bazel/platforms:$(PLATFORM) \
 		//deploy:mongot-community
+
+.PHONY: build.deploy.standalone
+build.deploy.standalone:
+	@$(call BAZEL) build --platforms=//bazel/platforms:$(PLATFORM) //deploy:mongot-standalone
+
+# The source build needs only Docker; the fast path reuses a matching Linux release archive.
+.PHONY: build.docker.standalone
+build.docker.standalone:
+	docker build $(DOCKER_BUILD_OPTS) -f deploy/standalone/Dockerfile -t $(STANDALONE_IMAGE) .
+
+.PHONY: build.docker.standalone.local
+build.docker.standalone.local: build.deploy.standalone
+	mkdir -p deploy/standalone/.package
+	cp -fL bazel-bin/deploy/mongot-standalone.tgz deploy/standalone/.package/mongot-standalone.tgz
+	docker build $(DOCKER_BUILD_OPTS) --build-arg PACKAGE_SOURCE=local-package \
+		-f deploy/standalone/Dockerfile -t $(STANDALONE_IMAGE) .
 
 # linting rules
 .PHONY: lint

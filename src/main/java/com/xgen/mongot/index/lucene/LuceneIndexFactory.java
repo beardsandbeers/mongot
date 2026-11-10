@@ -374,6 +374,12 @@ public class LuceneIndexFactory implements IndexFactory {
         : Optional.empty();
   }
 
+  /** Whether the initialized index uses the Lucene implementation's synchronous commit contract. */
+  public static boolean isInitializedLuceneIndex(InitializedIndex index) {
+    return index instanceof InitializedLuceneSearchIndex
+        || index instanceof InitializedLuceneVectorIndex;
+  }
+
   /** Creates LuceneIndexFactory. */
   public static LuceneIndexFactory fromConfig(
       LuceneConfig config,

@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -116,6 +117,49 @@ public class StagedIndexesSwapperTest {
     runSwaps(mocks);
 
     mocks.assertNoIndexActivity();
+    verifyNoMoreInteractions(mocks.journalWriter);
+  }
+
+  @Test
+  public void swapReady_failedLiveAndUnverifiedBuild_waitsForSourceBarrier() throws Exception {
+    ConfigStateMocks mocks = getEmptyMocks();
+    ObjectId id = new ObjectId();
+    var current = mocks.addIndex(id, ConfigStateMocks.State.LIVE);
+    var staged = mocks.stageIndex(id);
+    current.getIndex().setStatus(new IndexStatus(StatusCode.FAILED));
+    staged.getIndex().setStatus(IndexStatus.steady());
+    var buildComplete = new AtomicBoolean();
+    mocks.configState.setGenerationSwapGuard(unused -> buildComplete.get());
+    mocks.clearInvocations();
+
+    runSwaps(mocks);
+
+    mocks.assertLiveIndexesAre(current);
+    mocks.assertStagedIndexesAre(staged);
+    verifyNoMoreInteractions(mocks.journalWriter);
+
+    buildComplete.set(true);
+    runSwaps(mocks);
+
+    mocks.assertLiveIndexesAre(staged);
+    mocks.assertPhasingOutIndexesAre(current);
+  }
+
+  @Test
+  public void swap_directCallerWithUnverifiedBuild_preservesJournalAndCatalog() throws Exception {
+    ConfigStateMocks mocks = getEmptyMocks();
+    ObjectId id = new ObjectId();
+    var current = mocks.addIndex(id, ConfigStateMocks.State.LIVE);
+    var staged = mocks.stageIndex(id);
+    mocks.configState.setGenerationSwapGuard(unused -> false);
+    mocks.clearInvocations();
+
+    boolean swapped =
+        StagedIndexesSwapper.swap(mocks.configState, List.of(staged), List.of(current));
+
+    Assert.assertFalse(swapped);
+    mocks.assertLiveIndexesAre(current);
+    mocks.assertStagedIndexesAre(staged);
     verifyNoMoreInteractions(mocks.journalWriter);
   }
 

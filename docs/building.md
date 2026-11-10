@@ -1,5 +1,9 @@
 # Building MongoDB Search (mongot) from Source
 
+For the independent standalone service, use the [standalone build and operating guide](standalone-mongot.md).
+Its Docker quick start builds and packages the JVM and native dependencies inside Docker; host Java,
+Bazel, and MongoDB are not required.
+
 ## Prerequisites
 
 Before building, ensure you have the following installed:

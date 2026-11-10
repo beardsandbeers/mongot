@@ -2,6 +2,11 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("//bazel/java:package.bzl", "java_binary_stamped_manifest")
 load("//deploy:def.bzl", "extracted_libraries")
 
+exports_files([
+    "docs/standalone-mongot.md",
+    "scripts/standalone/client.py",
+])
+
 java_binary_stamped_manifest(
     name = "mongot_community",
     classpath_resources = ["//conf/mongot/production:conf"],
@@ -13,6 +18,18 @@ java_binary_stamped_manifest(
     ],
     visibility = ["//visibility:public"],
     runtime_deps = ["//src/main/java/com/xgen/mongot/community"],
+)
+
+java_binary_stamped_manifest(
+    name = "mongot_standalone",
+    classpath_resources = ["//conf/mongot/production:conf"],
+    main_class = "com.xgen.mongot.standalone.MongotStandalone",
+    manifest_lines = [
+        "Implementation-Title: mongot standalone",
+        "Implementation-Version: $$BUILD_EMBED_LABEL",
+    ],
+    visibility = ["//visibility:public"],
+    runtime_deps = ["//src/main/java/com/xgen/mongot/standalone"],
 )
 
 # Jars that must be bundled individually in a deployable tarball

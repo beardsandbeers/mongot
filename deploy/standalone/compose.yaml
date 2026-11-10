@@ -1,0 +1,29 @@
+name: mongot-standalone
+services:
+  mongot:
+    image: ${MONGOT_IMAGE:-mongot-standalone:local}
+    build:
+      context: ../..
+      dockerfile: deploy/standalone/Dockerfile
+      args:
+        BUILD_JOBS: ${BUILD_JOBS:-2}
+    ports:
+      - "127.0.0.1:${MONGOT_PORT:-27029}:27029"
+    volumes:
+      - state:/var/lib/mongot
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,exec,size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 90s
+    mem_limit: 4g
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  state:

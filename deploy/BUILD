@@ -102,3 +102,30 @@ package_deploy_tar(
     ],
     with_tags = False,
 )
+
+package_deploy_tar(
+    name = "mongot-standalone",
+    bin = ["//:mongot_standalone_deploy.jar"],
+    lib = [
+        "//:fips-jars",
+        "@maven//:org_xerial_sqlite_jdbc",
+    ] + select({
+        "//bazel/platforms:is_macos_x86_64": [],
+        "//conditions:default": ["//src/main/c:mongot_vecsim"],
+    }),
+    license = [
+        ":community-resources/LICENSE/LICENSE",
+        ":community-resources/LICENSE/THIRD_PARTY_NOTICES.txt",
+        ":standalone-resources/SQLITE_JDBC_LICENSE.txt",
+    ],
+    target_jdk = "//deploy:release_target_jdk",
+    toplevel = [
+        ":standalone-resources/mongot-standalone",
+        ":standalone-resources/standalone.yaml",
+        ":bc-fips-env.sh",
+        "//src/proto/standalone/v1:standalone.proto",
+        "//:docs/standalone-mongot.md",
+        "//:scripts/standalone/client.py",
+    ],
+    with_tags = False,
+)

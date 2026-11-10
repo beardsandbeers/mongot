@@ -1,0 +1,30 @@
+# Keep build products, local state, credentials and machine configuration out of the image context.
+.git
+.bazelrc.local
+.bazelrc.evergreen
+.bazeliskrc
+bazel-*
+scripts/tools/bazelisk/bazelisk-*
+**/__pycache__
+**/.venv*
+**/.classpath
+**/.factorypath
+**/.project
+**/.settings
+**/.DS_Store
+.ruff_cache
+.standalone-client
+.codex
+.claude
+.cursor
+.augment
+data
+backups
+**/*.token
+**/*.key
+**/*.pem
+**/.env
+**/.env.*
+# The optional local-package stage consumes only this explicit build artifact.
+deploy/standalone/.package/*
+!deploy/standalone/.package/mongot-standalone.tgz

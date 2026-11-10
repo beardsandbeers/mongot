@@ -66,3 +66,8 @@ scripts/enterprise/manifest_*.yaml
 scripts/enterprise/kind/.mongot-enterprise-kind.yaml
 tmp/
 .venv-kind/
+
+# Optional input to the standalone container's local-package build stage.
+/deploy/standalone/.package/
+/.standalone-client/
+/backups/standalone-*.tgz

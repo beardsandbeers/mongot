@@ -5,6 +5,8 @@ Welcome to MongoDB Search!
 ## Components
 
 - `mongot` - Service for MongoDB providing Full Text and Vector Search capabilities.
+- Standalone mode - Local BSON ingestion and text/vector search without MongoDB. See
+  [build and operating instructions](docs/standalone-mongot.md), including a Docker-only quick start.
 
 ## Download MongoDB Search Community Edition
 

@@ -173,6 +173,52 @@ public class MongotCursorManagerImpl implements MongotCursorManager {
     }
   }
 
+  /** Creates a cursor pinned to a specific live generation, failing if a swap/drop changed it. */
+  public SearchCursorInfo newCursor(
+      GenerationId generationId,
+      CursorQuery cursorQuery,
+      QueryCursorOptions options,
+      QueryOptimizationFlags optimizationFlags)
+      throws IOException,
+          InvalidQueryException,
+          IndexUnavailableException,
+          InterruptedException,
+          ReaderClosedException {
+    try (var ignored = LockGuard.with(this.sharedLock)) {
+      ensureOpen("newCursor");
+      var generation =
+          this.indexCatalog
+              .getIndexById(generationId.indexId)
+              .filter(index -> index.getGenerationId().equals(generationId))
+              .orElseThrow(
+                  () -> new IndexUnavailableException("Requested generation is no longer live"));
+      var index =
+          this.initializedIndexCatalog
+              .getIndex(generationId)
+              .orElseThrow(
+                  () -> new IndexUnavailableException("Requested generation is not initialized"));
+      if (!cursorQuery.getQuery().index().equals(generation.getDefinition().getName())) {
+        throw new IllegalArgumentException(
+            "Query index name does not match the requested generation");
+      }
+      var manager =
+          this.indexManagers.computeIfAbsent(
+              generationId, unused -> new IndexCursorManagerImpl(index, this.cursorFactory));
+      var definition = generation.getDefinition();
+      var cursor =
+          manager.createCursor(
+              NamespaceBuilder.build(
+                  definition.getDatabase(),
+                  definition.getLastObservedCollectionName(),
+                  definition.getView().map(view -> view.getName())),
+              cursorQuery,
+              options,
+              optimizationFlags);
+      this.cursorToIndex.put(cursor.cursorId, manager);
+      return cursor;
+    }
+  }
+
   @Override
   public IntermediateSearchCursorInfo newIntermediateCursors(
       String databaseName,

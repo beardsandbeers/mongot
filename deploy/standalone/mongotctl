@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Keep short control calls independent of the service heap's JAVA_TOOL_OPTIONS.
+export JAVA_TOOL_OPTIONS='-Xms16m -Xmx128m'
+exec /opt/mongot/bin/jdk/bin/java \
+  -cp '/opt/mongot/tools:/opt/mongot/lib/*:/opt/mongot/bin/mongot_standalone_deploy.jar' \
+  StandaloneControl "$@"

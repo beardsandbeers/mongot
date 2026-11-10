@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BinaryOperator;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -129,6 +130,8 @@ public class ConfigState {
   /** LifecycleManager manages indexes in any of the 3 above states. */
   private final LifecycleManager lifecycleManager;
 
+  private volatile @Var Predicate<GenerationId> generationSwapGuard = unused -> true;
+
   private final MetricsFactory metricsFactory;
   private final JournalWriter journalWriter;
 
@@ -200,6 +203,18 @@ public class ConfigState {
     registerMetrics(metricsFactory, staged, indexCatalog, phasingOut, featureFlags);
 
     return configState;
+  }
+
+  /** Installs an ingestion-source promotion barrier before journal recovery starts. */
+  public synchronized void setGenerationSwapGuard(Predicate<GenerationId> generationSwapGuard) {
+    Check.checkState(
+        !this.isInitializedFromConfigJournal,
+        "Generation swap guard must be installed before journal recovery");
+    this.generationSwapGuard = generationSwapGuard;
+  }
+
+  boolean canSwapGeneration(GenerationId generationId) {
+    return this.generationSwapGuard.test(generationId);
   }
 
   public void updateSyncSource(SyncSourceConfig syncSourceConfig) {
