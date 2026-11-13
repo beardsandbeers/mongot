@@ -12,9 +12,7 @@ Release **0.2.0** is available from the public [mybyte/nomongo-t](https://hub.do
 See the [Docker + Python quickstart](../README.md) and [detailed image instructions](../deploy/standalone/DOCKERHUB.md).
 
 ```sh
-docker pull --platform linux/amd64 mybyte/nomongo-t:0.2.0
-docker run --detach --name mongot --restart unless-stopped --stop-timeout 90 \
-  --memory 4g --read-only --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
+docker run -d --name mongot \
   -p 127.0.0.1:27029:27029 -v mongot-standalone_state:/var/lib/mongot \
   mybyte/nomongo-t:0.2.0
 docker exec mongot mongotctl status
@@ -32,7 +30,7 @@ which the older 0.1.0 server cannot open. Never run two containers against the s
 From a checkout of this repository, with Docker Engine/Docker Desktop and the Compose plugin:
 
 ```sh
-docker compose -f deploy/standalone/compose.yaml up --build --detach --wait
+docker compose -f deploy/standalone/compose.yaml up --build --wait
 docker compose -f deploy/standalone/compose.yaml exec mongot mongotctl status
 ```
 
@@ -49,10 +47,10 @@ The certificate covers `localhost`, `127.0.0.1`, and the Compose service name `m
 year. For a production hostname, install your own certificate and configure restricted principals
 as described below. The default host port is published on loopback only.
 
-The container runs as UID/GID **10001:10001**, with a read-only root filesystem in Compose. The
-state volume is writable, and `/tmp` is an executable temporary filesystem because the native
-crypto and SQLite libraries extract shared objects there. Docker sends SIGTERM and allows 90 seconds
-for shutdown. The image contains the release JVM, application, licenses, API, operating guide, and
+The image runs as UID/GID **10001:10001** and handles SIGTERM on shutdown. The checked-in
+source-build Compose file adds a read-only root filesystem and writable `/tmp` mount; the
+basic Docker CLI examples use Docker defaults.
+The image contains the release JVM, application, licenses, API, operating guide, and
 a small `mongotctl health|status` client; it needs no network downloads at runtime.
 
 ### Build an image without starting it
@@ -66,15 +64,14 @@ make build.docker.standalone
 To run that image using the Docker CLI without Compose:
 
 ```sh
-docker run --detach --name mongot --restart unless-stopped --stop-timeout 90 \
-  --memory 4g --read-only --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
+docker run -d --name mongot \
   -p 127.0.0.1:27029:27029 -v mongot-standalone_state:/var/lib/mongot \
   mongot-standalone:local
 docker exec mongot mongotctl status
 ```
 
 Wait for startup before the status call. This uses the same state-volume name as Compose; stop the
-Compose service before starting a CLI container on that volume. `docker stop --time 90 mongot`
+Compose service before starting a CLI container on that volume. `docker stop mongot`
 stops it cleanly, and `docker rm mongot` removes the container while preserving the named volume.
 
 The multi-stage Dockerfile keeps compilers and Bazel in the build stage. The final image uses
@@ -96,7 +93,7 @@ If a matching **Linux** release archive is already built, the fast path avoids r
 
 ```sh
 make build.docker.standalone.local
-docker compose -f deploy/standalone/compose.yaml up --no-build --detach --wait
+docker compose -f deploy/standalone/compose.yaml up --no-build --wait
 ```
 
 This runs the Bazel release target, stages the archive under the ignored
@@ -197,7 +194,7 @@ mkdir -p backups
 umask 077
 BACKUP="backups/standalone-$(date -u +%Y%m%dT%H%M%SZ).tgz"
 docker compose -f deploy/standalone/compose.yaml stop
-docker run --rm --user 10001:10001 --entrypoint tar \
+docker run --rm --entrypoint tar \
   -v mongot-standalone_state:/state:ro mongot-standalone:local \
   -C /state -czf - . > "$BACKUP"
 tar -tzf "$BACKUP" >/dev/null
@@ -214,7 +211,7 @@ docker run --rm -i --user 0:0 --entrypoint sh \
   -v "${RESTORE_VOLUME}:/var/lib/mongot" mongot-standalone:local \
   -c 'tar -xzf - -C /var/lib/mongot && chown -R 10001:10001 /var/lib/mongot' \
   < "$BACKUP"
-docker run --detach --name mongot-restored --stop-timeout 90 \
+docker run -d --name mongot-restored \
   -p 127.0.0.1:27030:27029 -v "${RESTORE_VOLUME}:/var/lib/mongot" \
   mongot-standalone:local
 docker exec mongot-restored mongotctl status
@@ -226,7 +223,7 @@ outcome. Stop the verification instance before using that state for production w
 only Lucene files or backing up a live volume with `tar` does not produce a supported backup.
 
 For an upgrade: take a stopped backup, record the current image ID, build/tag the new source
-revision, then run `docker compose ... up --no-build --detach --wait` with `MONGOT_IMAGE` set to
+revision, then run `docker compose ... up --no-build --wait` with `MONGOT_IMAGE` set to
 the new tag. The state volume is reused. Follow schema compatibility below; reverting an image
 tag cannot undo a database migration. Restore the pre-upgrade backup into a fresh volume if the
 older binary cannot read the upgraded schema. Images can be transferred with

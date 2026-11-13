@@ -10,18 +10,14 @@ Python, Rust, Java, or Node/TypeScript clients to manage indexes and documents.
 
 ## Quickstart: Docker + Python
 
-You need Docker and Python 3.10+ with `venv`/pip. The published image is **Linux amd64**; the
-platform option also selects amd64 emulation on supported ARM Docker Desktop installations.
-No MongoDB server, host Java, Bazel, or repository checkout is needed.
+You need Docker and Python 3.10+ with `venv`/pip. No MongoDB server, host Java, Bazel, or
+repository checkout is needed. The image is **Linux amd64**. On ARM hosts with amd64 emulation,
+add `--platform linux/amd64` to the `docker run` command.
 
 ### 1. Start the server
 
 ```bash
-docker pull --platform linux/amd64 mybyte/nomongo-t:0.2.0
-docker run --detach --name nomongo-t --restart unless-stopped --stop-timeout 90 \
-  --platform linux/amd64 --memory 4g --read-only \
-  --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
-  --cap-drop ALL --security-opt no-new-privileges:true \
+docker run -d --name nomongo-t \
   -p 127.0.0.1:27029:27029 \
   -v nomongo-t-data:/var/lib/mongot \
   mybyte/nomongo-t:0.2.0
@@ -129,7 +125,7 @@ changed documents. It is an ordered, non-atomic operation.
 ```bash
 docker logs --tail 100 nomongo-t
 docker exec nomongo-t mongotctl status
-docker stop --time 90 nomongo-t
+docker stop nomongo-t
 docker start nomongo-t
 ```
 

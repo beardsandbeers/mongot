@@ -49,7 +49,7 @@ per-call deadlines. Preserve request IDs/payloads for retries and inspect per-it
 The public Docker Hub image can be pulled without a registry login:
 
 ```sh
-docker pull --platform linux/amd64 mybyte/nomongo-t:@VERSION@
+docker pull mybyte/nomongo-t:@VERSION@
 ```
 
 `mybyte/nomongo-t:latest` tracks the current standalone release. The image is Linux amd64

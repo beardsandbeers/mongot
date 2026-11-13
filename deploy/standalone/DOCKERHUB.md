@@ -17,24 +17,20 @@ libraries, SQLite, TLS bootstrap, and an authenticated health/status client.
 | `mybyte/nomongo-t:latest` | Current published standalone release | Linux amd64 |
 
 The repository is public; pulling does not require Docker Hub login. Prefer a versioned tag or
-digest for deployments. Allow 4 GiB of container memory for the default 2 GiB JVM heap, native
-allocations, mapped index pages, and cache. Python is needed only for the client example, not
-inside the server container. There is no separate database service to start.
+digest for deployments. The JVM heap has a 2 GiB maximum; allow headroom for native allocations,
+mapped index pages, and cache when setting your own resource limits. Python is needed only for
+the client example, not inside the server container. There is no separate database service to start.
 
 ## Quickstart: Docker + Python
 
-You need Docker and Python 3.10+ with `venv`/pip. The published image is **Linux amd64**; the
-platform option also selects amd64 emulation on supported ARM Docker Desktop installations.
-No MongoDB server, host Java, Bazel, or repository checkout is needed.
+You need Docker and Python 3.10+ with `venv`/pip. No MongoDB server, host Java, Bazel, or
+repository checkout is needed. The image is **Linux amd64**. On ARM hosts with amd64 emulation,
+add `--platform linux/amd64` to the `docker run` command.
 
 ### 1. Start the server
 
 ```bash
-docker pull --platform linux/amd64 mybyte/nomongo-t:0.2.0
-docker run --detach --name nomongo-t --restart unless-stopped --stop-timeout 90 \
-  --platform linux/amd64 --memory 4g --read-only \
-  --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
-  --cap-drop ALL --security-opt no-new-privileges:true \
+docker run -d --name nomongo-t \
   -p 127.0.0.1:27029:27029 \
   -v nomongo-t-data:/var/lib/mongot \
   mybyte/nomongo-t:0.2.0
@@ -147,29 +143,16 @@ name: nomongo-t
 services:
   nomongo-t:
     image: mybyte/nomongo-t:0.2.0
-    platform: linux/amd64
     ports:
       - "127.0.0.1:27029:27029"
     volumes:
       - state:/var/lib/mongot
-    networks:
-      default:
-        aliases: [mongot]
-    read_only: true
-    tmpfs:
-      - /tmp:rw,nosuid,exec,size=256m,mode=1777
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 4g
-    stop_grace_period: 90s
-    restart: unless-stopped
 volumes:
   state:
 ```
 
 ```bash
-docker compose up --detach --wait
+docker compose up --wait
 docker compose exec nomongo-t mongotctl status
 mkdir -p .nomongo-t
 chmod 700 .nomongo-t
@@ -181,8 +164,10 @@ chmod 600 .nomongo-t/admin.token
 The Docker CLI and Compose examples use different volume names: Compose
 creates `nomongo-t_state`; the CLI example uses `nomongo-t-data`. Use the same project name and
 volume across recreations to keep your data. `docker compose down` preserves the volume;
-`docker compose down --volumes` deletes it. Other containers on this Compose network can connect
-to `mongot:27029` using the exported CA/token; that network alias matches the generated certificate.
+`docker compose down --volumes` deletes it. On ARM hosts using amd64 emulation, add
+`platform: linux/amd64` to the service. For clients in other containers, use a certificate
+covering the service hostname or configure the network alias `mongot`, which the generated
+certificate already covers.
 
 ## Storage and credentials
 
@@ -201,8 +186,8 @@ one year with SANs `localhost`, `127.0.0.1`, and `mongot`, plus a random 64-char
 Existing volumes retain their configuration, certificate, token, and instance ID on restart.
 An incomplete existing config directory is rejected rather than replaced with a new identity.
 
-The read-only root filesystem is supported, but the state volume and `/tmp` must be writable.
-`/tmp` also needs execution enabled because native crypto/SQLite libraries extract shared
+The state volume and `/tmp` must be writable; Docker's defaults already provide a writable
+`/tmp`. It must also allow execution because native crypto/SQLite libraries extract shared
 objects there. Named volumes initialize with the image's ownership. For host bind mounts,
 prepare the state directory so UID/GID 10001 can read and write it. Use storage with reliable
 file locks and fsync. One running process may own a data directory.
@@ -243,10 +228,7 @@ server:
 Start a separate container with that configuration:
 
 ```bash
-docker run --detach --name nomongo-t-custom --restart unless-stopped --stop-timeout 90 \
-  --platform linux/amd64 --memory 4g --read-only \
-  --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
-  --cap-drop ALL --security-opt no-new-privileges:true \
+docker run -d --name nomongo-t-custom \
   -p 127.0.0.1:27029:27029 \
   -v nomongo-t-data:/var/lib/mongot \
   -v "$PWD/config:/etc/nomongo-t:ro" \
@@ -278,7 +260,7 @@ docker inspect --format '{{.State.Health.Status}}' nomongo-t
 docker exec nomongo-t mongotctl health
 docker exec nomongo-t mongotctl status
 docker logs --tail 100 nomongo-t
-docker stop --time 90 nomongo-t
+docker stop nomongo-t
 docker start nomongo-t
 ```
 
@@ -288,11 +270,11 @@ Add `--follow` to `docker logs` to stream output; press Ctrl-C to stop following
 instance identity, store schema, source/log/disk metrics, indexes, and generation progress.
 A healthy container can still have a building or failed index; inspect its index state before
 writing or querying it. Docker health checks do not automatically restart unhealthy containers.
-The restart policy restarts exited containers. Stop/recreate/start does not delete the volume.
+Stop/recreate/start does not delete the volume.
 
-The service handles SIGTERM; give it 90 seconds for a clean shutdown. Keep log retention bounded
-in your Docker daemon or Compose configuration, for example `json-file` with `max-size: 10m`
-and `max-file: '3'`.
+The service handles SIGTERM and uses Docker's default shutdown timeout. Keep log retention
+bounded in your Docker daemon or Compose configuration, for example `json-file` with
+`max-size: 10m` and `max-file: '3'`.
 
 ## Backup and restore
 
@@ -305,8 +287,8 @@ For the Docker CLI volume from the quickstart:
 mkdir -p backups
 chmod 700 backups
 umask 077
-docker stop --time 90 nomongo-t
-docker run --rm --platform linux/amd64 --user 10001:10001 --entrypoint tar \
+docker stop nomongo-t
+docker run --rm --entrypoint tar \
   -v nomongo-t-data:/state:ro mybyte/nomongo-t:0.2.0 \
   -czf - -C /state . > backups/nomongo-t-state.tgz
 tar -tzf backups/nomongo-t-state.tgz >/dev/null
@@ -317,13 +299,11 @@ Restore into a fresh volume:
 
 ```bash
 docker volume create nomongo-t-restored
-docker run --rm -i --platform linux/amd64 --user 0:0 --entrypoint sh \
+docker run --rm -i --user 0:0 --entrypoint sh \
   -v nomongo-t-restored:/var/lib/mongot mybyte/nomongo-t:0.2.0 \
   -c 'tar -xzf - -C /var/lib/mongot && chown -R 10001:10001 /var/lib/mongot' \
   < backups/nomongo-t-state.tgz
-docker run --detach --name nomongo-t-restored --stop-timeout 90 \
-  --platform linux/amd64 --memory 4g --read-only \
-  --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
+docker run -d --name nomongo-t-restored \
   -p 127.0.0.1:27030:27029 \
   -v nomongo-t-restored:/var/lib/mongot mybyte/nomongo-t:0.2.0
 ```
@@ -347,7 +327,7 @@ digest when you need repeatable deployments.
 To remove the quickstart container while keeping its state:
 
 ```bash
-docker stop --time 90 nomongo-t
+docker stop nomongo-t
 docker rm nomongo-t
 ```
 
