@@ -981,6 +981,56 @@ public class StandaloneGrpcServerTest {
     }
   }
 
+  @Test
+  public void dropIndex_openCursor_subsequentGetMoreReturnsNotFound() throws Exception {
+    try (var fixture =
+        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
+      String collection = fixture.collection();
+      var index = fixture.index(collection);
+      fixture
+          .documents()
+          .writeBatch(
+              WriteBatchRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("write")
+                  .addMutations(
+                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a',title:'needle'}"))
+                  .addMutations(
+                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'b',title:'needle'}"))
+                  .build());
+      fixture.visible(index, 2);
+      var cursor =
+          fixture
+              .queries()
+              .search(
+                  QueryRequest.newBuilder()
+                      .setIndexId(index.getIndexId())
+                      .setBatchSize(1)
+                      .setQueryBson(bson("{text:{path:'title',query:'needle'}}"))
+                      .build());
+      assertThat(cursor.getCursorId()).isGreaterThan(0);
+
+      fixture
+          .catalog()
+          .dropIndex(
+              DropIndexRequest.newBuilder()
+                  .setIndexId(index.getIndexId())
+                  .setRequestId("drop")
+                  .setExpectedRevision(1)
+                  .build());
+      var error =
+          assertThrows(
+              StatusRuntimeException.class,
+              () ->
+                  fixture
+                      .queries()
+                      .getMore(
+                          GetMoreRequest.newBuilder().setCursorId(cursor.getCursorId()).build()));
+
+      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
+    }
+  }
+
   private static org.bson.BsonArray results(QueryResponse response) {
     return new org.bson.RawBsonDocument(response.getBatchBson().toByteArray()).getArray("results");
   }

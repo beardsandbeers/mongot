@@ -1,0 +1,26 @@
+{
+  "name": "@mongot/standalone-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "mongot-client": "dist/cli.js"
+  },
+  "scripts": {
+    "generate": "proto-loader-gen-types --longs=String --enums=String --defaults --oneofs --grpcLib=@grpc/grpc-js --outDir=src/generated ../../src/proto/standalone/v1/standalone.proto",
+    "build": "npm run generate && tsc && node -e \"require('fs').copyFileSync('../../src/proto/standalone/v1/standalone.proto', 'dist/standalone.proto')\""
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.14.0",
+    "@grpc/proto-loader": "0.8.0",
+    "bson": "6.10.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "typescript": "5.9.3"
+  }
+}

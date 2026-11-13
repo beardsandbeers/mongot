@@ -230,6 +230,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
                                 .runtime
                                 .catalog()
                                 .dropIndex(StandaloneAuthInterceptor.principal().name(), request));
+            StandaloneGrpcServer.this.queries.indexDropped(request.getIndexId());
             StandaloneGrpcServer.this.runtime.catalogChanged();
             return result;
           });

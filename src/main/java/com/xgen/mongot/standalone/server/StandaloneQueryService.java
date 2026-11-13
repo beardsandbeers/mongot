@@ -43,12 +43,14 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
   private static final class Lease {
     private final String principal;
     private final String collection;
+    private final String index;
     private final String generation;
     private volatile long lastAccess = System.nanoTime();
 
-    private Lease(String principal, String collection, String generation) {
+    private Lease(String principal, String collection, String index, String generation) {
       this.principal = principal;
       this.collection = collection;
+      this.index = index;
       this.generation = generation;
     }
   }
@@ -175,6 +177,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
             new Lease(
                 StandaloneAuthInterceptor.principal().name(),
                 desired.getCollectionId(),
+                desired.getIndexId(),
                 generationId));
         response.setCursorId(cursorId);
         retained = true;
@@ -249,7 +252,26 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
           .withDescription("Cursor does not exist for this principal")
           .asRuntimeException();
     }
+    synchronized (lease) {
+      // A search already in progress can register its cursor after drop's invalidation pass.
+      // Consult the durable tombstone so that such a cursor cannot serve another batch.
+      if (this.runtime.catalog().getIndex(lease.index).getLifecycleState().equals("DROPPED")) {
+        release(id, lease);
+        throw Status.NOT_FOUND.withDescription("Cursor index was dropped").asRuntimeException();
+      }
+    }
     return lease;
+  }
+
+  void indexDropped(String indexId) {
+    this.leases.forEach(
+        (id, lease) -> {
+          if (lease.index.equals(indexId)) {
+            synchronized (lease) {
+              release(id, lease);
+            }
+          }
+        });
   }
 
   void expireIdle() {

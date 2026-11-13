@@ -19,6 +19,9 @@ if [[ ! -f "${config}/standalone.yaml" ]]; then
   trap 'rm -rf -- "${bootstrap}"' EXIT
   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 \
     -subj '/CN=mongot' -addext 'subjectAltName=DNS:mongot,DNS:localhost,IP:127.0.0.1' \
+    -addext 'basicConstraints=critical,CA:FALSE' \
+    -addext 'keyUsage=critical,digitalSignature,keyEncipherment' \
+    -addext 'extendedKeyUsage=serverAuth' \
     -keyout "${bootstrap}/server.key" -out "${bootstrap}/server.crt" >/dev/null 2>&1
   openssl rand -hex 32 > "${bootstrap}/admin.token"
   cat > "${bootstrap}/standalone.yaml" <<'CONFIG'

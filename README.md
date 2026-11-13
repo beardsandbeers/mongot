@@ -7,6 +7,8 @@ Welcome to MongoDB Search!
 - `mongot` - Service for MongoDB providing Full Text and Vector Search capabilities.
 - Standalone mode - Local BSON ingestion and text/vector search without MongoDB. See
   [build and operating instructions](docs/standalone-mongot.md), including a Docker-only quick start.
+- [Standalone gRPC clients](clients/README.md) - Java, Rust, Python and Node/TypeScript clients
+  and end-to-end tests for the full standalone API.
 
 ## Download MongoDB Search Community Edition
 

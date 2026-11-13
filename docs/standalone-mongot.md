@@ -161,6 +161,11 @@ trust chain to clients. Replace files deliberately while stopped; do not remove 
 directory to rotate credentials, as bootstrap would create a fresh admin identity. The entrypoint
 preserves existing credentials and fails if it finds an incomplete config directory.
 
+New bootstrap certificates are server-authentication leaf certificates (`CA:FALSE`). Older images
+may have generated `CA:TRUE` certificates that strict clients such as Rustls reject with
+`CaUsedAsEndEntity`. Existing volumes keep their certificates on upgrade; install a valid server
+leaf certificate and redistribute its trust anchor using the rotation procedure above.
+
 ### Container backup, restore, and upgrade
 
 A consistent v1 backup requires a stopped service. The following includes **both** data and TLS/auth
@@ -346,6 +351,12 @@ the ordered suffix, including concurrent deletes. A durable pin protects that su
 index serves queries during a staged rebuild. Cutover waits for a completed commit and refresh;
 failed/incomplete builds do not replace it. Drop fences and drains that generation before its writer
 closes and kills its cursors. A reused name gets a fresh index ID.
+
+## Client libraries
+
+[Java, Rust, Python and Node/TypeScript clients](../clients/README.md) expose the complete
+standalone gRPC API with BSON helpers, TLS/authentication and per-call deadlines. The same directory
+contains the cross-language end-to-end suite against the packaged standalone executable.
 
 ## Query boundary
 

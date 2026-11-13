@@ -1,0 +1,10 @@
+python/.venv/
+python/*.egg-info/
+python/build/
+python/dist/
+node/node_modules/
+node/dist/
+node/src/generated/
+java/target/
+rust/target/
+tests/results*.json
