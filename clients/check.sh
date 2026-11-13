@@ -10,6 +10,7 @@ if [[ ! -x "${MONGOT_PYTHON}" ]]; then
 fi
 "${MONGOT_PYTHON}" -m pip install -e "${CLIENTS_DIR}/python[codegen]"
 "${MONGOT_PYTHON}" "${CLIENTS_DIR}/python/generate.py"
+"${MONGOT_PYTHON}" -m unittest discover -s "${CLIENTS_DIR}/python/tests" -v
 "${MONGOT_MVN}" -B -ntp -f "${CLIENTS_DIR}/java/pom.xml" package
 (
   cd "${CLIENTS_DIR}/node"

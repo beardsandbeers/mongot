@@ -5,9 +5,14 @@ import com.xgen.mongot.standalone.grpc.CatalogServiceGrpc;
 import com.xgen.mongot.standalone.grpc.CollectionDescription;
 import com.xgen.mongot.standalone.grpc.CreateCollectionRequest;
 import com.xgen.mongot.standalone.grpc.CreateIndexRequest;
+import com.xgen.mongot.standalone.grpc.DeleteByQueryRequest;
+import com.xgen.mongot.standalone.grpc.DeleteByQueryResult;
+import com.xgen.mongot.standalone.grpc.DeleteRequest;
+import com.xgen.mongot.standalone.grpc.DeleteResponse;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
 import com.xgen.mongot.standalone.grpc.GetCollectionRequest;
+import com.xgen.mongot.standalone.grpc.GetDeleteByQueryResultRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
 import com.xgen.mongot.standalone.grpc.GetStatusRequest;
 import com.xgen.mongot.standalone.grpc.GetWriteResultRequest;
@@ -19,6 +24,8 @@ import com.xgen.mongot.standalone.grpc.OperationsServiceGrpc;
 import com.xgen.mongot.standalone.grpc.QueryServiceGrpc;
 import com.xgen.mongot.standalone.grpc.ServiceStatus;
 import com.xgen.mongot.standalone.grpc.UpdateIndexRequest;
+import com.xgen.mongot.standalone.grpc.UpsertRequest;
+import com.xgen.mongot.standalone.grpc.UpsertResponse;
 import com.xgen.mongot.standalone.grpc.WriteBatchRequest;
 import com.xgen.mongot.standalone.grpc.WriteRequest;
 import com.xgen.mongot.standalone.grpc.WriteResponse;
@@ -45,6 +52,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
   private final HealthStatusManager health = new HealthStatusManager();
   private final Server server;
   private final StandaloneQueryService queries;
+  private final DocumentCommands commands;
 
   /**
    * Registers bounded standalone services and their transport security without starting listeners.
@@ -54,6 +62,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
     this.dispatcher = new RpcDispatcher(runtime.config(), runtime.metrics());
     this.writes = new DocumentWriteCoordinator(runtime);
     this.queries = new StandaloneQueryService(runtime, this.dispatcher);
+    this.commands = new DocumentCommands(runtime, this.writes, this.queries);
     this.deadlines =
         new ScheduledThreadPoolExecutor(
             1, Thread.ofPlatform().name("standalone-deadlines").factory());
@@ -115,6 +124,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
       this.server.awaitTermination(10, TimeUnit.SECONDS);
     }
     this.dispatcher.close();
+    this.commands.close();
     this.queries.close();
     this.deadlines.shutdownNow();
     this.deadlines.awaitTermination(10, TimeUnit.SECONDS);
@@ -291,6 +301,58 @@ public final class StandaloneGrpcServer implements AutoCloseable {
   }
 
   private final class Documents extends DocumentServiceGrpc.DocumentServiceImplBase {
+    @Override
+    public void upsert(UpsertRequest request, StreamObserver<UpsertResponse> observer) {
+      StandaloneGrpcServer.this.dispatcher.async(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
+            return StandaloneGrpcServer.this.commands.upsert(
+                StandaloneAuthInterceptor.principal().name(), request);
+          });
+    }
+
+    @Override
+    public void delete(DeleteRequest request, StreamObserver<DeleteResponse> observer) {
+      StandaloneGrpcServer.this.dispatcher.async(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
+            return StandaloneGrpcServer.this.commands.delete(
+                StandaloneAuthInterceptor.principal().name(), request);
+          });
+    }
+
+    @Override
+    public void deleteByQuery(
+        DeleteByQueryRequest request, StreamObserver<DeleteByQueryResult> observer) {
+      StandaloneGrpcServer.this.dispatcher.async(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
+            return StandaloneGrpcServer.this.commands.deleteByQuery(
+                StandaloneAuthInterceptor.principal().name(), request);
+          });
+    }
+
+    @Override
+    public void getDeleteByQueryResult(
+        GetDeleteByQueryResultRequest request, StreamObserver<DeleteByQueryResult> observer) {
+      StandaloneGrpcServer.this.dispatcher.unary(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
+            return StandaloneGrpcServer.this.commands.queryResult(
+                StandaloneAuthInterceptor.principal().name(),
+                request.getCollectionId(),
+                request.getRequestId());
+          });
+    }
+
     @Override
     public void write(WriteRequest request, StreamObserver<WriteResponse> observer) {
       StandaloneGrpcServer.this.dispatcher.async(

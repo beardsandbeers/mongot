@@ -34,6 +34,12 @@ class SequenceCondition(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     SEQUENCE_CONDITION_APPLIED: _ClassVar[SequenceCondition]
     SEQUENCE_CONDITION_COMMITTED: _ClassVar[SequenceCondition]
     SEQUENCE_CONDITION_VISIBLE: _ClassVar[SequenceCondition]
+
+class DocumentWriteConcern(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    DOCUMENT_WRITE_CONCERN_VISIBLE: _ClassVar[DocumentWriteConcern]
+    DOCUMENT_WRITE_CONCERN_INDEXED: _ClassVar[DocumentWriteConcern]
+    DOCUMENT_WRITE_CONCERN_COMMITTED: _ClassVar[DocumentWriteConcern]
 INDEX_TYPE_UNSPECIFIED: IndexType
 INDEX_TYPE_SEARCH: IndexType
 INDEX_TYPE_VECTOR_SEARCH: IndexType
@@ -50,6 +56,9 @@ SEQUENCE_CONDITION_UNSPECIFIED: SequenceCondition
 SEQUENCE_CONDITION_APPLIED: SequenceCondition
 SEQUENCE_CONDITION_COMMITTED: SequenceCondition
 SEQUENCE_CONDITION_VISIBLE: SequenceCondition
+DOCUMENT_WRITE_CONCERN_VISIBLE: DocumentWriteConcern
+DOCUMENT_WRITE_CONCERN_INDEXED: DocumentWriteConcern
+DOCUMENT_WRITE_CONCERN_COMMITTED: DocumentWriteConcern
 
 class GetStatusRequest(_message.Message):
     __slots__ = ()
@@ -296,18 +305,20 @@ class WriteBatchRequest(_message.Message):
     def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., mutations: _Optional[_Iterable[_Union[Mutation, _Mapping]]] = ...) -> None: ...
 
 class MutationResult(_message.Message):
-    __slots__ = ("ordinal", "status_code", "message", "accepted_sequence", "state")
+    __slots__ = ("ordinal", "status_code", "message", "accepted_sequence", "state", "source_existed")
     ORDINAL_FIELD_NUMBER: _ClassVar[int]
     STATUS_CODE_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     ACCEPTED_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_EXISTED_FIELD_NUMBER: _ClassVar[int]
     ordinal: int
     status_code: int
     message: str
     accepted_sequence: int
     state: WriteItemState
-    def __init__(self, ordinal: _Optional[int] = ..., status_code: _Optional[int] = ..., message: _Optional[str] = ..., accepted_sequence: _Optional[int] = ..., state: _Optional[_Union[WriteItemState, str]] = ...) -> None: ...
+    source_existed: bool
+    def __init__(self, ordinal: _Optional[int] = ..., status_code: _Optional[int] = ..., message: _Optional[str] = ..., accepted_sequence: _Optional[int] = ..., state: _Optional[_Union[WriteItemState, str]] = ..., source_existed: _Optional[bool] = ...) -> None: ...
 
 class WriteResponse(_message.Message):
     __slots__ = ("collection_id", "request_id", "results", "complete")
@@ -356,3 +367,121 @@ class IndexWatermarks(_message.Message):
     snapshot_documents: int
     snapshot_complete: bool
     def __init__(self, generation_id: _Optional[str] = ..., applied_sequence: _Optional[int] = ..., committed_sequence: _Optional[int] = ..., visible_sequence: _Optional[int] = ..., snapshot_documents: _Optional[int] = ..., snapshot_complete: _Optional[bool] = ...) -> None: ...
+
+class DocumentId(_message.Message):
+    __slots__ = ("string_value", "object_id", "int32_value", "int64_value")
+    STRING_VALUE_FIELD_NUMBER: _ClassVar[int]
+    OBJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    INT32_VALUE_FIELD_NUMBER: _ClassVar[int]
+    INT64_VALUE_FIELD_NUMBER: _ClassVar[int]
+    string_value: str
+    object_id: str
+    int32_value: int
+    int64_value: int
+    def __init__(self, string_value: _Optional[str] = ..., object_id: _Optional[str] = ..., int32_value: _Optional[int] = ..., int64_value: _Optional[int] = ...) -> None: ...
+
+class UpsertRequest(_message.Message):
+    __slots__ = ("collection_id", "request_id", "documents_bson", "concern")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENTS_BSON_FIELD_NUMBER: _ClassVar[int]
+    CONCERN_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    documents_bson: _containers.RepeatedScalarFieldContainer[bytes]
+    concern: DocumentWriteConcern
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., documents_bson: _Optional[_Iterable[bytes]] = ..., concern: _Optional[_Union[DocumentWriteConcern, str]] = ...) -> None: ...
+
+class UpsertResponse(_message.Message):
+    __slots__ = ("collection_id", "request_id", "upserted_count", "accepted_sequence")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    UPSERTED_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ACCEPTED_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    upserted_count: int
+    accepted_sequence: int
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., upserted_count: _Optional[int] = ..., accepted_sequence: _Optional[int] = ...) -> None: ...
+
+class DeleteRequest(_message.Message):
+    __slots__ = ("collection_id", "request_id", "ids", "concern")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    IDS_FIELD_NUMBER: _ClassVar[int]
+    CONCERN_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    ids: _containers.RepeatedCompositeFieldContainer[DocumentId]
+    concern: DocumentWriteConcern
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., ids: _Optional[_Iterable[_Union[DocumentId, _Mapping]]] = ..., concern: _Optional[_Union[DocumentWriteConcern, str]] = ...) -> None: ...
+
+class DeleteResponse(_message.Message):
+    __slots__ = ("collection_id", "request_id", "deleted_count", "accepted_sequence")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    DELETED_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ACCEPTED_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    deleted_count: int
+    accepted_sequence: int
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., deleted_count: _Optional[int] = ..., accepted_sequence: _Optional[int] = ...) -> None: ...
+
+class DeleteByQueryRequest(_message.Message):
+    __slots__ = ("collection_id", "request_id", "index_id", "query_bson", "batch_size", "concern", "generation_id")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    INDEX_ID_FIELD_NUMBER: _ClassVar[int]
+    QUERY_BSON_FIELD_NUMBER: _ClassVar[int]
+    BATCH_SIZE_FIELD_NUMBER: _ClassVar[int]
+    CONCERN_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_ID_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    index_id: str
+    query_bson: bytes
+    batch_size: int
+    concern: DocumentWriteConcern
+    generation_id: str
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., index_id: _Optional[str] = ..., query_bson: _Optional[bytes] = ..., batch_size: _Optional[int] = ..., concern: _Optional[_Union[DocumentWriteConcern, str]] = ..., generation_id: _Optional[str] = ...) -> None: ...
+
+class GetDeleteByQueryResultRequest(_message.Message):
+    __slots__ = ("collection_id", "request_id")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ...) -> None: ...
+
+class DeleteByQueryResult(_message.Message):
+    __slots__ = ("collection_id", "request_id", "index_id", "generation_id", "snapshot_sequence", "selection_complete", "matched_count", "deleted_count", "conflict_count", "missing_count", "failed_count", "accepted_sequence", "complete", "failure_message")
+    COLLECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    INDEX_ID_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_ID_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    SELECTION_COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    MATCHED_COUNT_FIELD_NUMBER: _ClassVar[int]
+    DELETED_COUNT_FIELD_NUMBER: _ClassVar[int]
+    CONFLICT_COUNT_FIELD_NUMBER: _ClassVar[int]
+    MISSING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    FAILED_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ACCEPTED_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    FAILURE_MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    collection_id: str
+    request_id: str
+    index_id: str
+    generation_id: str
+    snapshot_sequence: int
+    selection_complete: bool
+    matched_count: int
+    deleted_count: int
+    conflict_count: int
+    missing_count: int
+    failed_count: int
+    accepted_sequence: int
+    complete: bool
+    failure_message: str
+    def __init__(self, collection_id: _Optional[str] = ..., request_id: _Optional[str] = ..., index_id: _Optional[str] = ..., generation_id: _Optional[str] = ..., snapshot_sequence: _Optional[int] = ..., selection_complete: _Optional[bool] = ..., matched_count: _Optional[int] = ..., deleted_count: _Optional[int] = ..., conflict_count: _Optional[int] = ..., missing_count: _Optional[int] = ..., failed_count: _Optional[int] = ..., accepted_sequence: _Optional[int] = ..., complete: _Optional[bool] = ..., failure_message: _Optional[str] = ...) -> None: ...

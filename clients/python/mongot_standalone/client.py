@@ -9,6 +9,7 @@ import grpc
 
 from . import standalone_pb2 as api
 from . import standalone_pb2_grpc as rpc
+from .documents import DocumentCommandsMixin
 
 
 def encode_bson(document: Mapping) -> bytes:
@@ -19,7 +20,7 @@ def decode_bson(data: bytes) -> dict:
     return bson.decode(data)
 
 
-class Client:
+class Client(DocumentCommandsMixin):
     def __init__(self, address="127.0.0.1:27029", *, ca_file=None, token_file=None, timeout=30):
         if timeout <= 0 or not math.isfinite(timeout):
             raise ValueError("timeout must be positive and finite")

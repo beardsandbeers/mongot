@@ -4,6 +4,10 @@ import { createInterface } from 'node:readline';
 import { StandaloneClient } from './client';
 
 const methods: Record<string, keyof StandaloneClient> = {
+  Upsert: 'upsert',
+  Delete: 'delete',
+  DeleteByQuery: 'deleteByQuery',
+  GetDeleteByQueryResult: 'getDeleteByQueryResult',
   CreateCollection: 'createCollection',
   GetCollection: 'getCollection',
   CreateIndex: 'createIndex',

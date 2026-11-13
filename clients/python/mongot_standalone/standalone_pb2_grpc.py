@@ -364,6 +364,26 @@ class DocumentServiceStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.Upsert = channel.unary_unary(
+                '/mongot.standalone.v1.DocumentService/Upsert',
+                request_serializer=standalone__pb2.UpsertRequest.SerializeToString,
+                response_deserializer=standalone__pb2.UpsertResponse.FromString,
+                _registered_method=True)
+        self.Delete = channel.unary_unary(
+                '/mongot.standalone.v1.DocumentService/Delete',
+                request_serializer=standalone__pb2.DeleteRequest.SerializeToString,
+                response_deserializer=standalone__pb2.DeleteResponse.FromString,
+                _registered_method=True)
+        self.DeleteByQuery = channel.unary_unary(
+                '/mongot.standalone.v1.DocumentService/DeleteByQuery',
+                request_serializer=standalone__pb2.DeleteByQueryRequest.SerializeToString,
+                response_deserializer=standalone__pb2.DeleteByQueryResult.FromString,
+                _registered_method=True)
+        self.GetDeleteByQueryResult = channel.unary_unary(
+                '/mongot.standalone.v1.DocumentService/GetDeleteByQueryResult',
+                request_serializer=standalone__pb2.GetDeleteByQueryResultRequest.SerializeToString,
+                response_deserializer=standalone__pb2.DeleteByQueryResult.FromString,
+                _registered_method=True)
         self.Write = channel.unary_unary(
                 '/mongot.standalone.v1.DocumentService/Write',
                 request_serializer=standalone__pb2.WriteRequest.SerializeToString,
@@ -389,8 +409,34 @@ class DocumentServiceStub:
 class DocumentServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
-    def Write(self, request, context):
+    def Upsert(self, request, context):
+        """Document-oriented commands. Transport OK means every item completed at the requested concern.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Delete(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteByQuery(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDeleteByQueryResult(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Write(self, request, context):
+        """Legacy mutation API, retained for mixed-operation batches and backwards compatibility.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -416,6 +462,26 @@ class DocumentServiceServicer:
 
 def add_DocumentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'Upsert': grpc.unary_unary_rpc_method_handler(
+                    servicer.Upsert,
+                    request_deserializer=standalone__pb2.UpsertRequest.FromString,
+                    response_serializer=standalone__pb2.UpsertResponse.SerializeToString,
+            ),
+            'Delete': grpc.unary_unary_rpc_method_handler(
+                    servicer.Delete,
+                    request_deserializer=standalone__pb2.DeleteRequest.FromString,
+                    response_serializer=standalone__pb2.DeleteResponse.SerializeToString,
+            ),
+            'DeleteByQuery': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteByQuery,
+                    request_deserializer=standalone__pb2.DeleteByQueryRequest.FromString,
+                    response_serializer=standalone__pb2.DeleteByQueryResult.SerializeToString,
+            ),
+            'GetDeleteByQueryResult': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeleteByQueryResult,
+                    request_deserializer=standalone__pb2.GetDeleteByQueryResultRequest.FromString,
+                    response_serializer=standalone__pb2.DeleteByQueryResult.SerializeToString,
+            ),
             'Write': grpc.unary_unary_rpc_method_handler(
                     servicer.Write,
                     request_deserializer=standalone__pb2.WriteRequest.FromString,
@@ -446,6 +512,114 @@ def add_DocumentServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class DocumentService:
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Upsert(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mongot.standalone.v1.DocumentService/Upsert',
+            standalone__pb2.UpsertRequest.SerializeToString,
+            standalone__pb2.UpsertResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Delete(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mongot.standalone.v1.DocumentService/Delete',
+            standalone__pb2.DeleteRequest.SerializeToString,
+            standalone__pb2.DeleteResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteByQuery(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mongot.standalone.v1.DocumentService/DeleteByQuery',
+            standalone__pb2.DeleteByQueryRequest.SerializeToString,
+            standalone__pb2.DeleteByQueryResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeleteByQueryResult(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mongot.standalone.v1.DocumentService/GetDeleteByQueryResult',
+            standalone__pb2.GetDeleteByQueryResultRequest.SerializeToString,
+            standalone__pb2.DeleteByQueryResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Write(request,

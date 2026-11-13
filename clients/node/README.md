@@ -3,7 +3,7 @@
 Install the downloaded npm tarball with Node 22+:
 
 ```sh
-npm install ./mongot-standalone-client-0.1.0.tgz
+npm install ./mongot-standalone-client-0.2.0.tgz
 ```
 
 ```javascript

@@ -22,25 +22,39 @@ Secure external listeners with TLS and collection/role-scoped bearer principals 
 
 ## Client packages
 
-- **Python 3.10+**: `python -m pip install mongot_standalone_client-@VERSION@-py3-none-any.whl`.
+- **Python 3.10+**: `python -m pip install mongot-standalone-client==@VERSION@` from PyPI, or
+  install `mongot_standalone_client-@VERSION@-py3-none-any.whl` directly.
   The `.tar.gz` is the source distribution; pip can install it instead.
 - **Node 22+/TypeScript**: `npm install ./mongot-standalone-client-@VERSION@.tgz`.
   Use `require('@mongot/standalone-client')` or import the typed package. Compiled JS, declarations
   and the schema are included.
 - **Java 17+**: unzip `mongot-standalone-client-java-@VERSION@.zip`. Its main JAR bundles runtime
   dependencies, exposes the typed library, and runs as a JSON-lines adapter with `java -jar`.
-- **Rust**: extract `mongot-standalone-client-@VERSION@.crate` with tar and add a Cargo path dependency
-  on the resulting directory. A current stable Rust compiler and crates.io access are required.
+- **Rust**: `cargo add mongot-standalone-client@@VERSION@` from crates.io, or extract
+  `mongot-standalone-client-@VERSION@.crate` with tar and add a Cargo path dependency on the
+  resulting directory. A current stable Rust compiler and crates.io access are required.
   The crate includes the protobuf schema and a vendored protoc build dependency. Cargo verifies
   that it builds independently of this repository.
 
 Python, npm and Cargo resolve dependencies through their normal registries. The Java main JAR
-bundles its dependencies. These assets are uploaded to this repository; they are not published
-to language package registries.
+bundles its dependencies. Python and Rust are also published on PyPI and crates.io. Java and Node
+packages are distributed as release assets.
 
 [Full API examples](https://github.com/beardsandbeers/mongot/blob/@COMMIT@/clients/README.md).
-All clients expose the 16 catalog/document/query/status RPCs, BSON helpers, TLS/bearer auth and
+All clients expose the 20 catalog/document/query/status RPCs, BSON helpers, TLS/bearer auth and
 per-call deadlines. Preserve request IDs/payloads for retries and inspect per-item write outcomes.
+
+## Docker
+
+The private Docker Hub repository requires an authorized account:
+
+```sh
+docker login
+docker pull mybyte/private:mongot-standalone-v@VERSION@
+```
+
+`mybyte/private:mongot-standalone` tracks the current standalone release. The image is Linux amd64
+and includes the server runtime. See the operating guide for TLS, persistent volumes, and startup.
 
 ## Verification and provenance
 

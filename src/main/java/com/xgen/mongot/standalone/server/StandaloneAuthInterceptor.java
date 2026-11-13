@@ -52,6 +52,14 @@ final class StandaloneAuthInterceptor implements ServerInterceptor {
     return Optional.ofNullable(OPERATION.get()).orElse("unknown");
   }
 
+  static void requireRole(Role role) {
+    if (!principal().roles().contains(role)) {
+      throw Status.PERMISSION_DENIED
+          .withDescription("Principal requires the " + role.name() + " role")
+          .asRuntimeException();
+    }
+  }
+
   static void requireCollection(String collectionId) {
     if (!principal().allows(collectionId)) {
       throw Status.PERMISSION_DENIED

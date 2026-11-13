@@ -127,6 +127,60 @@ public final class DurableWriteLedger {
         });
   }
 
+  /** Records a dedicated document command with the original wire request as its retry identity. */
+  public RequestRecord beginCommand(
+      String principal,
+      String operation,
+      String collectionId,
+      String id,
+      byte[] originalPayload,
+      List<Mutation> mutations,
+      List<String> targets) {
+    validateEnvelope(collectionId, id, mutations);
+    validateMessageSize(originalPayload.length);
+    if (!operation.equals("Upsert") && !operation.equals("Delete")) {
+      throw new IllegalArgumentException("Unknown document command");
+    }
+    byte[] canonical =
+        WriteBatchRequest.newBuilder()
+            .setCollectionId(collectionId)
+            .setRequestId(id)
+            .addAllMutations(mutations)
+            .build()
+            .toByteArray();
+    return transact(
+        transaction -> {
+          var prior = transaction.request(principal, collectionId, id);
+          if (prior.isPresent()) {
+            LocalAuthoritativeCatalog.verifyRetry(
+                prior.get(), operation, LocalAuthoritativeCatalog.digest(originalPayload));
+            return prior.get();
+          }
+          LocalAuthoritativeCatalog.requireCollection(transaction, collectionId);
+          if (targets.isEmpty()) {
+            throw Status.FAILED_PRECONDITION
+                .withDescription("Writes require a live ready index")
+                .asRuntimeException();
+          }
+          var record =
+              new RequestRecord(
+                  principal,
+                  collectionId,
+                  id,
+                  operation,
+                  LocalAuthoritativeCatalog.digest(originalPayload),
+                  canonical,
+                  List.copyOf(targets),
+                  false,
+                  new byte[0],
+                  0,
+                  "",
+                  System.currentTimeMillis());
+          transaction.createRequest(record);
+          return record;
+        });
+  }
+
   private void validateMessageSize(int size) {
     // Account for protobuf framing and names, while bounding unknown/forward-compatible fields.
     if ((long) size > (long) this.limits.maxBatchBytes() + 65536) {
@@ -193,8 +247,9 @@ public final class DurableWriteLedger {
               }
               if (validated.isPresent()) {
                 var document = validated.get();
-                if (mutation.getType() == MutationType.MUTATION_TYPE_INSERT
-                    && transaction.document(collectionId, document.encodedId()).isPresent()) {
+                boolean existed =
+                    transaction.documentSequence(collectionId, document.encodedId()).isPresent();
+                if (mutation.getType() == MutationType.MUTATION_TYPE_INSERT && existed) {
                   result
                       .setState(WriteItemState.WRITE_ITEM_STATE_REJECTED)
                       .setStatusCode(Status.Code.ALREADY_EXISTS.value())
@@ -207,6 +262,7 @@ public final class DurableWriteLedger {
                           mutation.getBson().toByteArray(),
                           document.delete());
                   result
+                      .setSourceExisted(existed)
                       .setState(WriteItemState.WRITE_ITEM_STATE_PENDING_INDEXING)
                       .setAcceptedSequence(sequence);
                 }
@@ -313,7 +369,8 @@ public final class DurableWriteLedger {
     try {
       return switch (request.operation()) {
         case "Write" -> List.of(WriteRequest.parseFrom(request.payload()).getMutation());
-        case "WriteBatch" -> WriteBatchRequest.parseFrom(request.payload()).getMutationsList();
+        case "WriteBatch", "Upsert", "Delete" ->
+            WriteBatchRequest.parseFrom(request.payload()).getMutationsList();
         default ->
             throw Status.DATA_LOSS
                 .withDescription("Unknown durable write operation")

@@ -56,6 +56,10 @@ async fn dispatch(client: &mut Client, line: &str) -> Result<Value, Box<dyn std:
         "VectorSearch" => invoke!(vector_search),
         "GetMore" => invoke!(get_more),
         "KillCursor" => invoke!(kill_cursor),
+        "Upsert" => invoke!(upsert),
+        "Delete" => invoke!(delete),
+        "DeleteByQuery" => invoke!(delete_by_query),
+        "GetDeleteByQueryResult" => invoke!(get_delete_by_query_result),
         _ => Err("Unknown method".into()),
     }
 }

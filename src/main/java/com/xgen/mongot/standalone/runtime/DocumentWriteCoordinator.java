@@ -34,7 +34,8 @@ public final class DocumentWriteCoordinator {
         request.getCollectionId(),
         request.getRequestId(),
         request,
-        List.of(request.getMutation()));
+        List.of(request.getMutation()),
+        null);
   }
 
   public CompletableFuture<WriteResponse> write(String principal, WriteBatchRequest request) {
@@ -43,7 +44,8 @@ public final class DocumentWriteCoordinator {
         request.getCollectionId(),
         request.getRequestId(),
         request,
-        request.getMutationsList());
+        request.getMutationsList(),
+        null);
   }
 
   private CompletableFuture<WriteResponse> write(
@@ -51,10 +53,11 @@ public final class DocumentWriteCoordinator {
       String collectionId,
       String id,
       MessageLite request,
-      List<Mutation> mutations) {
+      List<Mutation> mutations,
+      @org.jetbrains.annotations.Nullable String operation) {
     var pin = this.runtime.store().pinRequest(principal, collectionId, id);
     try {
-      var result = writePinned(principal, collectionId, id, request, mutations);
+      var result = writePinned(principal, collectionId, id, request, mutations, operation);
       result.whenComplete((ignored, error) -> pin.close());
       return result;
     } catch (RuntimeException | Error e) {
@@ -68,7 +71,8 @@ public final class DocumentWriteCoordinator {
       String collectionId,
       String id,
       MessageLite request,
-      List<Mutation> mutations) {
+      List<Mutation> mutations,
+      @org.jetbrains.annotations.Nullable String operation) {
     LocalAuthoritativeCatalog.validateCollectionId(collectionId);
     LocalAuthoritativeCatalog.validateRequestId(id);
     var context = Context.current();
@@ -88,6 +92,18 @@ public final class DocumentWriteCoordinator {
                             : this.runtime.ingestion().captureTargets(collectionId);
                     if (prior.isEmpty()) {
                       this.runtime.checkWriteAdmission(request.getSerializedSize());
+                    }
+                    if (operation != null) {
+                      return this.runtime
+                          .ledger()
+                          .beginCommand(
+                              principal,
+                              operation,
+                              collectionId,
+                              id,
+                              request.toByteArray(),
+                              mutations,
+                              targets);
                     }
                     return request instanceof WriteRequest single
                         ? this.runtime.ledger().begin(principal, single, targets)
@@ -169,6 +185,18 @@ public final class DocumentWriteCoordinator {
     return result;
   }
 
+  /** Executes a named document command through durable source acceptance. */
+  public CompletableFuture<WriteResponse> command(
+      String principal,
+      String operation,
+      String collectionId,
+      String id,
+      MessageLite original,
+      List<Mutation> mutations) {
+    return write(principal, collectionId, id, original, mutations, operation);
+  }
+
+  /** Looks up durable per-item outcomes for a legacy write or document command. */
   public WriteResponse get(String principal, String collectionId, String id) {
     LocalAuthoritativeCatalog.validateCollectionId(collectionId);
     LocalAuthoritativeCatalog.validateRequestId(id);
@@ -182,6 +210,11 @@ public final class DocumentWriteCoordinator {
                       Status.NOT_FOUND
                           .withDescription("Write request does not exist for this principal")
                           .asRuntimeException());
+      if (request.operation().equals("DeleteByQuery")) {
+        throw Status.FAILED_PRECONDITION
+            .withDescription("Use GetDeleteByQueryResult for this request")
+            .asRuntimeException();
+      }
       return refresh(principal, collectionId, id, request.targets());
     } catch (java.sql.SQLException e) {
       throw Status.UNAVAILABLE

@@ -116,6 +116,26 @@ public final class ClientCli {
               JsonFormat.parser().merge(request, b);
               response = client.killCursor(b.build());
             }
+            case "Upsert" -> {
+              var b = UpsertRequest.newBuilder();
+              JsonFormat.parser().merge(request, b);
+              response = client.upsert(b.build());
+            }
+            case "Delete" -> {
+              var b = DeleteRequest.newBuilder();
+              JsonFormat.parser().merge(request, b);
+              response = client.delete(b.build());
+            }
+            case "DeleteByQuery" -> {
+              var b = DeleteByQueryRequest.newBuilder();
+              JsonFormat.parser().merge(request, b);
+              response = client.deleteByQuery(b.build());
+            }
+            case "GetDeleteByQueryResult" -> {
+              var b = GetDeleteByQueryResultRequest.newBuilder();
+              JsonFormat.parser().merge(request, b);
+              response = client.getDeleteByQueryResult(b.build());
+            }
             default -> throw new IllegalArgumentException("Unknown method");
           }
           output.add("response", JsonParser.parseString(JsonFormat.printer().print(response)));

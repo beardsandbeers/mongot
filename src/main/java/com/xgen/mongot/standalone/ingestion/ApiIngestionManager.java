@@ -247,9 +247,14 @@ public final class ApiIngestionManager implements ReplicationManager {
   }
 
   public synchronized CompletableFuture<Void> awaitTargets(List<String> targets, long sequence) {
+    return awaitTargets(targets, sequence, SequenceCondition.SEQUENCE_CONDITION_APPLIED);
+  }
+
+  public synchronized CompletableFuture<Void> awaitTargets(
+      List<String> targets, long sequence, SequenceCondition condition) {
     var waits = new ArrayList<CompletableFuture<IndexWatermarks>>();
     for (String target : targets) {
-      waits.add(awaitConsumer(target, sequence, SequenceCondition.SEQUENCE_CONDITION_APPLIED));
+      waits.add(awaitConsumer(target, sequence, condition));
     }
     var barrier = CompletableFuture.allOf(waits.toArray(CompletableFuture<?>[]::new));
     barrier.whenComplete(
@@ -319,6 +324,12 @@ public final class ApiIngestionManager implements ReplicationManager {
 
   /** Observes completion without changing source state, including after a disconnected caller. */
   public synchronized Optional<Status> targetOutcome(List<String> targets, long sequence) {
+    return targetOutcome(targets, sequence, SequenceCondition.SEQUENCE_CONDITION_APPLIED);
+  }
+
+  /** Observes whether all captured targets reached the requested write concern. */
+  public synchronized Optional<Status> targetOutcome(
+      List<String> targets, long sequence, SequenceCondition condition) {
     @Var boolean pending = false;
     for (String id : targets) {
       var consumer = this.consumers.get(id);
@@ -333,7 +344,15 @@ public final class ApiIngestionManager implements ReplicationManager {
         return Optional.of(
             Status.FAILED_PRECONDITION.withDescription("A captured generation was retired"));
       }
-      if (consumer.hasCompletedBuild() && consumer.watermarks().getAppliedSequence() >= sequence) {
+      var watermarks = consumer.watermarks();
+      long reached =
+          switch (condition) {
+            case SEQUENCE_CONDITION_APPLIED -> watermarks.getAppliedSequence();
+            case SEQUENCE_CONDITION_COMMITTED -> watermarks.getCommittedSequence();
+            case SEQUENCE_CONDITION_VISIBLE -> watermarks.getVisibleSequence();
+            default -> throw new IllegalArgumentException("Invalid sequence condition");
+          };
+      if (consumer.hasCompletedBuild() && reached >= sequence) {
         continue;
       }
       if (consumer.failure().isPresent() || this.stopping) {

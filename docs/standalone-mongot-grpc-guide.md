@@ -1,5 +1,12 @@
 # Turning mongot into a standalone, API-driven search process
 
+This document preserves the original design proposal and repository analysis. Standalone mode is
+now implemented. For the current **0.2.0** behavior, installation, and upgrade instructions, use
+the [operating guide](standalone-mongot.md), [client guide](../clients/README.md), and
+[canonical protobuf schema](../src/proto/standalone/v1/standalone.proto). The implemented API adds
+dedicated Upsert, Delete, DeleteByQuery, and GetDeleteByQueryResult commands while retaining the
+original Write/WriteBatch interface for compatibility.
+
 ## Contents
 
 - [Purpose and recommendation](#1-purpose-and-recommendation)
@@ -30,7 +37,10 @@ This guide describes how to modify this repository so that one mongot process ca
 - Persist its definitions and acknowledged documents locally, recover after a crash, and rebuild indexes without fetching anything from MongoDB.
 - Continue using mongot's BSON ingestion, analyzers, mappings, Lucene indexes, query implementation, and cursor machinery.
 
-**This is an implementation guide, not documentation for an existing standalone mode.** All new API names, configuration options, storage schemas, and classes below are proposals. The current community executable requires a MongoDB sync source. The analysis is based on repository commit `70116297003f2423f9dfcf3eeb984c6f8d70c82b`.
+**This is the historical implementation guide.** API names, configuration options, storage schemas,
+and classes below describe the original proposal. The community executable analyzed at repository
+commit `70116297003f2423f9dfcf3eeb984c6f8d70c82b` required a MongoDB sync source; the separate
+standalone executable is documented in the operating guide linked above.
 
 The recommended design is:
 

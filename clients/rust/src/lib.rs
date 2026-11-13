@@ -301,6 +301,52 @@ impl Client {
             .map_err(normalize_status)?
             .into_inner())
     }
+    pub async fn upsert(&mut self, message: UpsertRequest) -> Result<UpsertResponse, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .documents
+            .upsert(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
+    pub async fn delete(&mut self, message: DeleteRequest) -> Result<DeleteResponse, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .documents
+            .delete(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
+    pub async fn delete_by_query(
+        &mut self,
+        message: DeleteByQueryRequest,
+    ) -> Result<DeleteByQueryResult, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .documents
+            .delete_by_query(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
+    pub async fn get_delete_by_query_result(
+        &mut self,
+        message: GetDeleteByQueryResultRequest,
+    ) -> Result<DeleteByQueryResult, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .documents
+            .get_delete_by_query_result(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
 }
 
 // Tonic 0.12 reports its local transport timer as CANCELLED. Distinguish that typed

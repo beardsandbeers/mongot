@@ -15,6 +15,12 @@ service CatalogService {
 }
 
 service DocumentService {
+  // Document-oriented commands. Transport OK means every item completed at the requested concern.
+  rpc Upsert(UpsertRequest) returns (UpsertResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc DeleteByQuery(DeleteByQueryRequest) returns (DeleteByQueryResult);
+  rpc GetDeleteByQueryResult(GetDeleteByQueryResultRequest) returns (DeleteByQueryResult);
+  // Legacy mutation API, retained for mixed-operation batches and backwards compatibility.
   rpc Write(WriteRequest) returns (WriteResponse);
   rpc WriteBatch(WriteBatchRequest) returns (WriteResponse);
   rpc GetWriteResult(GetWriteResultRequest) returns (WriteResponse);
@@ -166,6 +172,7 @@ message MutationResult {
   string message = 3;
   optional uint64 accepted_sequence = 4; // Present if durable, even on apply error.
   WriteItemState state = 5; // Only INDEXED is successful mutation completion.
+  optional bool source_existed = 6; // Source presence at acceptance, retained across retries.
 }
 message WriteResponse {
   string collection_id = 1;
@@ -196,4 +203,75 @@ message IndexWatermarks {
   uint64 visible_sequence = 4;
   uint64 snapshot_documents = 5;
   bool snapshot_complete = 6;
+}
+
+// Preserve the BSON identity type: an int32 ID and an int64 ID are distinct.
+message DocumentId {
+  oneof value {
+    string string_value = 1;
+    string object_id = 2; // 24 hexadecimal characters.
+    sint32 int32_value = 3;
+    sint64 int64_value = 4;
+  }
+}
+enum DocumentWriteConcern {
+  DOCUMENT_WRITE_CONCERN_VISIBLE = 0; // Default: subsequent fresh searches observe the change.
+  DOCUMENT_WRITE_CONCERN_INDEXED = 1;
+  DOCUMENT_WRITE_CONCERN_COMMITTED = 2;
+}
+message UpsertRequest {
+  string collection_id = 1;
+  string request_id = 2;
+  repeated bytes documents_bson = 3; // Complete BSON documents with _id; full replacements.
+  DocumentWriteConcern concern = 4;
+}
+message UpsertResponse {
+  string collection_id = 1;
+  string request_id = 2;
+  uint32 upserted_count = 3; // Number of documents inserted or replaced.
+  uint64 accepted_sequence = 4;
+}
+message DeleteRequest {
+  string collection_id = 1;
+  string request_id = 2;
+  repeated DocumentId ids = 3;
+  DocumentWriteConcern concern = 4;
+}
+message DeleteResponse {
+  string collection_id = 1;
+  string request_id = 2;
+  uint32 deleted_count = 3; // Number present in source at acceptance; absent IDs are successful no-ops.
+  uint64 accepted_sequence = 4;
+}
+message DeleteByQueryRequest {
+  string collection_id = 1;
+  string request_id = 2;
+  string index_id = 3; // A text/search index belonging to collection_id.
+  bytes query_bson = 4; // The ordinary Search expression body, without returnStoredSource/returnScope.
+  uint32 batch_size = 5; // Default 100; maximum 1000, further bounded by server limits.
+  DocumentWriteConcern concern = 6;
+  string generation_id = 7; // Optional expected live generation before selection begins.
+}
+message GetDeleteByQueryResultRequest {
+  string collection_id = 1;
+  string request_id = 2;
+}
+// Server-side, ordered, non-atomic deletion of a durable snapshot selection. Changes after
+// snapshot_sequence are skipped as conflicts. Retry the identical request to resume; after
+// selection_complete the target set is immutable, including across process restart.
+message DeleteByQueryResult {
+  string collection_id = 1;
+  string request_id = 2;
+  string index_id = 3;
+  string generation_id = 4;
+  uint64 snapshot_sequence = 5;
+  bool selection_complete = 6;
+  uint64 matched_count = 7;
+  uint64 deleted_count = 8;
+  uint64 conflict_count = 9;
+  uint64 missing_count = 10;
+  uint64 failed_count = 11;
+  uint64 accepted_sequence = 12;
+  bool complete = 13;
+  string failure_message = 14;
 }

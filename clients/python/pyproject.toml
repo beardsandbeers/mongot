@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mongot-standalone-client"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.10"
 description = "BSON-aware gRPC client for standalone mongot"
 readme = "README.md"
@@ -14,6 +14,10 @@ dependencies = ["grpcio>=1.85.1,<2", "protobuf>=7.36.2,<8", "pymongo>=4.10,<5"]
 
 [project.optional-dependencies]
 codegen = ["grpcio-tools==1.85.1"]
+
+[project.urls]
+Repository = "https://github.com/beardsandbeers/mongot"
+Documentation = "https://github.com/beardsandbeers/mongot/blob/nomongo/clients/README.md"
 
 [project.scripts]
 mongot-client = "mongot_standalone.cli:main"

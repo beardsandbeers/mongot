@@ -31,7 +31,7 @@ import java.util.function.Consumer;
  * covers the entire process lifetime, including projection recovery and shutdown.
  */
 public final class StandaloneStore implements Closeable {
-  private static final int SCHEMA_VERSION = 2;
+  public static final int SCHEMA_VERSION = 3;
   private static final int APPLICATION_ID = 0x4d475354;
 
   public record CollectionRecord(String id, String database, String name, long sequence) {}
@@ -63,6 +63,33 @@ public final class StandaloneStore implements Closeable {
   public record MutationRecord(long sequence, byte[] encodedId, byte[] bson, boolean delete) {}
 
   public record RetentionPin(String owner, String collectionId, long sequence) {}
+
+  // Persisted ordinals: append states only; never reorder them.
+  public enum DeleteQueryState {
+    SELECTED,
+    INDEXING,
+    DELETED,
+    CONFLICT,
+    MISSING,
+    FAILED
+  }
+
+  public record DeleteQueryItem(
+      int ordinal,
+      byte[] encodedId,
+      long sourceSequence,
+      DeleteQueryState state,
+      long acceptedSequence) {}
+
+  public record DeleteQueryCounts(
+      long matched,
+      long selected,
+      long indexing,
+      long deleted,
+      long conflicts,
+      long missing,
+      long failed,
+      long acceptedSequence) {}
 
   private record RequestKey(String principal, String scope, String id) {}
 
@@ -233,6 +260,9 @@ public final class StandaloneStore implements Closeable {
       if (version < 2) {
         migrateRetention(connection);
       }
+      if (version < 3) {
+        migrateDeleteQueries(connection);
+      }
       // The directory lock proves previous owners have stopped. Unregistered generations must
       // check the durable pruning floor and rebuild from source if their checkpoint is older.
       statement.executeUpdate("DELETE FROM retention_pins");
@@ -241,6 +271,72 @@ public final class StandaloneStore implements Closeable {
           throw new SQLException("Standalone store integrity check failed");
         }
       }
+    }
+  }
+
+  private static void migrateDeleteQueries(Connection connection) throws SQLException {
+    connection.setAutoCommit(false);
+    try (var statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE delete_query_items (principal TEXT NOT NULL, scope TEXT NOT NULL,"
+              + " request_id TEXT NOT NULL, ordinal INTEGER NOT NULL, encoded_id BLOB NOT NULL,"
+              + " source_sequence INTEGER NOT NULL, state INTEGER NOT NULL, accepted_sequence"
+              + " INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, message TEXT"
+              + " NOT NULL DEFAULT '', PRIMARY KEY(principal,scope,request_id,ordinal),"
+              + " UNIQUE(principal,scope,request_id,encoded_id), FOREIGN"
+              + " KEY(principal,scope,request_id) REFERENCES requests(principal,scope,request_id)"
+              + " ON DELETE CASCADE) WITHOUT ROWID");
+      statement.execute(
+          "CREATE INDEX delete_query_pending ON delete_query_items"
+              + " (principal,scope,request_id,state,ordinal)");
+      statement.execute(
+          "CREATE TABLE delete_query_stats (principal TEXT NOT NULL, scope TEXT NOT NULL,"
+              + " request_id TEXT NOT NULL, matched INTEGER NOT NULL, selected INTEGER NOT NULL,"
+              + " indexing INTEGER NOT NULL, deleted INTEGER NOT NULL, conflicts INTEGER NOT NULL,"
+              + " missing INTEGER NOT NULL, failed INTEGER NOT NULL, accepted_sequence INTEGER NOT"
+              + " NULL, PRIMARY KEY(principal,scope,request_id), FOREIGN"
+              + " KEY(principal,scope,request_id) REFERENCES requests(principal,scope,request_id)"
+              + " ON DELETE CASCADE) WITHOUT ROWID");
+      statement.execute(
+          "CREATE TRIGGER delete_query_added AFTER INSERT ON delete_query_items BEGIN INSERT INTO"
+              + " delete_query_stats VALUES"
+              + " (new.principal,new.scope,new.request_id,1,(new.state=0),(new.state=1),"
+              + " (new.state=2),(new.state=3),(new.state=4),(new.state=5),new.accepted_sequence)"
+              + " ON CONFLICT(principal,scope,request_id) DO UPDATE SET"
+              + " matched=matched+1,selected=selected+(new.state=0),"
+              + " indexing=indexing+(new.state=1),deleted=deleted+(new.state=2),"
+              + " conflicts=conflicts+(new.state=3),missing=missing+(new.state=4),"
+              + " failed=failed+(new.state=5),"
+              + " accepted_sequence=max(accepted_sequence,new.accepted_sequence);"
+              + " END");
+      statement.execute(
+          "CREATE TRIGGER delete_query_changed AFTER UPDATE OF state,accepted_sequence ON"
+              + " delete_query_items BEGIN UPDATE delete_query_stats SET"
+              + " selected=selected+(new.state=0)-(old.state=0),"
+              + " indexing=indexing+(new.state=1)-(old.state=1),"
+              + " deleted=deleted+(new.state=2)-(old.state=2),"
+              + " conflicts=conflicts+(new.state=3)-(old.state=3),"
+              + " missing=missing+(new.state=4)-(old.state=4),"
+              + " failed=failed+(new.state=5)-(old.state=5),"
+              + " accepted_sequence=max(accepted_sequence,new.accepted_sequence)"
+              + " WHERE principal=new.principal AND scope=new.scope AND request_id=new.request_id;"
+              + " END");
+      statement.execute(
+          "CREATE TRIGGER delete_query_removed AFTER DELETE ON delete_query_items BEGIN UPDATE"
+              + " delete_query_stats SET"
+              + " matched=matched-1,selected=selected-(old.state=0),"
+              + " indexing=indexing-(old.state=1),deleted=deleted-(old.state=2),"
+              + " conflicts=conflicts-(old.state=3),missing=missing-(old.state=4),"
+              + " failed=failed-(old.state=5)"
+              + " WHERE principal=old.principal AND scope=old.scope AND request_id=old.request_id;"
+              + " END");
+      statement.execute("PRAGMA user_version=3");
+      connection.commit();
+    } catch (SQLException | RuntimeException e) {
+      connection.rollback();
+      throw e;
+    } finally {
+      connection.setAutoCommit(true);
     }
   }
 
@@ -567,6 +663,171 @@ public final class StandaloneStore implements Closeable {
                   encodedId);
           var rows = statement.executeQuery()) {
         return rows.next() ? Optional.of(rows.getBytes(1)) : Optional.empty();
+      }
+    }
+
+    public java.util.OptionalLong documentSequence(String collectionId, byte[] encodedId)
+        throws SQLException {
+      try (var statement =
+              prepare(
+                  "SELECT sequence FROM documents WHERE collection_id=? AND encoded_id=?",
+                  collectionId,
+                  encodedId);
+          var rows = statement.executeQuery()) {
+        return rows.next()
+            ? java.util.OptionalLong.of(rows.getLong(1))
+            : java.util.OptionalLong.empty();
+      }
+    }
+
+    public void updateRequestProgress(String principal, String scope, String id, byte[] response)
+        throws SQLException {
+      if (update(
+              "UPDATE requests SET response=? WHERE principal=? AND scope=? AND request_id=?",
+              response,
+              principal,
+              scope,
+              id)
+          != 1) {
+        throw new SQLException("Request does not exist");
+      }
+    }
+
+    public void clearDeleteQuerySelection(String principal, String scope, String id)
+        throws SQLException {
+      update(
+          "DELETE FROM delete_query_items WHERE principal=? AND scope=? AND request_id=?",
+          principal,
+          scope,
+          id);
+      update(
+          "UPDATE delete_query_stats SET"
+              + " matched=0,selected=0,indexing=0,deleted=0,conflicts=0,missing=0,"
+              + " failed=0,accepted_sequence=0"
+              + " WHERE principal=? AND scope=? AND request_id=?",
+          principal,
+          scope,
+          id);
+    }
+
+    public boolean addDeleteQueryItem(
+        String principal,
+        String scope,
+        String id,
+        int ordinal,
+        byte[] encodedId,
+        long sourceSequence,
+        DeleteQueryState state)
+        throws SQLException {
+      return update(
+              "INSERT OR IGNORE INTO delete_query_items"
+                  + " (principal,scope,request_id,ordinal,encoded_id,source_sequence,state) VALUES"
+                  + " (?,?,?,?,?,?,?)",
+              principal,
+              scope,
+              id,
+              ordinal,
+              encodedId,
+              sourceSequence,
+              state.ordinal())
+          == 1;
+    }
+
+    /** Reads a bounded page of query-deletion items in their original selection order. */
+    public List<DeleteQueryItem> deleteQueryItems(
+        String principal, String scope, String id, DeleteQueryState state, int limit)
+        throws SQLException {
+      try (var statement =
+              prepare(
+                  "SELECT ordinal,encoded_id,source_sequence,state,accepted_sequence FROM"
+                      + " delete_query_items WHERE principal=? AND scope=? AND request_id=? AND"
+                      + " state=? ORDER BY ordinal LIMIT ?",
+                  principal,
+                  scope,
+                  id,
+                  state.ordinal(),
+                  limit);
+          var rows = statement.executeQuery()) {
+        var result = new ArrayList<DeleteQueryItem>();
+        while (rows.next()) {
+          result.add(
+              new DeleteQueryItem(
+                  rows.getInt(1),
+                  rows.getBytes(2),
+                  rows.getLong(3),
+                  DeleteQueryState.values()[rows.getInt(4)],
+                  rows.getLong(5)));
+        }
+        return List.copyOf(result);
+      }
+    }
+
+    public boolean updateDeleteQueryItem(
+        String principal,
+        String scope,
+        String id,
+        int ordinal,
+        DeleteQueryState expected,
+        DeleteQueryState state,
+        long sequence,
+        int statusCode,
+        String message)
+        throws SQLException {
+      return update(
+              "UPDATE delete_query_items SET state=?, accepted_sequence=CASE WHEN ?>0 THEN ? ELSE"
+                  + " accepted_sequence END,status_code=?,message=? WHERE principal=? AND scope=?"
+                  + " AND request_id=? AND ordinal=? AND state=?",
+              state.ordinal(),
+              sequence,
+              sequence,
+              statusCode,
+              message,
+              principal,
+              scope,
+              id,
+              ordinal,
+              expected.ordinal())
+          == 1;
+    }
+
+    /** Reads transactionally maintained progress without scanning the selected target set. */
+    public DeleteQueryCounts deleteQueryCounts(String principal, String scope, String id)
+        throws SQLException {
+      try (var statement =
+              prepare(
+                  "SELECT matched,selected,indexing,deleted,conflicts,missing,failed,"
+                      + " accepted_sequence"
+                      + " FROM delete_query_stats WHERE principal=? AND scope=? AND request_id=?",
+                  principal,
+                  scope,
+                  id);
+          var rows = statement.executeQuery()) {
+        if (!rows.next()) {
+          return new DeleteQueryCounts(0, 0, 0, 0, 0, 0, 0, 0);
+        }
+        return new DeleteQueryCounts(
+            rows.getLong(1),
+            rows.getLong(2),
+            rows.getLong(3),
+            rows.getLong(4),
+            rows.getLong(5),
+            rows.getLong(6),
+            rows.getLong(7),
+            rows.getLong(8));
+      }
+    }
+
+    public String deleteQueryFailure(String principal, String scope, String id)
+        throws SQLException {
+      try (var statement =
+              prepare(
+                  "SELECT message FROM delete_query_items WHERE principal=? AND scope=?"
+                      + " AND request_id=? AND state=5 ORDER BY ordinal LIMIT 1",
+                  principal,
+                  scope,
+                  id);
+          var rows = statement.executeQuery()) {
+        return rows.next() ? rows.getString(1) : "";
       }
     }
 

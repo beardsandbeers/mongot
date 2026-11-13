@@ -374,6 +374,8 @@ public class StandaloneStoreTest {
             DriverManager.getConnection(
                 "jdbc:sqlite:" + this.folder.getRoot().toPath().resolve("standalone.sqlite"));
         var statement = connection.createStatement()) {
+      statement.execute("DROP TABLE delete_query_items");
+      statement.execute("DROP TABLE delete_query_stats");
       statement.execute("DROP TRIGGER mutation_added");
       statement.execute("DROP TRIGGER mutation_removed");
       statement.execute("DROP TABLE retention_pins");
@@ -389,6 +391,64 @@ public class StandaloneStoreTest {
       assertThat(store.<Long>read(transaction -> transaction.logBytes())).isEqualTo(1 + 6 + 32);
       store.maintain(0);
       assertThat(store.<Long>read(transaction -> transaction.logBytes())).isEqualTo(0);
+    }
+  }
+
+  @Test
+  public void open_versionTwo_addsDeleteQueryStorageAndPreservesSource() throws Exception {
+    String identity;
+    try (var store = new StandaloneStore(this.folder.getRoot().toPath())) {
+      identity = store.instanceId();
+      createCollection(store);
+      store.transaction(tx -> tx.appendMutation("collection", bytes("a"), bytes("source"), false));
+    }
+    try (var connection =
+            DriverManager.getConnection(
+                "jdbc:sqlite:" + this.folder.getRoot().toPath().resolve("standalone.sqlite"));
+        var statement = connection.createStatement()) {
+      statement.execute("DROP TABLE delete_query_items");
+      statement.execute("DROP TABLE delete_query_stats");
+      statement.execute("PRAGMA user_version=2");
+    }
+
+    try (var store = new StandaloneStore(this.folder.getRoot().toPath())) {
+      assertThat(store.instanceId()).isEqualTo(identity);
+      assertThat(sequences(store)).containsExactly(1L);
+      assertThat(
+              store
+                  .<StandaloneStore.DeleteQueryCounts>read(
+                      tx -> tx.deleteQueryCounts("p", "collection", "q"))
+                  .matched())
+          .isEqualTo(0);
+    }
+  }
+
+  @Test
+  public void maintain_expiredQuery_cascadesDurableSelections() throws Exception {
+    try (var store = new StandaloneStore(this.folder.getRoot().toPath())) {
+      createCollection(store);
+      store.transaction(
+          tx -> {
+            tx.createRequest(request());
+            tx.addDeleteQueryItem(
+                "principal",
+                "collection",
+                "request",
+                0,
+                bytes("id"),
+                1,
+                StandaloneStore.DeleteQueryState.SELECTED);
+            return true;
+          });
+
+      store.maintain(2);
+
+      assertThat(
+              store
+                  .<StandaloneStore.DeleteQueryCounts>read(
+                      tx -> tx.deleteQueryCounts("principal", "collection", "request"))
+                  .matched())
+          .isEqualTo(0);
     }
   }
 

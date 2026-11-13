@@ -1,3 +1,10 @@
+import type { UpsertRequest } from './generated/mongot/standalone/v1/UpsertRequest';
+import type { UpsertResponse__Output } from './generated/mongot/standalone/v1/UpsertResponse';
+import type { DeleteRequest } from './generated/mongot/standalone/v1/DeleteRequest';
+import type { DeleteResponse__Output } from './generated/mongot/standalone/v1/DeleteResponse';
+import type { DeleteByQueryRequest } from './generated/mongot/standalone/v1/DeleteByQueryRequest';
+import type { DeleteByQueryResult__Output } from './generated/mongot/standalone/v1/DeleteByQueryResult';
+import type { GetDeleteByQueryResultRequest } from './generated/mongot/standalone/v1/GetDeleteByQueryResultRequest';
 import * as grpc from '@grpc/grpc-js';
 import * as loader from '@grpc/proto-loader';
 import { readFileSync } from 'node:fs';
@@ -108,5 +115,17 @@ export class StandaloneClient {
   }
   killCursor(request: KillCursorRequest): Promise<KillCursorResponse__Output> {
     return this.call((metadata, options, callback) => this.queries.killCursor(request, metadata, options, callback));
+  }
+  upsert(request: UpsertRequest): Promise<UpsertResponse__Output> {
+    return this.call((metadata, options, callback) => this.documents.upsert(request, metadata, options, callback));
+  }
+  delete(request: DeleteRequest): Promise<DeleteResponse__Output> {
+    return this.call((metadata, options, callback) => this.documents.delete(request, metadata, options, callback));
+  }
+  deleteByQuery(request: DeleteByQueryRequest): Promise<DeleteByQueryResult__Output> {
+    return this.call((metadata, options, callback) => this.documents.deleteByQuery(request, metadata, options, callback));
+  }
+  getDeleteByQueryResult(request: GetDeleteByQueryResultRequest): Promise<DeleteByQueryResult__Output> {
+    return this.call((metadata, options, callback) => this.documents.getDeleteByQueryResult(request, metadata, options, callback));
   }
 }

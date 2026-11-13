@@ -81,7 +81,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
     }
   }
 
-  private QueryResponse query(QueryRequest request, boolean vector) {
+  QueryResponse query(QueryRequest request, boolean vector) {
     var desired = this.runtime.catalog().getIndex(request.getIndexId());
     StandaloneAuthInterceptor.requireCollection(desired.getCollectionId());
     if (desired.getLifecycleState().equals("DROPPED")) {
@@ -197,36 +197,44 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
 
   @Override
   public void getMore(GetMoreRequest request, StreamObserver<QueryResponse> observer) {
-    this.dispatcher.unary(
-        request.getSerializedSize(),
-        observer,
-        () -> {
-          var lease = requireLease(request.getCursorId());
-          synchronized (lease) {
-            try {
-              var batch =
-                  this.runtime
-                      .cursors()
-                      .getNextBatch(
-                          request.getCursorId(),
-                          Bytes.ofBytes(4 * 1024 * 1024),
-                          new BatchCursorOptions(
-                              Optional.empty(), Optional.of(batchSize(request.getBatchSize()))));
-              lease.lastAccess = System.nanoTime();
-              if (batch.exhausted) {
-                release(request.getCursorId(), lease);
-              }
-              return QueryResponse.newBuilder()
-                  .setCursorId(batch.exhausted ? 0 : request.getCursorId())
-                  .setGenerationId(lease.generation)
-                  .setBatchBson(encode(new BsonDocument("results", batch.batch)))
-                  .build();
-            } catch (Exception e) {
-              release(request.getCursorId(), lease);
-              throw queryError(e);
-            }
-          }
-        });
+    this.dispatcher.unary(request.getSerializedSize(), observer, () -> nextBatch(request));
+  }
+
+  QueryResponse nextBatch(GetMoreRequest request) {
+    var lease = requireLease(request.getCursorId());
+    synchronized (lease) {
+      try {
+        var batch =
+            this.runtime
+                .cursors()
+                .getNextBatch(
+                    request.getCursorId(),
+                    Bytes.ofBytes(4 * 1024 * 1024),
+                    new BatchCursorOptions(
+                        Optional.empty(), Optional.of(batchSize(request.getBatchSize()))));
+        lease.lastAccess = System.nanoTime();
+        if (batch.exhausted) {
+          release(request.getCursorId(), lease);
+        }
+        return QueryResponse.newBuilder()
+            .setCursorId(batch.exhausted ? 0 : request.getCursorId())
+            .setGenerationId(lease.generation)
+            .setBatchBson(encode(new BsonDocument("results", batch.batch)))
+            .build();
+      } catch (Exception e) {
+        release(request.getCursorId(), lease);
+        throw queryError(e);
+      }
+    }
+  }
+
+  void discardCursor(long id) {
+    var lease = this.leases.get(id);
+    if (lease != null) {
+      synchronized (lease) {
+        release(id, lease);
+      }
+    }
   }
 
   @Override

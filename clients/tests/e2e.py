@@ -30,6 +30,7 @@ from mongot_standalone import Client, api
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTO = ROOT / "src/proto/standalone/v1/standalone.proto"
+CLIENT_VERSION = json.loads((ROOT / "clients/node/package.json").read_text())["version"]
 RPC_NAMES = set(re.findall(r"\brpc (\w+)\(", PROTO.read_text()))
 
 
@@ -52,7 +53,11 @@ class Driver:
         self.called = set()
         commands = {
             "python": [sys.executable, "-m", "mongot_standalone.cli"],
-            "java": ["java", "-jar", str(ROOT / "clients/java/target/standalone-client-0.1.0.jar")],
+            "java": [
+                "java",
+                "-jar",
+                str(ROOT / f"clients/java/target/standalone-client-{CLIENT_VERSION}.jar"),
+            ],
             "node": ["node", str(ROOT / "clients/node/dist/cli.js")],
             "rust": [str(ROOT / "clients/rust/target/debug/mongot-standalone-client")],
         }
@@ -768,6 +773,7 @@ def exercise(client):
         == sequence,
         "Collection watermark wrong",
     )
+    exercise_document_commands(client, recreated["indexId"])
     check(client.called == RPC_NAMES, f"Untested RPCs: {RPC_NAMES - client.called}")
     checks.append("drop, stale revision rejection, cursor invalidation and name recreation")
     return {
@@ -782,6 +788,162 @@ def exercise(client):
         "checks": checks,
         "rpcs": sorted(client.called),
     }
+
+
+def exercise_document_commands(client, other_index_id):
+    run_id = "commands-" + client.language + "-" + uuid.uuid4().hex
+    collection = client.call(
+        "CreateCollection", {"requestId": run_id, "database": "commands", "name": run_id}
+    )["collectionId"]
+    index = client.call(
+        "CreateIndex",
+        {
+            "requestId": run_id + "-index",
+            "collectionId": collection,
+            "name": "text",
+            "type": "INDEX_TYPE_SEARCH",
+            "definitionBson": encoded({"mappings": {"dynamic": True}}),
+        },
+    )
+    index = ready(client, index["indexId"])
+    oid = ObjectId()
+    documents = [
+        {"_id": "a", "title": "remove"},
+        {"_id": "b", "title": "remove"},
+        {"_id": "keep", "title": "keep"},
+        {"_id": oid, "title": "remove"},
+        {"_id": 7, "title": "remove"},
+        {"_id": Int64(7), "title": "keep"},
+    ]
+    upsert = {
+        "collectionId": collection,
+        "requestId": run_id + "-upsert",
+        "documentsBson": [encoded(document) for document in documents],
+    }
+    inserted = client.call("Upsert", upsert)
+    check(int(inserted["upsertedCount"]) == 6, "Upsert did not report all documents")
+    check(client.call("Upsert", upsert) == inserted, "Upsert retry changed result")
+    check(
+        len(all_results(client, search(client, index, "remove"))) == 4,
+        "Upsert default concern did not provide reader visibility",
+    )
+    delete = {
+        "collectionId": collection,
+        "requestId": run_id + "-delete",
+        "ids": [
+            {"stringValue": "a"},
+            {"objectId": str(oid)},
+            {"int32Value": 7},
+            {"stringValue": "absent"},
+        ],
+    }
+    deleted = client.call("Delete", delete)
+    check(int(deleted["deletedCount"]) == 3, "Delete count included an absent ID")
+    check(
+        client.call("Delete", delete) == deleted, "Delete retry did not preserve its original count"
+    )
+    check(
+        ids(all_results(client, search(client, index, "remove"))) == {"b"},
+        "Typed deletion removed the wrong documents",
+    )
+    keep = all_results(client, search(client, index, "keep"))
+    check(
+        len(keep) == 2 and any(isinstance(row["_id"], Int64) for row in keep),
+        "int32 deletion also deleted the int64 ID",
+    )
+    client.call(
+        "Upsert",
+        {
+            "collectionId": collection,
+            "requestId": run_id + "-more",
+            "documentsBson": [
+                encoded({"_id": "b", "title": "remove", "changed": True}),
+                encoded({"_id": "d", "title": "remove"}),
+                encoded({"_id": "e", "title": "remove"}),
+            ],
+        },
+    )
+    query = {
+        "collectionId": collection,
+        "requestId": run_id + "-query",
+        "indexId": index["indexId"],
+        "queryBson": encoded({"text": {"path": "title", "query": "remove"}}),
+        "batchSize": 1,
+    }
+    result = client.call("DeleteByQuery", query)
+    check(
+        result["complete"]
+        and result["selectionComplete"]
+        and int(result["matchedCount"]) == 3
+        and int(result["deletedCount"]) == 3
+        and int(result.get("conflictCount", 0)) == 0,
+        "DeleteByQuery did not complete its full cursor selection",
+    )
+    check(
+        not all_results(client, search(client, index, "remove")),
+        "DeleteByQuery default concern was not visible",
+    )
+    client.call(
+        "Upsert",
+        {
+            "collectionId": collection,
+            "requestId": run_id + "-late",
+            "documentsBson": [encoded({"_id": "late", "title": "remove"})],
+        },
+    )
+    check(
+        client.call("DeleteByQuery", query) == result,
+        "DeleteByQuery retry changed its frozen selection",
+    )
+    check(
+        client.call(
+            "GetDeleteByQueryResult", {"collectionId": collection, "requestId": query["requestId"]}
+        )
+        == result,
+        "DeleteByQuery result lookup differs from its durable outcome",
+    )
+    check(
+        ids(all_results(client, search(client, index, "remove"))) == {"late"},
+        "Query retry deleted a newly matching document",
+    )
+    client.call(
+        "DeleteByQuery",
+        dict(query, queryBson=encoded({"text": {"path": "title", "query": "keep"}})),
+        error="INVALID_ARGUMENT",
+    )
+    client.call(
+        "GetWriteResult",
+        {"collectionId": collection, "requestId": query["requestId"]},
+        error="FAILED_PRECONDITION",
+    )
+    client.call(
+        "Delete",
+        {"collectionId": collection, "requestId": run_id + "-bad-id", "ids": [{}]},
+        error="INVALID_ARGUMENT",
+    )
+    client.call(
+        "DeleteByQuery",
+        dict(query, requestId=run_id + "-wrong-collection", indexId=other_index_id),
+        error="INVALID_ARGUMENT",
+    )
+    partial = {
+        "collectionId": collection,
+        "requestId": run_id + "-partial",
+        "documentsBson": [
+            encoded({"_id": "valid", "title": "keep"}),
+            encoded({"title": "missingid"}),
+        ],
+    }
+    client.call("Upsert", partial, error="INVALID_ARGUMENT")
+    outcomes = client.call(
+        "GetWriteResult", {"collectionId": collection, "requestId": partial["requestId"]}
+    )
+    check(
+        outcomes["complete"]
+        and [item["state"] for item in outcomes["results"]]
+        == ["WRITE_ITEM_STATE_INDEXED", "WRITE_ITEM_STATE_REJECTED"],
+        "Partial command outcomes were lost",
+    )
 
 
 def verify_restart(client, state):

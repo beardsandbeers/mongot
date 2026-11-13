@@ -8,6 +8,27 @@ for the durability and lifecycle contract.
 
 ## Docker quick start: Docker is the only prerequisite
 
+Release **0.2.0** is available in the private Docker Hub repository for authorized accounts:
+
+```sh
+docker login
+docker pull mybyte/private:mongot-standalone-v0.2.0
+docker run --detach --name mongot --restart unless-stopped --stop-timeout 90 \
+  --memory 4g --read-only --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
+  -p 127.0.0.1:27029:27029 -v mongot-standalone_state:/var/lib/mongot \
+  mybyte/private:mongot-standalone-v0.2.0
+docker exec mongot mongotctl status
+```
+
+Wait for startup before the status call. The versioned tag selects this release;
+`mybyte/private:mongot-standalone` tracks the current release. The image is Linux amd64 and
+includes Java 21 and the native libraries. The same TLS credentials, persistent volume, and
+operational commands described below apply to the published image.
+
+To upgrade an existing container, stop and remove it, pull the new tag, and recreate it using the
+same state volume. Keep a stopped backup before upgrading: 0.2.0 migrates the store to schema 3,
+which the older 0.1.0 server cannot open. Never run two containers against the same state volume.
+
 From a checkout of this repository, with Docker Engine/Docker Desktop and the Compose plugin:
 
 ```sh
@@ -228,7 +249,7 @@ older binary cannot read the upgraded schema. Images can be transferred with
 ## Build and start without Docker
 
 Prebuilt Linux x86_64 server and client packages are available in the
-[standalone-v0.1.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.1.0).
+[standalone-v0.2.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.2.0).
 Follow its `INSTALL.md` and verify downloads against `SHA256SUMS`. The server archive contains its
 own Java 21 runtime and native libraries; no host JVM or MongoDB server is required.
 
@@ -363,6 +384,26 @@ closes and kills its cursors. A reused name gets a fresh index ID.
 standalone gRPC API with BSON helpers, TLS/authentication and per-call deadlines. The same directory
 contains the cross-language end-to-end suite against the packaged standalone executable.
 
+## Document-oriented gRPC commands (0.2.0)
+
+DocumentService now provides Upsert, Delete, DeleteByQuery and GetDeleteByQueryResult. Upsert takes
+complete BSON documents; Delete takes typed IDs (string/ObjectId/int32/int64). Successful responses
+contain counts and accepted sequences and wait for visibility by default. Legacy Write/WriteBatch
+remain available for mixed mutation batches. See [document API examples](../clients/README.md#document-commands-020).
+
+DeleteByQuery executes a Search expression on the server. It durably selects IDs and source
+versions, conditionally deletes unchanged documents, and persists progress for retries/restart.
+It requires both WRITE and QUERY roles. Concurrent replacements become conflicts, and retries
+of a completed selection never delete newly matching documents. Deadlines do not roll back earlier
+accepted work; inspect GetDeleteByQueryResult and resubmit the identical request to resume.
+
+Schema 3 adds durable delete-query selections with cascading retry-retention cleanup. Opening a
+schema 1 or 2 store upgrades it transactionally while preserving documents and instance identity.
+An older binary cannot open the upgraded store; keep the stopped backup required for rollback.
+Use the 0.2.0 server archive/image with the 0.2.0 clients. The older 0.1.0 binary/image does not
+provide these RPCs. Python installs with `pip install mongot-standalone-client==0.2.0`; Rust
+installs with `cargo add mongot-standalone-client@0.2.0`.
+
 ## Query boundary
 
 Search accepts the existing `$search` expression body; VectorSearch accepts the existing
@@ -473,10 +514,11 @@ repair a projection, and never copy just Lucene directories as a service backup.
 backup into two writers creates divergent independent instances; this service provides no replication,
 HA, multi-process writer coordination, or cross-host durability guarantee.
 
-The store uses `application_id` plus `user_version` and checks integrity on open. Current schema 2
-migrates schema 1 atomically, preserving instance/source/catalog/retry identities and initializing
-retention accounting. Unknown/newer schemas and foreign/corrupt databases fail closed. Downgrading
-to a binary that cannot read schema 2 is unsupported; preserve a stopped backup before upgrades.
+The store uses `application_id` plus `user_version` and checks integrity on open. Current schema 3
+migrates schemas 1 and 2, preserving instance/source/catalog/retry identities and initializing
+retention accounting and durable query-deletion progress. Unknown/newer schemas and foreign/corrupt
+databases fail closed. Downgrading to a binary that cannot read schema 3 is unsupported; preserve a
+stopped backup before upgrades.
 Lucene checkpoint schema independently validates instance, collection, generation, definition hash,
 build completion, and sequence. A corrupt/incompatible checkpoint fails the generation rather than
 claiming progress. Incomplete source builds restart from a new consistent snapshot.

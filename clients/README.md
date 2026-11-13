@@ -9,17 +9,30 @@ connection or running MongoDB server is needed.
 | Service | Operations |
 | --- | --- |
 | Catalog | CreateCollection, GetCollection, CreateIndex, UpdateIndex, DropIndex, GetIndex, ListIndexes |
-| Documents | Write, WriteBatch, GetWriteResult, AwaitSequence |
+| Documents | Upsert, Delete, DeleteByQuery, GetDeleteByQueryResult; legacy Write, WriteBatch, GetWriteResult, AwaitSequence |
 | Queries | Search, VectorSearch, GetMore, KillCursor |
 | Operations | GetStatus |
+
+Document commands are new in **API/client 0.2.0** and require a 0.2.0 server build. Existing
+Write/WriteBatch calls remain compatible. Older 0.1.0 servers expose the earlier mutation API.
 
 Build from this checkout. Java, Rust and TypeScript generate bindings from the server's schema
 during their builds; Python includes generated bindings and a regeneration command. The server
 operating guide explains [startup and credentials](../docs/standalone-mongot.md).
 
-## Downloadable packages
+## Released packages
 
-The [standalone-v0.1.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.1.0)
+Python and Rust clients are available through their language registries:
+
+```sh
+python -m pip install mongot-standalone-client==0.2.0
+cargo add mongot-standalone-client@0.2.0
+```
+
+See [PyPI](https://pypi.org/project/mongot-standalone-client/0.2.0/) and
+[crates.io](https://crates.io/crates/mongot-standalone-client/0.2.0) for package metadata.
+
+The [standalone-v0.2.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.2.0)
 provides the Linux x86_64 server archive, Java client/source bundle, Python wheel/source archive,
 npm tarball, and Rust crate. The release includes installation instructions, checksums, provenance,
 and test reports. Packages install without a repository checkout; dependencies are resolved by
@@ -29,8 +42,8 @@ To rebuild assets from a checkout, use Python 3.12+ with `build` and the Python 
 dependencies installed, plus the toolchains listed below:
 
 ```sh
-python scripts/standalone/package_release.py --output-dir dist/standalone
-python scripts/standalone/verify_release.py --output-dir dist/standalone
+python scripts/standalone/package_release.py --output-dir dist/standalone/v0.2.0
+python scripts/standalone/verify_release.py --output-dir dist/standalone/v0.2.0
 ```
 
 The first command builds the server and all packages. The second installs each package in a
@@ -56,14 +69,14 @@ clients/check.sh --launcher /absolute/path/to/mongot-standalone/mongot-standalon
 ```
 
 The script creates `clients/python/.venv`, installs Python dependencies, builds all four packages,
-and runs `clients/tests/e2e.py`. Override `MONGOT_PYTHON` or `MONGOT_MVN` to use existing tool
-installations. Maven, npm and Cargo honor their usual cache settings. Build outputs are ignored.
+and runs Python helper unit tests plus `clients/tests/e2e.py`. Override `MONGOT_PYTHON` or
+`MONGOT_MVN` to use existing tool installations. Maven, npm and Cargo honor their usual cache settings. Build outputs are ignored.
 
 The suite launches a **real packaged mongot process**, creates disposable TLS credentials and
 isolated storage under `/tmp`, and tests every RPC through each language's native gRPC client.
 It verifies strict INSERT, replacement UPSERT, idempotent DELETE, ordered partial batches,
-retry outcomes, all three sequence conditions, historical index backfill, text and vector query
-results, cursor paging/killing, index pagination, mapping rebuilds, revision conflicts, generation
+dedicated document commands, resumable query deletion, retry outcomes, all three sequence conditions,
+historical index backfill, text and vector query results, cursor paging/killing, index pagination, mapping rebuilds, revision conflicts, generation
 fencing, drop/recreate behavior, BSON fidelity, and persistence across a process restart. It fails
 if a schema RPC is missing from the exercised set. Logs/state remain in the printed temporary
 directory for inspection; credentials are not printed. The default JSON report is
@@ -75,6 +88,9 @@ After building, rerun selected clients without rebuilding:
 clients/python/.venv/bin/python clients/tests/e2e.py \
   --launcher /absolute/path/to/mongot-standalone/mongot-standalone \
   --languages python java node rust
+# Also exercise collection-bound Python helpers directly against a fresh TLS server.
+clients/python/.venv/bin/python clients/tests/python_documents_e2e.py \
+  --launcher /absolute/path/to/mongot-standalone/mongot-standalone
 ```
 
 Use `--plaintext` to test the isolated development listener. To test an **existing disposable**
@@ -105,9 +121,80 @@ with Client("localhost:27029", ca_file="server.crt", token_file="admin.token", t
     description = client.get_index(api.GetIndexRequest(index_id=index.index_id))
 ```
 
-All methods use snake_case and accept generated `api` requests. They return generated response
+RPC wrappers use snake_case and accept generated `api` requests. They return generated response
 objects. `timeout=` can override the client deadline per call. Raw service stubs are also exposed
 as `catalog`, `documents`, `queries`, and `operations` for advanced gRPC options.
+
+## Document commands (0.2.0)
+
+The server exposes dedicated **Upsert**, **Delete**, **DeleteByQuery**, and
+**GetDeleteByQueryResult** RPCs. Upsert takes complete BSON documents, Delete takes typed IDs,
+and successful upsert/delete responses contain counts and an accepted sequence. A mutation
+operation enum is not required. Java, Rust, Python and TypeScript bindings expose all four RPCs.
+
+Python also provides a collection-bound API:
+
+```python
+from mongot_standalone import Client
+
+with Client("localhost:27029", ca_file="server.crt", token_file="admin.token") as client:
+    docs = client.collection(collection_id)
+
+    docs.upsert({"_id": "a", "title": "expired"})
+    docs.upsert_many([{"_id": "b", "title": "expired"}, {"_id": "keep", "title": "active"}])
+    deleted = docs.delete("a")
+    print(deleted.deleted_count)
+    docs.delete_many(["b", "missing"])
+
+    result = docs.delete_by_query(
+        index_id,
+        {"text": {"path": "title", "query": "expired"}},
+        request_id="expiry-sweep-2026-11-13",
+    )
+    print(result.deleted_count, result.conflict_count)
+```
+
+The same methods are available on `Client` with `collection_id` as their first argument. Defaults
+wait for **VISIBLE** on captured live indexes: an ordinary successful call is ready for fresh
+searches. Choose `concern="indexed"` for indexing completion or `concern="committed"` for a Lucene
+commit. Upsert is full-document replacement. Deletes of absent IDs succeed with zero deleted count.
+Typed IDs preserve strings, ObjectIds, BSON int32 and BSON int64; use `bson.Int64` for small int64 IDs.
+A command accepts at most the configured batch limit (1000 documents/IDs by default).
+
+Request IDs are generated when omitted and returned with the response. To retry, supply the same
+ID and **identical arguments**, including concern and query batch size. `DocumentCommandError`
+retains `.collection_id`, `.request_id`, `.code()` and the original gRPC error after an ambiguous
+failure. No command is automatically retried. `Upsert`/`Delete` are ordered, non-atomic: transport
+OK means all items reached the requested concern; an error can follow accepted items. Inspect
+`GetWriteResult` using the exception's request ID for their per-item outcomes.
+
+### Delete-by-query behavior
+
+DeleteByQuery is executed by the server using an ordinary **Search expression**, not a MongoDB
+filter or a client-side search/delete loop. It requires a search index belonging to the collection
+and both WRITE and QUERY roles. Stored-source and return-scope options are not accepted.
+
+The server captures a source sequence, waits for its query generation to become visible, and
+materializes a durable, deduplicated target-ID/version list before deleting anything. Source
+changes after that cutoff or after selection are skipped and counted as conflicts. Missing IDs
+are counted separately. Deletes then flow through the same durable source log and ingestion lanes
+as other writes. Work is paged with bounded memory, and counts/targets survive restart.
+
+An interrupted operation is resumed by repeating the identical DeleteByQuery request. Once
+selection completes, retries never re-run the query against newly matching documents. Selection
+interrupted before any deletion can be re-evaluated at its original cutoff and generation. The
+normal server/client deadlines still apply; large selections may need longer configured deadlines.
+Use `docs.delete_by_query_result(request_id)` after a timeout to inspect progress, then repeat the
+original command to continue it. Retry history follows the server's configured retention window.
+
+`matched_count`, `deleted_count`, `conflict_count`, `missing_count`, `failed_count` and `complete`
+report progress. Failed indexing can leave durable source deletions; this operation does not roll
+back earlier work. Retiring a captured generation can fail remaining items. Completed results stay
+stable on retries. Observe partial results before replacing/dropping generations when their
+individual indexing outcomes matter.
+
+Raw protobuf request methods remain available as `upsert_request`, `delete_request`,
+`delete_by_query_request` and `get_delete_by_query_result` on the Python client.
 
 ## Java
 
@@ -117,7 +204,7 @@ mvn -f clients/java/pom.xml package
 
 Use the `com.xgen.mongot.client.StandaloneClient` library and generated
 `com.xgen.mongot.standalone.grpc` request classes. The Java client requires Java 17 or newer.
-The shaded `clients/java/target/standalone-client-0.1.0.jar` also includes the integration adapter.
+The shaded `clients/java/target/standalone-client-0.2.0.jar` also includes the integration adapter.
 
 ```java
 import com.xgen.mongot.client.StandaloneClient;

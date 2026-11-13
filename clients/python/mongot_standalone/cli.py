@@ -10,6 +10,10 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from . import Client, api
 
 METHODS = {
+    "Upsert": ("upsert_request", api.UpsertRequest),
+    "Delete": ("delete_request", api.DeleteRequest),
+    "DeleteByQuery": ("delete_by_query_request", api.DeleteByQueryRequest),
+    "GetDeleteByQueryResult": ("get_delete_by_query_result", api.GetDeleteByQueryResultRequest),
     "CreateCollection": ("create_collection", api.CreateCollectionRequest),
     "GetCollection": ("get_collection", api.GetCollectionRequest),
     "CreateIndex": ("create_index", api.CreateIndexRequest),

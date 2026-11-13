@@ -331,7 +331,7 @@ public final class StandaloneRuntime implements Closeable {
             .setManagementReady(managementReady())
             .setFailureMessage(
                 this.retentionFailure.get().orElse(this.reconciliationFailure.get().orElse("")))
-            .setStoreSchemaVersion(2)
+            .setStoreSchemaVersion(StandaloneStore.SCHEMA_VERSION)
             .setRetryRetentionMillis(this.config.retryRetention().toMillis())
             .setLogicalLogBytes(statistics.logBytes())
             .setRetryRequests(statistics.requests())

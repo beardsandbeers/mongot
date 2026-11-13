@@ -12,9 +12,13 @@ import com.xgen.mongot.standalone.grpc.AwaitSequenceRequest;
 import com.xgen.mongot.standalone.grpc.CatalogServiceGrpc;
 import com.xgen.mongot.standalone.grpc.CreateCollectionRequest;
 import com.xgen.mongot.standalone.grpc.CreateIndexRequest;
+import com.xgen.mongot.standalone.grpc.DeleteByQueryRequest;
+import com.xgen.mongot.standalone.grpc.DeleteRequest;
+import com.xgen.mongot.standalone.grpc.DocumentId;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
 import com.xgen.mongot.standalone.grpc.GetCollectionRequest;
+import com.xgen.mongot.standalone.grpc.GetDeleteByQueryResultRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
 import com.xgen.mongot.standalone.grpc.GetMoreRequest;
 import com.xgen.mongot.standalone.grpc.GetStatusRequest;
@@ -31,6 +35,7 @@ import com.xgen.mongot.standalone.grpc.QueryResponse;
 import com.xgen.mongot.standalone.grpc.QueryServiceGrpc;
 import com.xgen.mongot.standalone.grpc.SequenceCondition;
 import com.xgen.mongot.standalone.grpc.UpdateIndexRequest;
+import com.xgen.mongot.standalone.grpc.UpsertRequest;
 import com.xgen.mongot.standalone.grpc.WriteBatchRequest;
 import com.xgen.mongot.standalone.grpc.WriteItemState;
 import com.xgen.mongot.standalone.grpc.WriteRequest;
@@ -486,7 +491,7 @@ public class StandaloneGrpcServerTest {
               .getStatus(GetStatusRequest.getDefaultInstance());
 
       assertThat(status.getManagementReady()).isTrue();
-      assertThat(status.getStoreSchemaVersion()).isEqualTo(2);
+      assertThat(status.getStoreSchemaVersion()).isEqualTo(3);
       assertThat(status.getInstanceId()).isNotEmpty();
       assertThat(status.getRetryRequests()).isAtLeast(3);
       assertThat(status.getRetentionPins()).isAtLeast(1);
@@ -1031,6 +1036,570 @@ public class StandaloneGrpcServerTest {
     }
   }
 
+  @Test
+  public void upsertAndDelete_typedIds_returnCountsAndDefaultToVisible() throws Exception {
+    try (var fixture =
+        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
+      String collection = fixture.collection();
+      var index = fixture.index(collection);
+      var inserted =
+          fixture
+              .documents()
+              .upsert(
+                  UpsertRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId("upsert-ids")
+                      .addDocumentsBson(bson("{_id:'string',title:'needle'}"))
+                      .addDocumentsBson(
+                          bson("{_id:{$oid:'0123456789abcdef01234567'},title:'needle'}"))
+                      .addDocumentsBson(bson("{_id:1,title:'needle'}"))
+                      .addDocumentsBson(bson("{_id:{$numberLong:'1'},title:'needle'}"))
+                      .build());
+
+      assertThat(inserted.getUpsertedCount()).isEqualTo(4);
+      assertThat(
+              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'needle'}}")))
+          .hasSize(4);
+      var request =
+          DeleteRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("delete-ids")
+              .addIds(DocumentId.newBuilder().setStringValue("string"))
+              .addIds(DocumentId.newBuilder().setObjectId("0123456789abcdef01234567"))
+              .addIds(DocumentId.newBuilder().setInt32Value(1))
+              .addIds(DocumentId.newBuilder().setStringValue("absent"))
+              .build();
+      var deleted = fixture.documents().delete(request);
+      var retry = fixture.documents().delete(request);
+      var remaining =
+          results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'needle'}}"));
+
+      assertThat(deleted.getDeletedCount()).isEqualTo(3);
+      assertThat(retry).isEqualTo(deleted);
+      assertThat(remaining).hasSize(1);
+      assertThat(remaining.get(0).asDocument().get("_id").getBsonType())
+          .isEqualTo(org.bson.BsonType.INT64);
+    }
+  }
+
+  @Test
+  public void upsert_partialFailure_reportsErrorAndDurableItemOutcomes() throws Exception {
+    try (var fixture =
+        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
+      String collection = fixture.collection();
+      fixture.index(collection);
+      var request =
+          UpsertRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("partial-upsert")
+              .addDocumentsBson(bson("{_id:'valid'}"))
+              .addDocumentsBson(bson("{missing:'id'}"))
+              .build();
+
+      var error =
+          assertThrows(StatusRuntimeException.class, () -> fixture.documents().upsert(request));
+      var outcome =
+          fixture
+              .documents()
+              .getWriteResult(
+                  GetWriteResultRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId(request.getRequestId())
+                      .build());
+
+      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
+      assertThat(outcome.getComplete()).isTrue();
+      assertThat(outcome.getResults(0).getState())
+          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
+      assertThat(outcome.getResults(1).getState())
+          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_REJECTED);
+    }
+  }
+
+  @Test
+  public void deleteByQuery_multiplePages_retriesFrozenSelectionAndReportsProgress()
+      throws Exception {
+    try (var fixture =
+        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
+      String collection = fixture.collection();
+      var index = fixture.index(collection);
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("query-seed")
+                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
+                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
+                  .addDocumentsBson(bson("{_id:'c',title:'remove'}"))
+                  .addDocumentsBson(bson("{_id:'keep',title:'keep'}"))
+                  .build());
+      var request =
+          DeleteByQueryRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("query-delete")
+              .setIndexId(index.getIndexId())
+              .setBatchSize(1)
+              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
+              .build();
+
+      var result = fixture.documents().deleteByQuery(request);
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("new-match")
+                  .addDocumentsBson(bson("{_id:'new',title:'remove'}"))
+                  .build());
+      var retry = fixture.documents().deleteByQuery(request);
+      var progress =
+          fixture
+              .documents()
+              .getDeleteByQueryResult(
+                  GetDeleteByQueryResultRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId(request.getRequestId())
+                      .build());
+
+      assertThat(result.getMatchedCount()).isEqualTo(3);
+      assertThat(result.getDeletedCount()).isEqualTo(3);
+      assertThat(result.getComplete()).isTrue();
+      assertThat(result.getSelectionComplete()).isTrue();
+      assertThat(result.getConflictCount()).isEqualTo(0);
+      assertThat(retry).isEqualTo(result);
+      assertThat(progress).isEqualTo(result);
+      assertThat(
+              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'remove'}}")))
+          .hasSize(1);
+      assertThat(results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'keep'}}")))
+          .hasSize(1);
+      var conflict =
+          assertThrows(
+              StatusRuntimeException.class,
+              () ->
+                  fixture
+                      .documents()
+                      .deleteByQuery(
+                          request.toBuilder()
+                              .setQueryBson(bson("{text:{path:'title',query:'keep'}}"))
+                              .build()));
+      assertThat(conflict.getStatus().getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
+    }
+  }
+
+  @Test
+  public void deleteByQuery_concurrentReplacement_skipsChangedDocuments() throws Exception {
+    var blocker = new ApplyBlocker();
+    try (var fixture =
+        new Fixture(
+            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
+            sequence -> {
+              if (sequence >= 3) {
+                blocker.accept(sequence);
+              }
+            })) {
+      String collection = fixture.collection();
+      var index = fixture.index(collection);
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("seed")
+                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
+                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
+                  .build());
+      var request =
+          DeleteByQueryRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("concurrent-delete")
+              .setIndexId(index.getIndexId())
+              .setBatchSize(1)
+              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
+              .build();
+      var pending =
+          DocumentServiceGrpc.newFutureStub(fixture.channel)
+              .withDeadlineAfter(10, TimeUnit.SECONDS)
+              .deleteByQuery(request);
+      blocker.awaitEntered();
+      var replaced =
+          DocumentServiceGrpc.newFutureStub(fixture.channel)
+              .withDeadlineAfter(10, TimeUnit.SECONDS)
+              .upsert(
+                  UpsertRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId("concurrent-upsert")
+                      .addDocumentsBson(bson("{_id:'a',title:'changed'}"))
+                      .addDocumentsBson(bson("{_id:'b',title:'changed'}"))
+                      .build());
+      fixture.acceptedItems(collection, "concurrent-upsert", 2);
+
+      blocker.release();
+      var result = pending.get(10, TimeUnit.SECONDS);
+      replaced.get(10, TimeUnit.SECONDS);
+      var retry = fixture.documents().deleteByQuery(request);
+
+      assertThat(result.getDeletedCount()).isEqualTo(1);
+      assertThat(result.getConflictCount()).isEqualTo(1);
+      assertThat(result.getMatchedCount()).isEqualTo(2);
+      assertThat(retry).isEqualTo(result);
+      assertThat(
+              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'changed'}}")))
+          .hasSize(2);
+    } finally {
+      blocker.release();
+    }
+  }
+
+  @Test
+  public void deleteByQuery_cancelledAndRestarted_resumesDurableTargetsWithoutMatchingNewDocuments()
+      throws Exception {
+    var blocker = new ApplyBlocker();
+    var config = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
+    String collection;
+    String indexId;
+    DeleteByQueryRequest request;
+    try (var fixture =
+        new Fixture(
+            config,
+            sequence -> {
+              if (sequence >= 3) {
+                blocker.accept(sequence);
+              }
+            })) {
+      collection = fixture.collection();
+      var index = fixture.index(collection);
+      indexId = index.getIndexId();
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("restart-seed")
+                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
+                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
+                  .build());
+      request =
+          DeleteByQueryRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("restart-query")
+              .setIndexId(indexId)
+              .setBatchSize(1)
+              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
+              .build();
+      var pending =
+          DocumentServiceGrpc.newFutureStub(fixture.channel)
+              .withDeadlineAfter(10, TimeUnit.SECONDS)
+              .deleteByQuery(request);
+      blocker.awaitEntered();
+
+      pending.cancel(true);
+      fixture.awaitDeleteQueriesIdle();
+      var retryFailure =
+          assertThrows(
+              StatusRuntimeException.class,
+              () ->
+                  fixture
+                      .documents()
+                      .withDeadlineAfter(300, TimeUnit.MILLISECONDS)
+                      .deleteByQuery(request));
+      fixture.awaitDeleteQueriesIdle();
+      assertThat(retryFailure.getStatus().getCode()).isEqualTo(Status.Code.DEADLINE_EXCEEDED);
+      assertThat(fixture.runtime.catalog().getCollection(collection).getAcceptedSequence())
+          .isEqualTo(3);
+      blocker.release();
+      fixture.visible(index, 3);
+      var interrupted =
+          fixture
+              .documents()
+              .getDeleteByQueryResult(
+                  GetDeleteByQueryResultRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId(request.getRequestId())
+                      .build());
+
+      assertThat(interrupted.getSelectionComplete()).isTrue();
+      assertThat(interrupted.getComplete()).isFalse();
+      assertThat(interrupted.getMatchedCount()).isEqualTo(2);
+      assertThat(interrupted.getDeletedCount()).isEqualTo(1);
+    } finally {
+      blocker.release();
+    }
+    try (var fixture = new Fixture(config)) {
+      fixture.ready(indexId);
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("after-restart")
+                  .addDocumentsBson(bson("{_id:'new',title:'remove'}"))
+                  .build());
+
+      var completed = fixture.documents().deleteByQuery(request);
+      var retry = fixture.documents().deleteByQuery(request);
+      var remaining = results(fixture.search(indexId, "{text:{path:'title',query:'remove'}}"));
+
+      assertThat(completed.getComplete()).isTrue();
+      assertThat(completed.getMatchedCount()).isEqualTo(2);
+      assertThat(completed.getDeletedCount()).isEqualTo(2);
+      assertThat(retry).isEqualTo(completed);
+      assertThat(remaining).hasSize(1);
+      assertThat(remaining.get(0).asDocument().getString("_id").getValue()).isEqualTo("new");
+    }
+  }
+
+  @Test
+  public void documentCommands_retryAfterDrop_returnsOriginalSuccessfulOutcome() throws Exception {
+    try (var fixture =
+        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
+      String collection = fixture.collection();
+      var index = fixture.index(collection);
+      var upsert =
+          UpsertRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("cached-upsert")
+              .addDocumentsBson(bson("{_id:'a',title:'cached'}"))
+              .build();
+      var delete =
+          DeleteRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("cached-delete")
+              .addIds(DocumentId.newBuilder().setStringValue("absent"))
+              .build();
+      var originalUpsert = fixture.documents().upsert(upsert);
+      var originalDelete = fixture.documents().delete(delete);
+
+      fixture
+          .catalog()
+          .dropIndex(
+              DropIndexRequest.newBuilder()
+                  .setIndexId(index.getIndexId())
+                  .setExpectedRevision(1)
+                  .setRequestId("drop-cached")
+                  .build());
+      var upsertRetry = fixture.documents().upsert(upsert);
+      var deleteRetry = fixture.documents().delete(delete);
+
+      assertThat(upsertRetry).isEqualTo(originalUpsert);
+      assertThat(deleteRetry).isEqualTo(originalDelete);
+    }
+  }
+
+  @Test
+  public void deleteByQuery_writeOnlyPrincipal_isDeniedWhileDeleteByIdIsAllowed() throws Exception {
+    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
+    var config =
+        new StandaloneConfig(
+            base.dataPath(),
+            base.address(),
+            base.documentLimits(),
+            base.maxInFlightRequests(),
+            base.maxInFlightBytes(),
+            base.maxLogBytes(),
+            base.minFreeDiskBytes(),
+            base.commitInterval(),
+            base.refreshInterval(),
+            base.retryRetention(),
+            base.maxRpcDuration(),
+            base.tls(),
+            List.of(
+                principal("admin", "admin-token", Set.of(StandaloneConfig.Role.values())),
+                principal("writer", "writer-token", Set.of(StandaloneConfig.Role.WRITE))));
+    try (var fixture = new Fixture(config)) {
+      var catalog =
+          CatalogServiceGrpc.newBlockingStub(fixture.authenticated("admin-token"))
+              .withDeadlineAfter(10, TimeUnit.SECONDS);
+      String collection =
+          catalog
+              .createCollection(
+                  CreateCollectionRequest.newBuilder()
+                      .setRequestId("role-collection")
+                      .setDatabase("roles")
+                      .setName("docs")
+                      .build())
+              .getCollectionId();
+      var index =
+          fixture.ready(catalog, catalog.createIndex(indexRequest(collection)).getIndexId(), 1);
+      var writer =
+          DocumentServiceGrpc.newBlockingStub(fixture.authenticated("writer-token"))
+              .withDeadlineAfter(10, TimeUnit.SECONDS);
+      writer.upsert(
+          UpsertRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("role-upsert")
+              .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
+              .build());
+
+      var denied =
+          assertThrows(
+              StatusRuntimeException.class,
+              () ->
+                  writer.deleteByQuery(
+                      DeleteByQueryRequest.newBuilder()
+                          .setCollectionId(collection)
+                          .setRequestId("role-query")
+                          .setIndexId(index.getIndexId())
+                          .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
+                          .build()));
+      var deleted =
+          writer.delete(
+              DeleteRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("role-delete")
+                  .addIds(DocumentId.newBuilder().setStringValue("a"))
+                  .build());
+
+      assertThat(denied.getStatus().getCode()).isEqualTo(Status.Code.PERMISSION_DENIED);
+      assertThat(deleted.getDeletedCount()).isEqualTo(1);
+    }
+  }
+
+  @Test
+  public void deleteByQuery_retiredGeneration_preservesInspectablePartialFailure()
+      throws Exception {
+    var blocker = new ApplyBlocker();
+    try (var fixture =
+        new Fixture(
+            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
+            sequence -> {
+              if (sequence >= 3) {
+                blocker.accept(sequence);
+              }
+            })) {
+      String collection = fixture.collection();
+      var index = fixture.index(collection);
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("retired-seed")
+                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
+                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
+                  .build());
+      var request =
+          DeleteByQueryRequest.newBuilder()
+              .setCollectionId(collection)
+              .setRequestId("retired-query")
+              .setIndexId(index.getIndexId())
+              .setBatchSize(1)
+              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
+              .build();
+      var pending =
+          DocumentServiceGrpc.newFutureStub(fixture.channel)
+              .withDeadlineAfter(10, TimeUnit.SECONDS)
+              .deleteByQuery(request);
+      blocker.awaitEntered();
+      pending.cancel(true);
+      fixture.awaitDeleteQueriesIdle();
+      blocker.release();
+      fixture.visible(index, 3);
+      var checkpoint =
+          fixture
+              .documents()
+              .getDeleteByQueryResult(
+                  GetDeleteByQueryResultRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId(request.getRequestId())
+                      .build());
+      assertThat(checkpoint.getDeletedCount()).isEqualTo(1);
+      var retirement =
+          fixture
+              .runtime
+              .ingestion()
+              .await(
+                  index.getIndexId(),
+                  index.getLive().getGenerationId(),
+                  Long.MAX_VALUE,
+                  SequenceCondition.SEQUENCE_CONDITION_VISIBLE);
+      fixture
+          .catalog()
+          .dropIndex(
+              DropIndexRequest.newBuilder()
+                  .setIndexId(index.getIndexId())
+                  .setRequestId("retire-query-index")
+                  .setExpectedRevision(1)
+                  .build());
+      assertThrows(
+          java.util.concurrent.ExecutionException.class,
+          () -> retirement.get(10, TimeUnit.SECONDS));
+
+      var failed =
+          assertThrows(
+              StatusRuntimeException.class, () -> fixture.documents().deleteByQuery(request));
+      var progress =
+          fixture
+              .documents()
+              .getDeleteByQueryResult(
+                  GetDeleteByQueryResultRequest.newBuilder()
+                      .setCollectionId(collection)
+                      .setRequestId(request.getRequestId())
+                      .build());
+
+      assertThat(failed.getStatus().getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
+      assertThat(progress.getComplete()).isTrue();
+      assertThat(progress.getDeletedCount()).isEqualTo(1);
+      assertThat(progress.getFailedCount()).isEqualTo(1);
+      assertThat(progress.getFailureMessage()).isNotEmpty();
+    } finally {
+      blocker.release();
+    }
+  }
+
+  @Test
+  public void deleteByQuery_pendingQueryIndex_rejectsBeforeSourceChanges() throws Exception {
+    var snapshot = new SnapshotBlocker();
+    try (var fixture =
+        new Fixture(
+            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
+            unused -> {},
+            snapshot)) {
+      String collection = fixture.collection();
+      var live = fixture.index(collection);
+      fixture
+          .documents()
+          .upsert(
+              UpsertRequest.newBuilder()
+                  .setCollectionId(collection)
+                  .setRequestId("pending-seed")
+                  .addDocumentsBson(bson("{_id:'a',title:'keep'}"))
+                  .build());
+      snapshot.arm();
+      var building =
+          fixture
+              .catalog()
+              .createIndex(
+                  indexRequest(collection).toBuilder()
+                      .setRequestId("pending-query-index")
+                      .setName("building")
+                      .build());
+      snapshot.awaitEntered();
+
+      var denied =
+          assertThrows(
+              StatusRuntimeException.class,
+              () ->
+                  fixture
+                      .documents()
+                      .deleteByQuery(
+                          DeleteByQueryRequest.newBuilder()
+                              .setCollectionId(collection)
+                              .setRequestId("pending-query")
+                              .setIndexId(building.getIndexId())
+                              .setQueryBson(bson("{text:{path:'title',query:'keep'}}"))
+                              .build()));
+      snapshot.release();
+
+      assertThat(denied.getStatus().getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
+      assertThat(results(fixture.search(live.getIndexId(), "{text:{path:'title',query:'keep'}}")))
+          .hasSize(1);
+    } finally {
+      snapshot.release();
+    }
+  }
+
   private static org.bson.BsonArray results(QueryResponse response) {
     return new org.bson.RawBsonDocument(response.getBatchBson().toByteArray()).getArray("results");
   }
@@ -1350,19 +1919,44 @@ public class StandaloneGrpcServerTest {
         throws Exception {
       long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
       while (System.nanoTime() < until) {
-        var response =
-            documents()
-                .getWriteResult(
-                    GetWriteResultRequest.newBuilder()
-                        .setCollectionId(collection)
-                        .setRequestId(requestId)
-                        .build());
+        WriteResponse response;
+        try {
+          response =
+              documents()
+                  .getWriteResult(
+                      GetWriteResultRequest.newBuilder()
+                          .setCollectionId(collection)
+                          .setRequestId(requestId)
+                          .build());
+        } catch (StatusRuntimeException e) {
+          if (e.getStatus().getCode() != Status.Code.NOT_FOUND) {
+            throw e;
+          }
+          Thread.sleep(10);
+          continue;
+        }
         if (response.getResultsCount() == count) {
           return response;
         }
         Thread.sleep(10);
       }
       throw new AssertionError("Batch did not finish source acceptance");
+    }
+
+    private void awaitDeleteQueriesIdle() throws Exception {
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      while (System.nanoTime() < deadline) {
+        var metric =
+            this.runtime.serviceStatus().getMetricsList().stream()
+                .filter(value -> value.getName().equals("standalone.delete_query.active"))
+                .findFirst()
+                .orElseThrow();
+        if (metric.getMeasurementsMap().values().stream().allMatch(value -> value == 0)) {
+          return;
+        }
+        Thread.sleep(10);
+      }
+      throw new AssertionError("Cancelled DeleteByQuery worker did not stop");
     }
 
     private IndexDescription indexFailure(String indexId) throws Exception {

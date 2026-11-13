@@ -3,6 +3,7 @@ load("//bazel/java:package.bzl", "java_library")
 java_library(
     name = "server",
     srcs = [
+        "DocumentCommands.java",
         "RpcDispatcher.java",
         "StandaloneAuthInterceptor.java",
         "StandaloneGrpcServer.java",
@@ -22,6 +23,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/standalone/ingestion",
         "//src/main/java/com/xgen/mongot/standalone/metrics",
         "//src/main/java/com/xgen/mongot/standalone/runtime",
+        "//src/main/java/com/xgen/mongot/standalone/store",
         "//src/main/java/com/xgen/mongot/util",
         "//src/main/java/com/xgen/mongot/util/bson",
         "//src/main/java/com/xgen/mongot/util/bson/parser",
