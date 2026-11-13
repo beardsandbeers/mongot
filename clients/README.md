@@ -17,6 +17,29 @@ Build from this checkout. Java, Rust and TypeScript generate bindings from the s
 during their builds; Python includes generated bindings and a regeneration command. The server
 operating guide explains [startup and credentials](../docs/standalone-mongot.md).
 
+## Downloadable packages
+
+The [standalone-v0.1.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.1.0)
+provides the Linux x86_64 server archive, Java client/source bundle, Python wheel/source archive,
+npm tarball, and Rust crate. The release includes installation instructions, checksums, provenance,
+and test reports. Packages install without a repository checkout; dependencies are resolved by
+the language's usual tools. The server archive bundles Java 21 and native libraries.
+
+To rebuild assets from a checkout, use Python 3.12+ with `build` and the Python client's codegen
+dependencies installed, plus the toolchains listed below:
+
+```sh
+python scripts/standalone/package_release.py --output-dir dist/standalone
+python scripts/standalone/verify_release.py --output-dir dist/standalone
+```
+
+The first command builds the server and all packages. The second installs each package in a
+temporary directory, compiles Java/TypeScript consumers and the Rust crate, then runs the full
+integration suite over TLS and plaintext with restart checks. It also verifies the Python source
+distribution. Artifacts are built locally; these scripts do not publish or upload anything.
+Use `MONGOT_MVN` to select Maven. Keep `clients/rust/proto/standalone.proto` synchronized with the
+canonical API using `python3 clients/sync_proto.py`; `--check` verifies it without changing files.
+
 ## Build and run the full integration suite
 
 Prerequisites: Python 3.10+, Java 17+ with Maven 3.9+, Node 22+ with npm, a current stable Rust

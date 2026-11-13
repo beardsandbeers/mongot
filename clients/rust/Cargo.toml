@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Typed BSON/gRPC client for standalone mongot"
 license = "SSPL-1.0"
+readme = "README.md"
+repository = "https://github.com/beardsandbeers/mongot"
+include = ["src/**", "proto/**", "build.rs", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "rustfmt.toml"]
 
 [dependencies]
 tonic = { version = "0.12.3", features = ["tls", "tls-roots"] }

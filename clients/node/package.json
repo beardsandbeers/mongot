@@ -22,5 +22,9 @@
   "devDependencies": {
     "@types/node": "22.19.0",
     "typescript": "5.9.3"
+  },
+  "license": "SSPL-1.0",
+  "engines": {
+    "node": ">=22"
   }
 }

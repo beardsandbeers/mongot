@@ -4,6 +4,7 @@ set -euo pipefail
 CLIENTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONGOT_PYTHON="${MONGOT_PYTHON:-${CLIENTS_DIR}/python/.venv/bin/python}"
 MONGOT_MVN="${MONGOT_MVN:-mvn}"
+python3 "${CLIENTS_DIR}/sync_proto.py" --check
 if [[ ! -x "${MONGOT_PYTHON}" ]]; then
   python3 -m venv "${CLIENTS_DIR}/python/.venv"
 fi

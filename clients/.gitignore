@@ -8,3 +8,4 @@ node/src/generated/
 java/target/
 rust/target/
 tests/results*.json
+node/*.tgz

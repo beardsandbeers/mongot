@@ -227,6 +227,11 @@ older binary cannot read the upgraded schema. Images can be transferred with
 
 ## Build and start without Docker
 
+Prebuilt Linux x86_64 server and client packages are available in the
+[standalone-v0.1.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.1.0).
+Follow its `INSTALL.md` and verify downloads against `SHA256SUMS`. The server archive contains its
+own Java 21 runtime and native libraries; no host JVM or MongoDB server is required.
+
 From the repository root:
 
 ```sh

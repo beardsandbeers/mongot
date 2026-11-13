@@ -71,3 +71,4 @@ tmp/
 /deploy/standalone/.package/
 /.standalone-client/
 /backups/standalone-*.tgz
+/dist/standalone/

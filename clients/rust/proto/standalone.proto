@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package mongot.standalone.v1;
+option java_multiple_files = true;
+option java_package = "com.xgen.mongot.standalone.grpc";
+
+service CatalogService {
+  rpc CreateCollection(CreateCollectionRequest) returns (CollectionDescription);
+  rpc GetCollection(GetCollectionRequest) returns (CollectionDescription);
+  rpc CreateIndex(CreateIndexRequest) returns (IndexDescription);
+  rpc UpdateIndex(UpdateIndexRequest) returns (IndexDescription);
+  rpc DropIndex(DropIndexRequest) returns (IndexDescription);
+  rpc GetIndex(GetIndexRequest) returns (IndexDescription);
+  rpc ListIndexes(ListIndexesRequest) returns (ListIndexesResponse);
+}
+
+service DocumentService {
+  rpc Write(WriteRequest) returns (WriteResponse);
+  rpc WriteBatch(WriteBatchRequest) returns (WriteResponse);
+  rpc GetWriteResult(GetWriteResultRequest) returns (WriteResponse);
+  rpc AwaitSequence(AwaitSequenceRequest) returns (IndexWatermarks);
+}
+
+// Instance-wide operations require the catalog role and a wildcard collection grant.
+service OperationsService {
+  rpc GetStatus(GetStatusRequest) returns (ServiceStatus);
+}
+message GetStatusRequest {}
+message ServiceStatus {
+  string instance_id = 1;
+  bool management_ready = 2;
+  string failure_message = 3;
+  uint32 store_schema_version = 4;
+  uint64 retry_retention_millis = 5;
+  uint64 logical_log_bytes = 6;
+  uint64 retry_requests = 7;
+  uint64 retention_pins = 8;
+  uint64 source_bytes = 9;
+  uint64 store_file_bytes = 10;
+  uint64 sqlite_wal_bytes = 11;
+  uint64 free_disk_bytes = 12;
+  repeated IndexDescription indexes = 13;
+  repeated ServiceMetric metrics = 14;
+}
+message ServiceMetric {
+  string name = 1;
+  map<string,string> labels = 2;
+  map<string,double> measurements = 3;
+}
+
+// BSON search/vector expressions are executed by mongot's ordinary readers and cursor manager.
+// Results contain IDs/scores, or the configured stored source when returnStoredSource is true.
+service QueryService {
+  rpc Search(QueryRequest) returns (QueryResponse);
+  rpc VectorSearch(QueryRequest) returns (QueryResponse);
+  rpc GetMore(GetMoreRequest) returns (QueryResponse);
+  rpc KillCursor(KillCursorRequest) returns (KillCursorResponse);
+}
+
+message QueryRequest {
+  string index_id = 1;
+  bytes query_bson = 2;
+  uint32 batch_size = 3; // Default 100; maximum 1000. Each batch also has a byte limit.
+  string generation_id = 4; // Optional; reject if the requested generation is no longer live.
+}
+message QueryResponse {
+  uint64 cursor_id = 1; // Zero means exhausted. Cursors retain their initial reader snapshot.
+  bytes batch_bson = 2; // Complete BSON document: {results: [<mongot search results>]}.
+  bytes metadata_bson = 3;
+  string generation_id = 4;
+}
+message GetMoreRequest { uint64 cursor_id = 1; uint32 batch_size = 2; }
+message KillCursorRequest { uint64 cursor_id = 1; }
+message KillCursorResponse {}
+
+message CreateCollectionRequest {
+  string request_id = 1;
+  string database = 2;
+  string name = 3;
+}
+message GetCollectionRequest { string collection_id = 1; }
+message CollectionDescription {
+  string collection_id = 1; // Canonical UUID string.
+  string database = 2;
+  string name = 3;
+  uint64 accepted_sequence = 4;
+}
+
+enum IndexType {
+  INDEX_TYPE_UNSPECIFIED = 0; // Reject, not an accidental default.
+  INDEX_TYPE_SEARCH = 1;
+  INDEX_TYPE_VECTOR_SEARCH = 2;
+}
+message CreateIndexRequest {
+  string request_id = 1;
+  string collection_id = 2;
+  string name = 3;
+  IndexType type = 4;
+  bytes definition_bson = 5; // User mapping only, not internal IndexDefinition.
+}
+message UpdateIndexRequest {
+  string request_id = 1;
+  string index_id = 2; // Canonical ObjectId hex string.
+  uint64 expected_revision = 3; // Required compare-and-set revision, starts at 1.
+  bytes definition_bson = 4; // Complete replacement user definition.
+}
+message DropIndexRequest {
+  string request_id = 1;
+  string index_id = 2;
+  uint64 expected_revision = 3;
+}
+message GetIndexRequest { string index_id = 1; }
+message ListIndexesRequest {
+  string collection_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+message ListIndexesResponse {
+  repeated IndexDescription indexes = 1;
+  string next_page_token = 2;
+}
+message IndexDescription {
+  string index_id = 1;
+  string collection_id = 2;
+  string name = 3;
+  IndexType type = 4;
+  uint64 desired_revision = 5;
+  bytes desired_definition_bson = 6;
+  string lifecycle_state = 7; // Define stable public states before release.
+  IndexWatermarks live = 8;
+  IndexWatermarks building = 9; // Absent if no staged build.
+  string failure_message = 10;
+  uint64 active_revision = 11; // Can differ from desired during a rebuild.
+}
+
+enum MutationType {
+  MUTATION_TYPE_UNSPECIFIED = 0;
+  MUTATION_TYPE_INSERT = 1;
+  MUTATION_TYPE_UPSERT = 2;
+  MUTATION_TYPE_DELETE = 3;
+}
+message Mutation {
+  MutationType type = 1;
+  bytes bson = 2; // Full document, or exactly {_id: value} for DELETE.
+}
+message WriteRequest {
+  string collection_id = 1;
+  string request_id = 2;
+  Mutation mutation = 3; // Exactly one INSERT, UPSERT, or DELETE.
+}
+message WriteBatchRequest {
+  string collection_id = 1;
+  string request_id = 2;
+  repeated Mutation mutations = 3;
+}
+enum WriteItemState {
+  WRITE_ITEM_STATE_UNSPECIFIED = 0;
+  WRITE_ITEM_STATE_REJECTED = 1;
+  WRITE_ITEM_STATE_PENDING_INDEXING = 2;
+  WRITE_ITEM_STATE_INDEXED = 3;
+  WRITE_ITEM_STATE_INDEXING_FAILED = 4;
+}
+message MutationResult {
+  uint32 ordinal = 1;
+  int32 status_code = 2; // Canonical gRPC code, meaningful in terminal states.
+  string message = 3;
+  optional uint64 accepted_sequence = 4; // Present if durable, even on apply error.
+  WriteItemState state = 5; // Only INDEXED is successful mutation completion.
+}
+message WriteResponse {
+  string collection_id = 1;
+  string request_id = 2;
+  repeated MutationResult results = 3;
+  bool complete = 4; // GetWriteResult can report an interrupted/in-progress batch.
+}
+message GetWriteResultRequest {
+  string collection_id = 1;
+  string request_id = 2;
+}
+enum SequenceCondition {
+  SEQUENCE_CONDITION_UNSPECIFIED = 0;
+  SEQUENCE_CONDITION_APPLIED = 1;
+  SEQUENCE_CONDITION_COMMITTED = 2;
+  SEQUENCE_CONDITION_VISIBLE = 3;
+}
+message AwaitSequenceRequest {
+  string index_id = 1;
+  string generation_id = 2; // Pin the generation; do not cross a swap silently.
+  uint64 sequence = 3;
+  SequenceCondition condition = 4;
+}
+message IndexWatermarks {
+  string generation_id = 1;
+  uint64 applied_sequence = 2;
+  uint64 committed_sequence = 3;
+  uint64 visible_sequence = 4;
+  uint64 snapshot_documents = 5;
+  bool snapshot_complete = 6;
+}
