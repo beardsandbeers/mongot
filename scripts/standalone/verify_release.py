@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -29,6 +30,9 @@ def extract(archive, target):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist/standalone")
+    parser.add_argument(
+        "--work-dir", type=Path, help="Reuse a printed disposable verification workspace"
+    )
     args = parser.parse_args()
     output = args.output_dir.resolve()
     manifest = json.loads((output / "release-manifest.json").read_text())
@@ -37,15 +41,41 @@ def main():
         path = output / artifact["name"]
         if path.stat().st_size != artifact["bytes"] or sha256(path) != artifact["sha256"]:
             parser.error(f"Artifact differs from manifest: {path.name}")
-    work = Path(tempfile.mkdtemp(prefix="mongot-release-verify-"))
+    work = (
+        args.work_dir.resolve()
+        if args.work_dir
+        else Path(tempfile.mkdtemp(prefix="mongot-release-verify-"))
+    )
+    marker = work / ".release-verification"
+    if args.work_dir and not marker.is_file():
+        parser.error("--work-dir must be a previous disposable verification workspace")
+    if work.is_relative_to(ROOT):
+        parser.error("Package installation sources must be outside the checkout")
+    marker.write_text(manifest["sourceCommit"] + "\n")
+    cache = output / ".verification-work" / work.name
+    cache.mkdir(parents=True, exist_ok=True)
     print(f"Isolated package installations: {work}", flush=True)
-    extract(output / f"mongot-standalone-{version}-linux-x86_64.tgz", work / "server")
-    launcher = work / "server/mongot-standalone/mongot-standalone"
-    run([sys.executable, "-m", "venv", work / "python"])
+    # Keep large generated outputs off quota-limited temporary filesystems.
+    for disposable in (cache / "server", work / "node", work / "rust", work / "java"):
+        if disposable.exists():
+            shutil.rmtree(disposable)
+    extract(output / f"mongot-standalone-{version}-linux-x86_64.tgz", cache / "server")
+    launcher = cache / "server/mongot-standalone/mongot-standalone"
+    run([sys.executable, "-m", "venv", "--without-pip", "--clear", work / "python"])
     python = work / "python/bin/python"
+    pip = [sys.executable, "-m", "pip", "--python", python]
     wheel = output / f"mongot_standalone_client-{version}-py3-none-any.whl"
-    run([python, "-m", "pip", "install", "--disable-pip-version-check", wheel], cwd=work)
-    run([python, "-c", "import mongot_standalone; print(mongot_standalone.__file__)"], cwd=work)
+    run([*pip, "install", "--disable-pip-version-check", wheel], cwd=work)
+    run(
+        [
+            python,
+            "-c",
+            "from pathlib import Path; import sys, mongot_standalone; "
+            "assert Path(mongot_standalone.__file__).is_relative_to(Path(sys.prefix)); "
+            "print(mongot_standalone.__file__)",
+        ],
+        cwd=work,
+    )
     node = work / "node"
     node.mkdir()
     (node / "package.json").write_text(
@@ -93,7 +123,7 @@ client.close();
     rust = work / f"rust/mongot-standalone-client-{version}"
     rust_env = dict(
         os.environ,
-        CARGO_TARGET_DIR=str(work / "rust-target"),
+        CARGO_TARGET_DIR=str(cache / "rust-target"),
         CARGO_PROFILE_DEV_DEBUG="0",
         CARGO_PROFILE_TEST_DEBUG="0",
     )
@@ -129,16 +159,14 @@ class Consumer {
         MONGOT_NODE_COMMAND=shlex.join(
             ["node", str(node / "node_modules/@mongot/standalone-client/dist/cli.js")]
         ),
-        MONGOT_RUST_COMMAND=str(work / "rust-target/debug/mongot-standalone-client"),
+        MONGOT_RUST_COMMAND=str(cache / "rust-target/debug/mongot-standalone-client"),
     )
     for mode in ("tls", "plaintext"):
         if mode == "plaintext":
             # Verify the sdist is independently buildable/installable as well as the wheel.
             run(
                 [
-                    python,
-                    "-m",
-                    "pip",
+                    *pip,
                     "install",
                     "--disable-pip-version-check",
                     "--force-reinstall",
@@ -164,7 +192,7 @@ class Consumer {
             parser.error(f"Packaged {mode} integration tests failed")
         report["sourceCommit"] = manifest["sourceCommit"]
         report["artifactSha256"] = {item["name"]: item["sha256"] for item in manifest["artifacts"]}
-        report["installationsOutsideCheckout"] = True
+        report["packageSourcesOutsideCheckout"] = True
         report_path.write_text(json.dumps(report, indent=2) + "\n")
     seal(output)
     print(

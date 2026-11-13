@@ -39,6 +39,9 @@ integration suite over TLS and plaintext with restart checks. It also verifies t
 distribution. Artifacts are built locally; these scripts do not publish or upload anything.
 Use `MONGOT_MVN` to select Maven. Keep `clients/rust/proto/standalone.proto` synchronized with the
 canonical API using `python3 clients/sync_proto.py`; `--check` verifies it without changing files.
+The verifier keeps large generated build outputs under the output directory's `.verification-work`
+cache. Package sources and Python/npm installations remain outside the checkout. Reuse a previously
+printed disposable workspace with `verify_release.py --work-dir /tmp/mongot-release-verify-...`.
 
 ## Build and run the full integration suite
 
