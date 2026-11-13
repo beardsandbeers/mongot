@@ -32,7 +32,7 @@ cargo add mongot-standalone-client@0.2.0
 See [PyPI](https://pypi.org/project/mongot-standalone-client/0.2.0/) and
 [crates.io](https://crates.io/crates/mongot-standalone-client/0.2.0) for package metadata.
 
-The [standalone-v0.2.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.2.0)
+The [standalone-v0.2.0 prerelease](https://github.com/beardsandbeers/nomongo-t/releases/tag/standalone-v0.2.0)
 provides the Linux x86_64 server archive, Java client/source bundle, Python wheel/source archive,
 npm tarball, and Rust crate. The release includes installation instructions, checksums, provenance,
 and test reports. Packages install without a repository checkout; dependencies are resolved by

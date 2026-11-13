@@ -14,6 +14,7 @@ scripts/tools/bazelisk/bazelisk-*
 **/.DS_Store
 .ruff_cache
 .standalone-client
+.nomongo-t
 .codex
 .claude
 .cursor

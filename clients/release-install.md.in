@@ -18,7 +18,7 @@ cd mongot-standalone
 The archive includes Java 21, native libraries, licenses and the API schema. The sample
 configuration binds unauthenticated loopback port 27029 and persists to ./data. SIGTERM stops it.
 Secure external listeners with TLS and collection/role-scoped bearer principals as described in
-[the operating guide](https://github.com/beardsandbeers/mongot/blob/@COMMIT@/docs/standalone-mongot.md).
+[the operating guide](https://github.com/beardsandbeers/nomongo-t/blob/@COMMIT@/docs/standalone-mongot.md).
 
 ## Client packages
 
@@ -40,20 +40,19 @@ Python, npm and Cargo resolve dependencies through their normal registries. The 
 bundles its dependencies. Python and Rust are also published on PyPI and crates.io. Java and Node
 packages are distributed as release assets.
 
-[Full API examples](https://github.com/beardsandbeers/mongot/blob/@COMMIT@/clients/README.md).
+[Full API examples](https://github.com/beardsandbeers/nomongo-t/blob/@COMMIT@/clients/README.md).
 All clients expose the 20 catalog/document/query/status RPCs, BSON helpers, TLS/bearer auth and
 per-call deadlines. Preserve request IDs/payloads for retries and inspect per-item write outcomes.
 
 ## Docker
 
-The private Docker Hub repository requires an authorized account:
+The public Docker Hub image can be pulled without a registry login:
 
 ```sh
-docker login
-docker pull mybyte/private:mongot-standalone-v@VERSION@
+docker pull --platform linux/amd64 mybyte/nomongo-t:@VERSION@
 ```
 
-`mybyte/private:mongot-standalone` tracks the current standalone release. The image is Linux amd64
+`mybyte/nomongo-t:latest` tracks the current standalone release. The image is Linux amd64
 and includes the server runtime. See the operating guide for TLS, persistent volumes, and startup.
 
 ## Verification and provenance

@@ -8,20 +8,20 @@ for the durability and lifecycle contract.
 
 ## Docker quick start: Docker is the only prerequisite
 
-Release **0.2.0** is available in the private Docker Hub repository for authorized accounts:
+Release **0.2.0** is available from the public [mybyte/nomongo-t](https://hub.docker.com/r/mybyte/nomongo-t) image.
+See the [Docker + Python quickstart](../README.md) and [detailed image instructions](../deploy/standalone/DOCKERHUB.md).
 
 ```sh
-docker login
-docker pull mybyte/private:mongot-standalone-v0.2.0
+docker pull --platform linux/amd64 mybyte/nomongo-t:0.2.0
 docker run --detach --name mongot --restart unless-stopped --stop-timeout 90 \
   --memory 4g --read-only --tmpfs /tmp:rw,nosuid,exec,size=256m,mode=1777 \
   -p 127.0.0.1:27029:27029 -v mongot-standalone_state:/var/lib/mongot \
-  mybyte/private:mongot-standalone-v0.2.0
+  mybyte/nomongo-t:0.2.0
 docker exec mongot mongotctl status
 ```
 
 Wait for startup before the status call. The versioned tag selects this release;
-`mybyte/private:mongot-standalone` tracks the current release. The image is Linux amd64 and
+`mybyte/nomongo-t:latest` tracks the current release. The image is Linux amd64 and
 includes Java 21 and the native libraries. The same TLS credentials, persistent volume, and
 operational commands described below apply to the published image.
 
@@ -249,7 +249,7 @@ older binary cannot read the upgraded schema. Images can be transferred with
 ## Build and start without Docker
 
 Prebuilt Linux x86_64 server and client packages are available in the
-[standalone-v0.2.0 prerelease](https://github.com/beardsandbeers/mongot/releases/tag/standalone-v0.2.0).
+[standalone-v0.2.0 prerelease](https://github.com/beardsandbeers/nomongo-t/releases/tag/standalone-v0.2.0).
 Follow its `INSTALL.md` and verify downloads against `SHA256SUMS`. The server archive contains its
 own Java 21 runtime and native libraries; no host JVM or MongoDB server is required.
 

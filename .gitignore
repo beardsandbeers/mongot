@@ -72,3 +72,7 @@ tmp/
 /.standalone-client/
 /backups/standalone-*.tgz
 /dist/standalone/
+
+# Credentials and virtual environment created by the Docker/Python quickstart.
+/.nomongo-t/
+/.venv-nomongo-t/
