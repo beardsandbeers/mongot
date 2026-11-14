@@ -13,7 +13,7 @@ per-call deadlines, BSON helpers and all current RPCs. No automatic retries are 
 ## Python
 
 ```sh
-python3 -m pip install mongot-standalone-client==0.5.0
+python3 -m pip install mongot-standalone-client==0.6.0
 ```
 
 ```python
@@ -63,6 +63,49 @@ UpsertRequest contains `index_id`, `documents_bson`, optional `generation_id` an
 DeleteRequest substitutes `ids_bson`, each containing `{_id: value}`. Queries continue to use
 `index_id` and BSON search/vector expressions. CreateIndex takes name, type and definition BSON;
 ListIndexes takes an empty request. Index names are instance-wide.
+
+## Join searches across indexes
+
+Join support is available in server/client release 0.6.0 and later. Existing SDKs
+carry the expression through `QueryRequest.query_bson`.
+A join filters local documents by the existence of qualifying foreign documents.
+
+For example, assume `accounts_search` and `contacts_search` are ready, both map
+`accountKey` as `token` with the same normalizer, accounts map `region` as `token`,
+and contacts map `title` as `string`. Configure `storedSource` on contacts to use
+`returnStoredSource` below:
+
+```python
+query = {
+    "compound": {
+        "must": [{"text": {"path": "title", "query": "architect"}}],
+        "filter": [{
+            "join": {
+                "from": "accounts_search",
+                "localField": "accountKey",
+                "foreignField": "accountKey",
+                "operator": {"equals": {"path": "region", "value": "Berlin"}},
+            }
+        }],
+    },
+    "returnStoredSource": True,
+}
+response = client.search(api.QueryRequest(
+    index_id=contacts_index_id, query_bson=encode_bson(query), batch_size=100,
+))
+hits = decode_bson(response.batch_bson)["results"]
+```
+
+`from` is an instance-wide index name; omit it for a self-join. Use the predicate
+in `compound.mustNot` for exclusion. The caller needs QUERY access to every index
+in the join. Foreign matches do not duplicate local hits or affect their scores.
+Arrays match when any indexed token is shared. Native typed `_id` joins and
+foreign-document enrichment are outside the initial scope.
+
+`GetMore` retains the initial local readers and foreign membership. Dropping a
+dependency or retiring its generation invalidates the cursor. Budget violations
+fail with `RESOURCE_EXHAUSTED` rather than returning a truncated key set. See the
+[join guide](../docs/join-design-guide.md) for mappings, limits, and lifecycle details.
 
 ## Export a dynamic mapping
 

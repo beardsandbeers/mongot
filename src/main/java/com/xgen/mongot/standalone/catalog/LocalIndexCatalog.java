@@ -144,6 +144,16 @@ public final class LocalIndexCatalog implements Closeable {
     return describe(require(id));
   }
 
+  /** Resolves an instance-wide name once; callers retain the returned stable identity. */
+  public synchronized IndexDescription getIndexByName(String name) {
+    return this.indexes.values().stream()
+        .filter(index -> index.getName().equals(name))
+        .findFirst()
+        .map(LocalIndexCatalog::describe)
+        .orElseThrow(
+            () -> Status.NOT_FOUND.withDescription("Index does not exist").asRuntimeException());
+  }
+
   private IndexDefinition require(String id) {
     validateIndexId(id);
     var definition = this.indexes.get(id);

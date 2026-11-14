@@ -23,6 +23,7 @@ import com.xgen.mongot.util.Bytes;
 import io.grpc.Context;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +38,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
   private static final long IDLE_NANOS = Duration.ofMinutes(2).toNanos();
   private final StandaloneRuntime runtime;
   private final RpcDispatcher dispatcher;
+  private final StandaloneJoinPlanner joinPlanner;
   private final Semaphore capacity = new Semaphore(1024);
   private final ConcurrentHashMap<Long, Lease> leases = new ConcurrentHashMap<>();
 
@@ -44,18 +46,25 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
     private final String principal;
     private final String index;
     private final String generation;
+    private final Optional<StandaloneJoinPlanner.Plan> joinPlan;
     private volatile long lastAccess = System.nanoTime();
 
-    private Lease(String principal, String index, String generation) {
+    private Lease(
+        String principal,
+        String index,
+        String generation,
+        Optional<StandaloneJoinPlanner.Plan> joinPlan) {
       this.principal = principal;
       this.index = index;
       this.generation = generation;
+      this.joinPlan = joinPlan;
     }
   }
 
   StandaloneQueryService(StandaloneRuntime runtime, RpcDispatcher dispatcher) {
     this.runtime = runtime;
     this.dispatcher = dispatcher;
+    this.joinPlanner = new StandaloneJoinPlanner(runtime);
   }
 
   @Override
@@ -109,6 +118,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
     }
     @Var long cursorId = 0;
     @Var boolean retained = false;
+    @Var StandaloneJoinPlanner.Plan joinPlan = null;
     try {
       var expression = new BsonDocument();
       expression.putAll(
@@ -143,7 +153,13 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
                 new MaterializedVectorSearchQuery(parsed, input),
                 QueryExecutionContext.withDeadline(deadline));
       } else {
-        query = new CursorQuery.Search(SearchQuery.fromBson(expression));
+        var parsed = SearchQuery.fromBson(expression);
+        if (StandaloneJoinPlanner.containsJoin(StandaloneJoinPlanner.operator(parsed))) {
+          joinPlan = this.joinPlanner.prepare(parsed, generation.getGenerationId());
+          query = new CursorQuery.Search(joinPlan.query(), Optional.of(joinPlan.snapshot()));
+        } else {
+          query = new CursorQuery.Search(parsed);
+        }
       }
       var cursor =
           this.runtime
@@ -154,6 +170,9 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
                   new QueryCursorOptions(Optional.empty(), Optional.of(size), false),
                   QueryOptimizationFlags.DEFAULT_OPTIONS);
       cursorId = cursor.cursorId;
+      if (joinPlan != null) {
+        joinPlan.verifyDependencies();
+      }
       if (Context.current().isCancelled()) {
         throw Status.CANCELLED.asRuntimeException();
       }
@@ -169,11 +188,17 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
               .setGenerationId(generationId)
               .setBatchBson(encode(new BsonDocument("results", batch.batch)))
               .setMetadataBson(encode(cursor.metaResults.applyAggregationLimit().toBson()));
+      if (joinPlan != null) {
+        joinPlan.verifyDependencies();
+      }
       if (!batch.exhausted) {
         this.leases.put(
             cursorId,
             new Lease(
-                StandaloneAuthInterceptor.principal().name(), desired.getIndexId(), generationId));
+                StandaloneAuthInterceptor.principal().name(),
+                desired.getIndexId(),
+                generationId,
+                Optional.ofNullable(joinPlan)));
         response.setCursorId(cursorId);
         retained = true;
       }
@@ -182,10 +207,19 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
       throw queryError(e);
     } finally {
       if (!retained) {
-        if (cursorId != 0) {
-          this.runtime.cursors().killCursor(cursorId);
+        try {
+          if (cursorId != 0) {
+            this.runtime.cursors().killCursor(cursorId);
+          }
+        } finally {
+          try {
+            if (joinPlan != null) {
+              closeJoinPlan(joinPlan);
+            }
+          } finally {
+            this.capacity.release();
+          }
         }
-        this.capacity.release();
       }
     }
   }
@@ -199,6 +233,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
     var lease = requireLease(request.getCursorId());
     synchronized (lease) {
       try {
+        lease.joinPlan.ifPresent(plan -> plan.activate(Context.current()));
         var batch =
             this.runtime
                 .cursors()
@@ -207,6 +242,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
                     Bytes.ofBytes(4 * 1024 * 1024),
                     new BatchCursorOptions(
                         Optional.empty(), Optional.of(batchSize(request.getBatchSize()))));
+        lease.joinPlan.ifPresent(StandaloneJoinPlanner.Plan::verifyDependencies);
         lease.lastAccess = System.nanoTime();
         if (batch.exhausted) {
           release(request.getCursorId(), lease);
@@ -260,6 +296,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
       // Consult the index catalog so that such a cursor cannot serve another batch.
       try {
         this.runtime.catalog().getIndex(lease.index);
+        lease.joinPlan.ifPresent(StandaloneJoinPlanner.Plan::verifyDependencies);
       } catch (io.grpc.StatusRuntimeException e) {
         release(id, lease);
         throw e;
@@ -271,7 +308,8 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
   void indexDropped(String indexId) {
     this.leases.forEach(
         (id, lease) -> {
-          if (lease.index.equals(indexId)) {
+          if (lease.index.equals(indexId)
+              || lease.joinPlan.map(plan -> plan.dependsOn(indexId)).orElse(false)) {
             synchronized (lease) {
               release(id, lease);
             }
@@ -295,8 +333,26 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
 
   private void release(long id, Lease lease) {
     if (this.leases.remove(id, lease)) {
-      this.runtime.cursors().killCursor(id);
-      this.capacity.release();
+      try {
+        this.runtime.cursors().killCursor(id);
+      } finally {
+        try {
+          lease.joinPlan.ifPresent(StandaloneQueryService::closeJoinPlan);
+        } finally {
+          this.capacity.release();
+        }
+      }
+    }
+  }
+
+  private static void closeJoinPlan(StandaloneJoinPlanner.Plan plan) {
+    try {
+      plan.close();
+    } catch (IOException e) {
+      throw Status.UNAVAILABLE
+          .withDescription("Could not release join readers")
+          .withCause(e)
+          .asRuntimeException();
     }
   }
 

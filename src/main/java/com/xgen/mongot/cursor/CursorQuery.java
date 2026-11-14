@@ -1,8 +1,10 @@
 package com.xgen.mongot.cursor;
 
+import com.xgen.mongot.index.SearchIndexReader;
 import com.xgen.mongot.index.query.MaterializedVectorSearchQuery;
 import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.QueryExecutionContext;
+import java.util.Optional;
 
 /**
  * A sealed wrapper that carries a query through the cursor creation pipeline, abstracting over the
@@ -14,7 +16,12 @@ public sealed interface CursorQuery {
   /** Returns the underlying {@link Query} for use in stats tracking, index routing, etc. */
   Query getQuery();
 
-  record Search(Query query) implements CursorQuery {
+  record Search(Query query, Optional<SearchIndexReader.QuerySnapshot> snapshot)
+      implements CursorQuery {
+    public Search(Query query) {
+      this(query, Optional.empty());
+    }
+
     @Override
     public Query getQuery() {
       return this.query;

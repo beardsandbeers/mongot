@@ -31,7 +31,9 @@ import com.xgen.mongot.index.query.operators.GeoWithinOperator;
 import com.xgen.mongot.index.query.operators.HasAncestorOperator;
 import com.xgen.mongot.index.query.operators.HasRootOperator;
 import com.xgen.mongot.index.query.operators.InOperator;
+import com.xgen.mongot.index.query.operators.JoinOperator;
 import com.xgen.mongot.index.query.operators.KnnBetaOperator;
+import com.xgen.mongot.index.query.operators.MaterializedJoinOperator;
 import com.xgen.mongot.index.query.operators.MoreLikeThisOperator;
 import com.xgen.mongot.index.query.operators.NearOperator;
 import com.xgen.mongot.index.query.operators.Operator;
@@ -412,6 +414,8 @@ public class QueryMetricsRecorder {
           getVectorSearchOperatorCounters(vectorSearchOperator.criteria());
       case KnnBetaOperator knnBetaOperator -> getKnnBetaStatCounters(knnBetaOperator);
 
+      case JoinOperator ignored -> Stream.empty();
+      case MaterializedJoinOperator ignored -> Stream.empty();
       case AllDocumentsOperator allDocumentsOperator -> Stream.empty();
       case EqualsOperator equalsOperator -> Stream.empty();
       case ExistsOperator existsOperator -> Stream.empty();

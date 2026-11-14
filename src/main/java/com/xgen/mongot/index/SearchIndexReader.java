@@ -2,16 +2,55 @@ package com.xgen.mongot.index;
 
 import com.xgen.mongot.cursor.batch.BatchSizeStrategy;
 import com.xgen.mongot.cursor.batch.QueryCursorOptions;
+import com.xgen.mongot.index.definition.TokenFieldDefinition;
 import com.xgen.mongot.index.lucene.facet.TokenFacetsStateCache;
 import com.xgen.mongot.index.query.InvalidQueryException;
 import com.xgen.mongot.index.query.Query;
 import com.xgen.mongot.index.query.QueryOptimizationFlags;
 import com.xgen.mongot.index.query.SearchQuery;
+import com.xgen.mongot.index.query.operators.Operator;
+import com.xgen.mongot.util.FieldPath;
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
+import java.util.function.Consumer;
 import org.apache.lucene.index.FieldInfos;
 
 public interface SearchIndexReader extends IndexReader {
+
+  /** Managed reader snapshots used for planning and executing one search on identical readers. */
+  interface QuerySnapshot extends Closeable {
+    default int partitions() {
+      return 1;
+    }
+
+    void setCancellationCheck(Runnable check);
+
+    TokenFieldDefinition tokenField(FieldPath path) throws InvalidQueryException;
+
+    void collectKeys(Operator operator, FieldPath path, Consumer<String> keys, Runnable checkWork)
+        throws IOException, InvalidQueryException;
+
+    SearchProducerAndMetaResults query(
+        Query query,
+        QueryCursorOptions options,
+        BatchSizeStrategy strategy,
+        QueryOptimizationFlags flags)
+        throws IOException, InvalidQueryException, InterruptedException;
+
+    SearchProducerAndMetaProducer intermediateQuery(
+        SearchQuery query,
+        QueryCursorOptions options,
+        BatchSizeStrategy strategy,
+        QueryOptimizationFlags flags)
+        throws IOException, InvalidQueryException, InterruptedException;
+  }
+
+  /** The caller owns the snapshot until query execution transfers it to batch producers. */
+  default QuerySnapshot acquireQuerySnapshot(boolean concurrent)
+      throws IOException, ReaderClosedException {
+    throw new UnsupportedOperationException("This reader does not support pinned query planning");
+  }
 
   class SearchProducerAndMetaResults {
     public final BatchProducer searchBatchProducer;

@@ -13,7 +13,9 @@ import com.xgen.mongot.index.query.operators.GeoWithinOperator;
 import com.xgen.mongot.index.query.operators.HasAncestorOperator;
 import com.xgen.mongot.index.query.operators.HasRootOperator;
 import com.xgen.mongot.index.query.operators.InOperator;
+import com.xgen.mongot.index.query.operators.JoinOperator;
 import com.xgen.mongot.index.query.operators.KnnBetaOperator;
+import com.xgen.mongot.index.query.operators.MaterializedJoinOperator;
 import com.xgen.mongot.index.query.operators.MoreLikeThisOperator;
 import com.xgen.mongot.index.query.operators.NearOperator;
 import com.xgen.mongot.index.query.operators.Operator;
@@ -84,6 +86,8 @@ public record FacetCollector(
       case RangeOperator rangeOp -> rangeOp.doesNotAffectDefined();
 
       // Add any new operators here with explicit handling for doesNotAffect
+      case JoinOperator ignored -> false;
+      case MaterializedJoinOperator ignored -> false;
       case AllDocumentsOperator ignored -> false;
       case AutocompleteOperator ignored -> false;
       case ExistsOperator ignored -> false;
@@ -127,6 +131,11 @@ public record FacetCollector(
         buildDrillSidewaysInfo(operator, facetDefinitions);
 
     return new FacetCollector(operator, facetDefinitions, drillSidewaysInfo);
+  }
+
+  /** Rebuild derived facet predicates after internal query planning. */
+  public FacetCollector withOperator(Operator operator) {
+    return create(operator, this.facetDefinitions);
   }
 
   /** Deserializes collector from a BSON. */

@@ -33,7 +33,9 @@ public sealed interface Operator extends DocumentEncodable
         HasAncestorOperator,
         HasRootOperator,
         InOperator,
+        JoinOperator,
         KnnBetaOperator,
+        MaterializedJoinOperator,
         MoreLikeThisOperator,
         NearOperator,
         PhraseOperator,
@@ -74,6 +76,9 @@ public sealed interface Operator extends DocumentEncodable
         Fields.build("hasRoot", HasRootOperator::fromBson);
 
     private static final Field.Optional<InOperator> IN = Fields.build("in", InOperator::fromBson);
+
+    private static final Field.Optional<JoinOperator> JOIN =
+        Fields.build("join", JoinOperator::fromBson);
 
     private static final Field.Optional<KnnBetaOperator> KNN_BETA =
         Fields.build("knnBeta", KnnBetaOperator::fromBson);
@@ -135,6 +140,7 @@ public sealed interface Operator extends DocumentEncodable
             HAS_ANCESTOR,
             HAS_ROOT,
             IN,
+            JOIN,
             KNN_BETA,
             MORE_LIKE_THIS,
             NEAR,
@@ -173,6 +179,7 @@ public sealed interface Operator extends DocumentEncodable
     HAS_ANCESTOR("hasAncestor"),
     HAS_ROOT("hasRoot"),
     IN("in"),
+    JOIN("join"),
     KNN_BETA("knnBeta"),
     MORE_LIKE_THIS("moreLikeThis"),
     NEAR("near"),
@@ -259,6 +266,9 @@ public sealed interface Operator extends DocumentEncodable
       case HasRootOperator hasRootOperator ->
           builder.field(Fields.HAS_ROOT, Optional.of(hasRootOperator)).build();
       case InOperator inOperator -> builder.field(Fields.IN, Optional.of(inOperator)).build();
+      case JoinOperator joinOperator ->
+          builder.field(Fields.JOIN, Optional.of(joinOperator)).build();
+      case MaterializedJoinOperator joinOperator -> joinOperator.join().toBson();
       case KnnBetaOperator knnBetaOperator ->
           builder.field(Fields.KNN_BETA, Optional.of(knnBetaOperator)).build();
       case MoreLikeThisOperator moreLikeThisOperator ->

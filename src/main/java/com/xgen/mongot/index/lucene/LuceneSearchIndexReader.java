@@ -24,6 +24,7 @@ import com.xgen.mongot.index.VectorSearchResult;
 import com.xgen.mongot.index.analyzer.AnalyzerRegistry;
 import com.xgen.mongot.index.definition.SearchFieldDefinitionResolver;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
+import com.xgen.mongot.index.definition.TokenFieldDefinition;
 import com.xgen.mongot.index.lucene.LuceneAggregationSearchManager.AggregationQueryInfo;
 import com.xgen.mongot.index.lucene.LuceneFacetCollectorSearchManager.FacetCollectorQueryInfo;
 import com.xgen.mongot.index.lucene.LuceneSearchManager.QueryInfo;
@@ -60,6 +61,7 @@ import com.xgen.mongot.index.query.collectors.DrillSidewaysInfoBuilder.DrillSide
 import com.xgen.mongot.index.query.collectors.DrillSidewaysInfoBuilder.DrillSidewaysInfo.QueryOptimizationStatus;
 import com.xgen.mongot.index.query.collectors.FacetCollector;
 import com.xgen.mongot.index.query.counts.Count;
+import com.xgen.mongot.index.query.operators.AllDocumentsOperator;
 import com.xgen.mongot.index.query.operators.Operator;
 import com.xgen.mongot.index.query.sort.SequenceToken;
 import com.xgen.mongot.index.query.sort.SortSpec;
@@ -68,6 +70,7 @@ import com.xgen.mongot.index.synonym.SynonymRegistry;
 import com.xgen.mongot.index.version.IndexFormatVersion;
 import com.xgen.mongot.util.Check;
 import com.xgen.mongot.util.CheckedStream;
+import com.xgen.mongot.util.FieldPath;
 import com.xgen.mongot.util.bson.Vector;
 import com.xgen.mongot.util.concurrent.LockGuard;
 import com.xgen.mongot.util.concurrent.NamedExecutorService;
@@ -78,13 +81,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.facet.DrillSideways.DrillSidewaysResult;
 import org.apache.lucene.facet.FacetsCollector;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.ScoreMode;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
@@ -273,6 +284,172 @@ public class LuceneSearchIndexReader implements SearchIndexReader {
 
   SearchAggregationMetricsReporter getSearchAggregationMetricsReporter() {
     return this.queryingMetricsUpdater.getSearchAggregationMetricsReporter();
+  }
+
+  @Override
+  public QuerySnapshot acquireQuerySnapshot(boolean concurrent)
+      throws IOException, ReaderClosedException {
+    try (var ignored = LockGuard.with(this.shutdownSharedLock)) {
+      ensureOpen("acquireQuerySnapshot");
+      return new PinnedQuerySnapshot(createSearcherReference(concurrent));
+    }
+  }
+
+  private final class PinnedQuerySnapshot implements QuerySnapshot {
+    private final LuceneIndexSearcherReference reference;
+    private boolean transferred;
+    private boolean closed;
+    private volatile Runnable cancellationCheck = () -> {};
+
+    private PinnedQuerySnapshot(LuceneIndexSearcherReference reference) {
+      this.reference = reference;
+      // Membership owns a cursor reservation; do not retain its terms in a cross-request cache.
+      this.reference.getIndexSearcher().setQueryCache(null);
+      this.reference
+          .getIndexSearcher()
+          .setTimeout(
+              () -> {
+                this.cancellationCheck.run();
+                return false;
+              });
+    }
+
+    @Override
+    public void setCancellationCheck(Runnable check) {
+      this.cancellationCheck = check;
+    }
+
+    @Override
+    public TokenFieldDefinition tokenField(FieldPath path) throws InvalidQueryException {
+      return LuceneSearchIndexReader.this.queryFactory.tokenField(path);
+    }
+
+    @Override
+    public void collectKeys(
+        Operator operator, FieldPath path, Consumer<String> keys, Runnable checkWork)
+        throws IOException, InvalidQueryException {
+      try (var ignored = LockGuard.with(LuceneSearchIndexReader.this.shutdownSharedLock)) {
+        LuceneSearchIndexReader.this.ensureOpen("collectJoinKeys");
+        collectKeysOnSnapshot(operator, path, keys, checkWork);
+      }
+    }
+
+    private void collectKeysOnSnapshot(
+        Operator operator, FieldPath path, Consumer<String> keys, Runnable checkWork)
+        throws IOException, InvalidQueryException {
+      checkState(!this.closed && !this.transferred, "Query snapshot is no longer available");
+      tokenField(path);
+      var searcher = this.reference.getIndexSearcher();
+      var factory = LuceneSearchIndexReader.this.queryFactory;
+      var predicate =
+          factory.createQuery(
+              operator,
+              searcher.getIndexReader(),
+              Optional.empty(),
+              QueryOptimizationFlags.DEFAULT_OPTIONS);
+      var rootFilter =
+          factory.createQuery(
+              AllDocumentsOperator.INSTANCE,
+              searcher.getIndexReader(),
+              Optional.empty(),
+              QueryOptimizationFlags.DEFAULT_OPTIONS);
+      var query =
+          new BooleanQuery.Builder()
+              .add(predicate, BooleanClause.Occur.FILTER)
+              .add(rootFilter, BooleanClause.Occur.FILTER)
+              .build();
+      String field = FieldName.TypeField.TOKEN.getLuceneFieldName(path, Optional.empty());
+      // Collect sequentially: DocValues iterators and the bounded key collector are
+      // execution-local.
+      Runnable previousCheck = this.cancellationCheck;
+      this.cancellationCheck = checkWork;
+      try {
+        // The Collector overload searches leaves sequentially even on a concurrent searcher.
+        searcher.search(
+            query,
+            new SimpleCollector() {
+              private SortedSetDocValues values = DocValues.emptySortedSet();
+
+              @Override
+              protected void doSetNextReader(LeafReaderContext context) throws IOException {
+                checkWork.run();
+                this.values = DocValues.getSortedSet(context.reader(), field);
+              }
+
+              @Override
+              public void collect(int doc) throws IOException {
+                checkWork.run();
+                if (this.values.advanceExact(doc)) {
+                  for (int i = 0; i < this.values.docValueCount(); i++) {
+                    keys.accept(this.values.lookupOrd(this.values.nextOrd()).utf8ToString());
+                  }
+                }
+              }
+
+              @Override
+              public ScoreMode scoreMode() {
+                return ScoreMode.COMPLETE_NO_SCORES;
+              }
+            });
+      } finally {
+        this.cancellationCheck = previousCheck;
+      }
+    }
+
+    @Override
+    public SearchProducerAndMetaResults query(
+        Query query,
+        QueryCursorOptions options,
+        BatchSizeStrategy strategy,
+        QueryOptimizationFlags flags)
+        throws IOException, InvalidQueryException, InterruptedException {
+      try (var ignored = LockGuard.with(LuceneSearchIndexReader.this.shutdownSharedLock)) {
+        LuceneSearchIndexReader.this.ensureOpen("executePinnedQuery");
+        checkState(!this.closed && !this.transferred, "Query snapshot was already consumed");
+        validateStoredSource(query);
+        var result =
+            LuceneSearchIndexReader.this.query(query, this.reference, options, strategy, flags);
+        this.transferred = true;
+        return result;
+      }
+    }
+
+    @Override
+    public SearchProducerAndMetaProducer intermediateQuery(
+        SearchQuery query,
+        QueryCursorOptions options,
+        BatchSizeStrategy strategy,
+        QueryOptimizationFlags flags)
+        throws IOException, InvalidQueryException, InterruptedException {
+      try (var ignored = LockGuard.with(LuceneSearchIndexReader.this.shutdownSharedLock)) {
+        LuceneSearchIndexReader.this.ensureOpen("executePinnedQuery");
+        checkState(!this.closed && !this.transferred, "Query snapshot was already consumed");
+        validateStoredSource(query);
+        var result =
+            LuceneSearchIndexReader.this.intermediateQuery(
+                query, this.reference, options, strategy, flags);
+        this.transferred = true;
+        return result;
+      }
+    }
+
+    @Override
+    public void close() throws IOException {
+      if (!this.closed) {
+        this.closed = true;
+        if (!this.transferred) {
+          this.reference.close();
+        }
+      }
+    }
+  }
+
+  private void validateStoredSource(Query query) throws InvalidQueryException {
+    if (query.returnScope().isEmpty()
+        && query.returnStoredSource()
+        && this.indexDefinition.getStoredSource().isAllExcluded()) {
+      throw new InvalidQueryException("storedSource is not configured for this index");
+    }
   }
 
   @Override

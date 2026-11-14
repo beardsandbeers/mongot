@@ -102,12 +102,16 @@ class CursorFactory {
       BatchProducer batchProducer;
       MetaResults metaResults;
       switch (cursorQuery) {
-        case CursorQuery.Search(var query) -> {
+        case CursorQuery.Search(var query, var snapshot) -> {
           var r =
-              index
-                  .asSearchIndex()
-                  .getReader()
-                  .query(query, queryCursorOptions, batchSizeStrategy, queryOptimizationFlags);
+              snapshot.isPresent()
+                  ? snapshot
+                      .get()
+                      .query(query, queryCursorOptions, batchSizeStrategy, queryOptimizationFlags)
+                  : index
+                      .asSearchIndex()
+                      .getReader()
+                      .query(query, queryCursorOptions, batchSizeStrategy, queryOptimizationFlags);
           batchProducer = r.searchBatchProducer;
           metaResults = r.metaResults;
         }

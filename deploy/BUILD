@@ -122,6 +122,7 @@ package_deploy_tar(
         ":standalone-resources/standalone.yaml",
         ":bc-fips-env.sh",
         "//src/proto/standalone/v1:standalone.proto",
+        "//:docs/join-design-guide.md",
         "//:docs/standalone-mongot.md",
         "//:scripts/standalone/client.py",
     ],

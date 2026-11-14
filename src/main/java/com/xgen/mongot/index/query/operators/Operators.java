@@ -180,6 +180,8 @@ class Operators {
       case VectorSearchOperator vectorSearchOperator ->
           List.of(vectorSearchOperator.criteria().path());
       case InOperator inOperator -> inOperator.paths();
+      case JoinOperator joinOperator -> List.of(joinOperator.localField());
+      case MaterializedJoinOperator joinOperator -> List.of(joinOperator.join().localField());
       case KnnBetaOperator knnBetaOperator -> knnBetaOperator.paths();
       case NearOperator nearOperator -> nearOperator.paths();
       case PhraseOperator phraseOperator ->

@@ -95,7 +95,7 @@ The authoritative [protobuf schema](../src/proto/standalone/v1/standalone.proto)
 
 | Service | Operations |
 | --- | --- |
-| CatalogService | CreateIndex, GetIndex, GetIndexMappings, ListIndexes, UpdateIndex, DropIndex |
+| CatalogService | CreateIndex, GetIndex, GetIndexMappings, GetIndexStats, GetIndexFieldStats, ListIndexes, UpdateIndex, DropIndex |
 | DocumentService | Upsert, Delete |
 | QueryService | Search, VectorSearch, GetMore, KillCursor |
 | OperationsService | GetStatus |
@@ -126,6 +126,35 @@ does not guarantee that a mismatched field value was indexed.
 A write targets exactly one index. For multiple text/vector indexes, the caller submits content
 to each index. There is no fan-out, cross-index transaction, collection, document read API,
 strict INSERT, delete-by-query workflow, request-ID deduplication, or replay endpoint.
+
+### Join filters
+
+Server 0.6.0 adds cross-index and self-join predicates to Search BSON. For example:
+
+```json
+{
+  "compound": {
+    "filter": [{"join": {
+      "from": "accounts_search",
+      "localField": "accountKey",
+      "foreignField": "accountKey",
+      "operator": {"equals": {"path": "region", "value": "Berlin"}}
+    }}]
+  }
+}
+```
+
+The request's `index_id` selects the returned documents. `from` is an exact index name;
+omit it for a self-join. Place the predicate in `compound.mustNot` for exclusion.
+Both keys must be string fields explicitly mapped as `token` with matching normalizers.
+Arrays match on any shared indexed string. Native typed `_id` keys, nested joins,
+vector joins, and attaching foreign documents are outside this release.
+
+QUERY access is required to every participating index. Cursors retain their initial
+membership and local reader snapshots; dropping a dependency or retiring its generation
+invalidates them. A join fails with `RESOURCE_EXHAUSTED` if it exceeds its key, memory,
+or work budgets. See the [join guide](join-design-guide.md) for mappings, full syntax,
+limits, and token-length caveats; the guide also ships beside this file in the server archive.
 
 ### Completion and retries
 

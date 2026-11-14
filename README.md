@@ -8,13 +8,30 @@ Use it for keyword search with mongot's mappings and analyzers, vector similarit
 your own embeddings, or both. Indexes persist on disk. Clients are available for
 [Python, Rust, Java, and TypeScript](clients/README.md).
 
-Version 0.5.0 adds per-index document counts, storage averages, and per-field storage and memory
-diagnostics over gRPC. See the [statistics examples](clients/README.md#index-and-field-statistics)
-for attribution coverage and memory accounting semantics.
+Version 0.6.0 adds cross-index joins and self-joins as search filters. Join keys are strings
+explicitly indexed as `token`; numeric, ObjectId, and native typed `_id` joins are deferred.
+
+## Additions to upstream mongot
+
+This fork adds the following capabilities to [MongoDB's mongot](https://github.com/mongodb/mongot).
+Full-text search, vector search, mappings, and analyzers build on the upstream engine.
+
+| Addition | What it enables |
+| --- | --- |
+| Standalone indexes | Run without MongoDB. Create independent named indexes and write BSON directly through gRPC `Upsert` and `Delete`. Each index owns its content and lifecycle. |
+| Inline `join` search predicate | Filter or exclude local documents using matching keys from another index or the same index, while retaining local relevance, sorting, counts, and facets. See [join examples](#join-searches-across-indexes). |
+| Public gRPC API and four clients | Manage indexes, ingest documents, search, and page results from Python, Rust, Java, and TypeScript, with TLS and bearer tokens restricted by role and index. See the [client guide](clients/README.md). |
+| Dynamic mapping export | `GetIndexMappings` combines configured fields and observed dynamic types into reusable static mappings. See the [mapping example](clients/README.md#export-a-dynamic-mapping). |
+| Index and field diagnostics | `GetIndexStats` and `GetIndexFieldStats` expose document counts, storage averages, and storage/memory attribution, including shared and unknown costs. See the [statistics examples](clients/README.md#index-and-field-statistics). |
+
+MongoDB supports aggregation joins through `$lookup`. This fork's `join` runs inside a mongot
+search expression over standalone indexes and returns matching local documents. It does not
+attach foreign documents. The upstream MongoDB-backed entry point remains in the source;
+the standalone instructions below cover the direct gRPC deployment.
 
 ## Quick start
 
-You need Docker. The image includes Java 21 and the native libraries. The published `0.5.0`
+You need Docker. The image includes Java 21 and the native libraries. The published `0.6.0`
 image targets Linux amd64. ARM hosts need amd64 emulation and the `--platform linux/amd64`
 option.
 
@@ -23,7 +40,7 @@ docker run --detach --name nomongo-t \
   --publish 127.0.0.1:27029:27029 \
   --memory 4g \
   --volume nomongo-t-data:/var/lib/mongot \
-  mybyte/nomongo-t:0.5.0
+  mybyte/nomongo-t:0.6.0
 ```
 
 The API listens at **localhost:27029 over gRPC with TLS**. On first startup, the container
@@ -54,7 +71,7 @@ docker cp nomongo-t:/var/lib/mongot/config/admin.token .nomongo-t/admin.token
 chmod 600 .nomongo-t/admin.token
 
 python3 -m venv .venv-nomongo-t
-.venv-nomongo-t/bin/python -m pip install mongot-standalone-client==0.5.0
+.venv-nomongo-t/bin/python -m pip install mongot-standalone-client==0.6.0
 ```
 
 Save the following as `demo.py`, then run `.venv-nomongo-t/bin/python demo.py`. It creates a
@@ -171,6 +188,94 @@ static mapping. It combines configured fields with observed dynamic types, inclu
 for the same field, and preserves analyzers and other index options in a reusable definition.
 See [the mapping export example](clients/README.md#export-a-dynamic-mapping).
 
+### Join searches across indexes
+
+Append this to `demo.py`. It creates accounts and contacts indexes, then searches for architects
+whose account is in Berlin. The matching key is an explicit `accountKey` token in both indexes.
+
+```python
+with Client(
+    "localhost:27029",
+    ca_file=".nomongo-t/server.crt",
+    token_file=".nomongo-t/admin.token",
+) as client:
+    accounts = client.create_index(api.CreateIndexRequest(
+        name="accounts_search",
+        type=api.INDEX_TYPE_SEARCH,
+        definition_bson=encode_bson({
+            "mappings": {"dynamic": False, "fields": {
+                "accountKey": {"type": "token", "normalizer": "none"},
+                "region": {"type": "token"},
+            }},
+        }),
+    ))
+    contacts = client.create_index(api.CreateIndexRequest(
+        name="contacts_search",
+        type=api.INDEX_TYPE_SEARCH,
+        definition_bson=encode_bson({
+            "mappings": {"dynamic": False, "fields": {
+                "accountKey": {"type": "token", "normalizer": "none"},
+                "title": {"type": "string"},
+            }},
+            "storedSource": True,
+        }),
+    ))
+    wait_ready(client, accounts.index_id)
+    wait_ready(client, contacts.index_id)
+    client.upsert_many(accounts.index_id, [
+        {"_id": "a1", "accountKey": "a1", "region": "Berlin"},
+        {"_id": "a2", "accountKey": "a2", "region": "Paris"},
+    ])
+    client.upsert_many(contacts.index_id, [
+        {"_id": "c1", "accountKey": "a1", "title": "Software Architect"},
+        {"_id": "c2", "accountKey": "a2", "title": "Cloud Architect"},
+    ])
+    response = client.search(api.QueryRequest(
+        index_id=contacts.index_id,
+        query_bson=encode_bson({
+            "compound": {
+                "must": [{"text": {"path": "title", "query": "architect"}}],
+                "filter": [{"join": {
+                    "from": "accounts_search",
+                    "localField": "accountKey",
+                    "foreignField": "accountKey",
+                    "operator": {"equals": {"path": "region", "value": "Berlin"}},
+                }}],
+            },
+            "returnStoredSource": True,
+        }),
+    ))
+    print([hit["storedSource"]["_id"]
+           for hit in decode_bson(response.batch_bson)["results"]])
+    # ['c1']
+```
+
+`from` is an exact, case-sensitive index name. Omit it for a self-join, for example employees
+whose manager works in Berlin, with `managerKey`, `employeeKey`, and `office` mapped as tokens:
+
+```json
+{
+  "compound": {
+    "filter": [{"join": {
+      "localField": "managerKey",
+      "foreignField": "employeeKey",
+      "operator": {"equals": {"path": "office", "value": "Berlin"}}
+    }}]
+  }
+}
+```
+
+Move the `join` predicate to `compound.mustNot` to exclude documents with a matching foreign
+record. Both join fields require explicit `token` mappings and matching normalizers; arrays
+match on any shared indexed string. Foreign matches do not duplicate local hits or change
+their scores. QUERY access is required to every participating index.
+
+Paging retains the initial local snapshot and foreign membership. Dropping an index or
+retiring its generation invalidates dependent cursors. Limits fail the whole query instead
+of truncating membership. Nested joins, vector joins, and foreign-document enrichment are
+outside this release. See the [join guide](docs/join-design-guide.md) for all requirements,
+budgets, and the token-length caveat.
+
 ## Configure the container
 
 Docker options control resource limits and networking. `JAVA_TOOL_OPTIONS` configures the JVM.
@@ -197,7 +302,7 @@ docker run --detach --name nomongo-t \
   --memory 8g \
   --env JAVA_TOOL_OPTIONS="-Xms512m -Xmx4g -XX:MaxDirectMemorySize=512m" \
   --volume nomongo-t-data:/var/lib/mongot \
-  mybyte/nomongo-t:0.5.0
+  mybyte/nomongo-t:0.6.0
 ```
 
 `--memory` limits the entire container; `-Xmx` limits only the Java heap. Leave space outside the
@@ -270,7 +375,7 @@ docker run --detach --name nomongo-t \
   --env MONGOT_CONTROL_ADDRESS=localhost:27029 \
   --env MONGOT_CONTROL_CA=/etc/nomongo-t/ca.crt \
   --env MONGOT_CONTROL_TOKEN_FILE=/etc/nomongo-t/admin.token \
-  mybyte/nomongo-t:0.5.0 --config /etc/nomongo-t/standalone.yaml
+  mybyte/nomongo-t:0.6.0 --config /etc/nomongo-t/standalone.yaml
 ```
 
 `--config` selects your YAML file instead of automatic credential generation. The
@@ -355,4 +460,5 @@ not needed. For client development, install `./clients/python` instead of the Py
 - [Client API and language bindings](clients/README.md)
 - [Server configuration, write semantics, and backpressure](docs/standalone-mongot.md)
 - [Architecture](docs/standalone-mongot-grpc-guide.md)
-- [Release downloads](https://github.com/beardsandbeers/nomongo-t/releases/tag/standalone-v0.5.0)
+- [Join syntax, mappings, and execution](docs/join-design-guide.md)
+- [Release downloads](https://github.com/beardsandbeers/nomongo-t/releases/tag/standalone-v0.6.0)

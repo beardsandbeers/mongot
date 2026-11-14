@@ -13,7 +13,9 @@ import com.xgen.mongot.index.query.operators.GeoWithinOperator;
 import com.xgen.mongot.index.query.operators.HasAncestorOperator;
 import com.xgen.mongot.index.query.operators.HasRootOperator;
 import com.xgen.mongot.index.query.operators.InOperator;
+import com.xgen.mongot.index.query.operators.JoinOperator;
 import com.xgen.mongot.index.query.operators.KnnBetaOperator;
+import com.xgen.mongot.index.query.operators.MaterializedJoinOperator;
 import com.xgen.mongot.index.query.operators.MoreLikeThisOperator;
 import com.xgen.mongot.index.query.operators.NearOperator;
 import com.xgen.mongot.index.query.operators.Operator;
@@ -62,6 +64,9 @@ public class GenericDrillSidewaysFacetOperatorBuilder {
           case RangeOperator rangeOp -> handleRangeOperator(rangeOp, facetNames);
 
           // Add any new operators here with explicit handling for doesNotAffect
+          case JoinOperator ignored -> handleNonDoesNotAffectOperator(ignored, facetNames);
+          case MaterializedJoinOperator ignored ->
+              handleNonDoesNotAffectOperator(ignored, facetNames);
           case AllDocumentsOperator ignored -> handleNonDoesNotAffectOperator(ignored, facetNames);
           case AutocompleteOperator ignored -> handleNonDoesNotAffectOperator(ignored, facetNames);
           case ExistsOperator ignored -> handleNonDoesNotAffectOperator(ignored, facetNames);
@@ -153,6 +158,8 @@ public class GenericDrillSidewaysFacetOperatorBuilder {
       }
 
       // Cases where no filtering is needed; return the operator unchanged
+      case JoinOperator ignored -> Optional.of(operator);
+      case MaterializedJoinOperator ignored -> Optional.of(operator);
       case AllDocumentsOperator ignored -> Optional.of(operator);
       case AutocompleteOperator ignored -> Optional.of(operator);
       case EmbeddedDocumentOperator ignored -> Optional.of(operator);

@@ -15,7 +15,9 @@ import com.xgen.mongot.index.query.operators.GeoWithinOperator;
 import com.xgen.mongot.index.query.operators.HasAncestorOperator;
 import com.xgen.mongot.index.query.operators.HasRootOperator;
 import com.xgen.mongot.index.query.operators.InOperator;
+import com.xgen.mongot.index.query.operators.JoinOperator;
 import com.xgen.mongot.index.query.operators.KnnBetaOperator;
+import com.xgen.mongot.index.query.operators.MaterializedJoinOperator;
 import com.xgen.mongot.index.query.operators.MoreLikeThisOperator;
 import com.xgen.mongot.index.query.operators.NearOperator;
 import com.xgen.mongot.index.query.operators.Operator;
@@ -237,6 +239,14 @@ public class DrillSidewaysInfoBuilder {
       case InOperator inOp -> handleLeafOperator(inOp, state, compoundClauseType);
 
       // If this is a root operator (no compoundClauseType), treat as a must clause for pre-filter
+      case JoinOperator ignored -> {
+        CompoundClauseType effectiveType = compoundClauseType.orElse(CompoundClauseType.MUST);
+        addToPreFilter(operator, state, effectiveType);
+      }
+      case MaterializedJoinOperator ignored -> {
+        CompoundClauseType effectiveType = compoundClauseType.orElse(CompoundClauseType.MUST);
+        addToPreFilter(operator, state, effectiveType);
+      }
       case AllDocumentsOperator ignored -> {
         CompoundClauseType effectiveType = compoundClauseType.orElse(CompoundClauseType.MUST);
         addToPreFilter(operator, state, effectiveType);
@@ -489,6 +499,12 @@ public class DrillSidewaysInfoBuilder {
 
         // These operators don't support doesNotAffect, so they do not need to be added to the facet
         // operator map. They've already been added to the prefilter during traverseOperator().
+        case JoinOperator ignored -> {
+          // Empty block
+        }
+        case MaterializedJoinOperator ignored -> {
+          // Empty block
+        }
         case AllDocumentsOperator ignored -> {
           // Empty block
         }
@@ -587,6 +603,8 @@ public class DrillSidewaysInfoBuilder {
       case EqualsOperator ignored -> Stream.of(operator);
       case InOperator ignored -> Stream.of(operator);
       case RangeOperator ignored -> Stream.of(operator);
+      case JoinOperator ignored -> Stream.of(operator);
+      case MaterializedJoinOperator ignored -> Stream.of(operator);
       case AllDocumentsOperator ignored -> Stream.of(operator);
       case AutocompleteOperator ignored -> Stream.of(operator);
       case EmbeddedDocumentOperator ignored -> Stream.of(operator);
@@ -847,6 +865,9 @@ public class DrillSidewaysInfoBuilder {
       case EqualsOperator equalsOp -> List.of(equalsOp.path());
       case InOperator inOp -> inOp.paths();
 
+      case JoinOperator ignored -> throw new IllegalArgumentException("Unexpected operator type");
+      case MaterializedJoinOperator ignored ->
+          throw new IllegalArgumentException("Unexpected operator type");
       case AllDocumentsOperator ignored ->
           throw new IllegalArgumentException("Unexpected operator type");
       case AutocompleteOperator ignored ->
@@ -924,6 +945,8 @@ public class DrillSidewaysInfoBuilder {
       case CompoundOperator compoundOp -> getCompoundDoesNotAffect(compoundOp);
       case EmbeddedDocumentOperator embedded -> getDoesNotAffect(embedded.operator());
 
+      case JoinOperator ignored -> Optional.empty();
+      case MaterializedJoinOperator ignored -> Optional.empty();
       case AllDocumentsOperator ignored -> Optional.empty();
       case AutocompleteOperator ignored -> Optional.empty();
       case ExistsOperator ignored -> Optional.empty();

@@ -44,7 +44,9 @@ import com.xgen.mongot.index.query.operators.GeoWithinOperator;
 import com.xgen.mongot.index.query.operators.HasAncestorOperator;
 import com.xgen.mongot.index.query.operators.HasRootOperator;
 import com.xgen.mongot.index.query.operators.InOperator;
+import com.xgen.mongot.index.query.operators.JoinOperator;
 import com.xgen.mongot.index.query.operators.KnnBetaOperator;
+import com.xgen.mongot.index.query.operators.MaterializedJoinOperator;
 import com.xgen.mongot.index.query.operators.MoreLikeThisOperator;
 import com.xgen.mongot.index.query.operators.NearOperator;
 import com.xgen.mongot.index.query.operators.Operator;
@@ -362,6 +364,17 @@ public class LuceneSearchQueryFactoryDistributor {
     return new QueryBitSetProducer(EmbeddedDocumentQueryFactory.ROOT_DOCUMENTS_QUERY);
   }
 
+  /** Resolves only explicit root token mappings; collected join keys are already normalized. */
+  public com.xgen.mongot.index.definition.TokenFieldDefinition tokenField(FieldPath path)
+      throws InvalidQueryException {
+    return this.queryFactoryContext
+        .getTokenFieldDefinition(path, Optional.empty())
+        .orElseThrow(
+            () ->
+                new InvalidQueryException(
+                    "Join path '%s' must be indexed as token".formatted(path)));
+  }
+
   public Query createVectorQuery(
       MaterializedVectorSearchQuery materializedVectorSearchQuery, IndexReader indexReader)
       throws InvalidQueryException, IOException {
@@ -656,6 +669,9 @@ public class LuceneSearchQueryFactoryDistributor {
       throws InvalidQueryException, IOException {
     try {
       return switch (operator) {
+        case JoinOperator ignored ->
+            throw new InvalidQueryException("join requires standalone query planning");
+        case MaterializedJoinOperator joinOperator -> JoinQueryFactory.fromJoin(joinOperator);
         case AllDocumentsOperator allDocumentsOperator ->
             this.allDocsQueryFactory.fromAllDocuments(singleQueryContext);
         case AutocompleteOperator autocompleteOperator ->

@@ -14,7 +14,9 @@ import com.xgen.mongot.index.query.operators.GeoWithinOperator;
 import com.xgen.mongot.index.query.operators.HasAncestorOperator;
 import com.xgen.mongot.index.query.operators.HasRootOperator;
 import com.xgen.mongot.index.query.operators.InOperator;
+import com.xgen.mongot.index.query.operators.JoinOperator;
 import com.xgen.mongot.index.query.operators.KnnBetaOperator;
+import com.xgen.mongot.index.query.operators.MaterializedJoinOperator;
 import com.xgen.mongot.index.query.operators.MoreLikeThisOperator;
 import com.xgen.mongot.index.query.operators.NearOperator;
 import com.xgen.mongot.index.query.operators.Operator;
@@ -81,6 +83,8 @@ public final class OperatorRewriteEngine {
       case CompoundOperator compoundOperator -> rewriteCompoundChildren(compoundOperator, context);
       case EmbeddedDocumentOperator embeddedDocumentOperator ->
           rewriteEmbeddedDocumentChild(embeddedDocumentOperator, context);
+      case JoinOperator ignored -> operator;
+      case MaterializedJoinOperator ignored -> operator;
       case AllDocumentsOperator ignored -> operator;
       case AutocompleteOperator ignored -> operator;
       case EqualsOperator ignored -> operator;

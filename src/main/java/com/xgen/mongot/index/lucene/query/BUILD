@@ -17,6 +17,7 @@ java_library(
         "HasAncestorQueryFactory.java",
         "HasRootQueryFactory.java",
         "InQueryFactory.java",
+        "JoinQueryFactory.java",
         "KnnQueryFactory.java",
         "LuceneFunctionScoreQueryFactory.java",
         "LuceneQueryScorer.java",

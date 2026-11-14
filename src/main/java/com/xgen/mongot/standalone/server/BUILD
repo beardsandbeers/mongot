@@ -6,6 +6,7 @@ java_library(
         "RpcDispatcher.java",
         "StandaloneAuthInterceptor.java",
         "StandaloneGrpcServer.java",
+        "StandaloneJoinPlanner.java",
         "StandaloneQueryService.java",
     ],
     deps = [
@@ -14,6 +15,7 @@ java_library(
         "//src/main/java/com/xgen/mongot/index",
         "//src/main/java/com/xgen/mongot/index/definition",
         "//src/main/java/com/xgen/mongot/index/query",
+        "//src/main/java/com/xgen/mongot/index/query/collectors",
         "//src/main/java/com/xgen/mongot/index/query/operators",
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/standalone:bson",

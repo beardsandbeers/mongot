@@ -1,4 +1,34 @@
-load("//bazel/java:test.bzl", "java_test_suite")
+load("//bazel/java:test.bzl", "java_test_suite", "mongot_java_unit_test_suite")
+
+_TEST_DEPS = [
+    "//src/main/java/com/xgen/mongot/index/path/string",
+    "//src/main/java/com/xgen/mongot/index/query/operators",
+    "//src/main/java/com/xgen/mongot/index/query/points",
+    "//src/main/java/com/xgen/mongot/index/query/scores",
+    "//src/main/java/com/xgen/mongot/util",
+    "//src/main/java/com/xgen/mongot/util/bson",
+    "//src/main/java/com/xgen/mongot/util/bson/parser",
+    "//src/main/java/com/xgen/testing",
+    "//src/main/java/com/xgen/testing/mongot/index/path/string",
+    "//src/main/java/com/xgen/testing/mongot/index/query",
+    "//src/main/java/com/xgen/testing/mongot/index/query/operators",
+    "//src/main/java/com/xgen/testing/mongot/index/query/scores",
+    "//src/main/java/com/xgen/testing/mongot/index/query/scores/expressions",
+    "//src/main/java/com/xgen/testing/mongot/index/query/shapes",
+    "//src/main/java/com/xgen/testing/mongot/util/geo",
+    "@maven//:com_google_truth_truth",
+    "@maven//:junit_junit",
+    "@maven//:org_mongodb_bson",
+]
+
+mongot_java_unit_test_suite(
+    name = "lib",
+    exclude_files = glob(
+        ["*.java"],
+        exclude = ["JoinOperatorTest.java"],
+    ),
+    deps = _TEST_DEPS,
+)
 
 java_test_suite(
     name = "operators",
@@ -39,24 +69,5 @@ java_test_suite(
     ],
     data = ["//src/test/unit/resources/index/query/operators:srcs"],
     tags = ["unit"],
-    deps = [
-        "//src/main/java/com/xgen/mongot/index/path/string",
-        "//src/main/java/com/xgen/mongot/index/query/operators",
-        "//src/main/java/com/xgen/mongot/index/query/points",
-        "//src/main/java/com/xgen/mongot/index/query/scores",
-        "//src/main/java/com/xgen/mongot/util",
-        "//src/main/java/com/xgen/mongot/util/bson",
-        "//src/main/java/com/xgen/mongot/util/bson/parser",
-        "//src/main/java/com/xgen/testing",
-        "//src/main/java/com/xgen/testing/mongot/index/path/string",
-        "//src/main/java/com/xgen/testing/mongot/index/query",
-        "//src/main/java/com/xgen/testing/mongot/index/query/operators",
-        "//src/main/java/com/xgen/testing/mongot/index/query/scores",
-        "//src/main/java/com/xgen/testing/mongot/index/query/scores/expressions",
-        "//src/main/java/com/xgen/testing/mongot/index/query/shapes",
-        "//src/main/java/com/xgen/testing/mongot/util/geo",
-        "@maven//:com_google_truth_truth",
-        "@maven//:junit_junit",
-        "@maven//:org_mongodb_bson",
-    ],
+    deps = _TEST_DEPS,
 )

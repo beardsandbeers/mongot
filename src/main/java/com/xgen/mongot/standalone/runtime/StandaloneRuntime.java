@@ -10,6 +10,8 @@ import com.xgen.mongot.cursor.MongotCursorManagerImpl;
 import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
 import com.xgen.mongot.index.InitializedSearchIndex;
+import com.xgen.mongot.index.ReaderClosedException;
+import com.xgen.mongot.index.SearchIndexReader;
 import com.xgen.mongot.index.analyzer.AnalyzerRegistry;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
@@ -18,6 +20,7 @@ import com.xgen.mongot.index.lucene.LuceneIndexFactory;
 import com.xgen.mongot.index.lucene.LuceneIndexMappingExporter;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
 import com.xgen.mongot.index.lucene.directory.EnvironmentVariantPerfConfig;
+import com.xgen.mongot.index.version.GenerationId;
 import com.xgen.mongot.lifecycle.DefaultLifecycleManager;
 import com.xgen.mongot.lifecycle.LifecycleConfig;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
@@ -214,6 +217,28 @@ public final class StandaloneRuntime implements Closeable {
     return this.liveIndexes;
   }
 
+  /** Acquires managed search snapshots without exposing raw Lucene readers to transport code. */
+  public SearchIndexReader.QuerySnapshot acquireQuerySnapshot(
+      GenerationId generationId, boolean concurrent) throws IOException, ReaderClosedException {
+    var live =
+        this.liveIndexes
+            .getIndexById(generationId.indexId)
+            .filter(index -> index.getGenerationId().equals(generationId))
+            .filter(index -> this.ingestion.isGenerationReady(generationId))
+            .orElseThrow(
+                () ->
+                    Status.UNAVAILABLE
+                        .withDescription("Join index is not query-ready")
+                        .asRuntimeException());
+    var initialized = this.initializedIndexes.getIndex(live.getGenerationId());
+    if (initialized.isEmpty() || !(initialized.get() instanceof InitializedSearchIndex search)) {
+      throw Status.INVALID_ARGUMENT
+          .withDescription("Joins require search indexes")
+          .asRuntimeException();
+    }
+    return search.getReader().acquireQuerySnapshot(concurrent);
+  }
+
   /** Exports one ready generation, serialized with writes, schema changes and retirement. */
   public GetIndexMappingsResponse getIndexMappings(GetIndexMappingsRequest request) {
     return this.ingestion.coordinate(
@@ -271,7 +296,7 @@ public final class StandaloneRuntime implements Closeable {
                 .setMappingsJson(mappings.toJson())
                 .setDefinitionJson(external.toJson())
                 .build();
-          } catch (IOException | com.xgen.mongot.index.ReaderClosedException e) {
+          } catch (IOException | ReaderClosedException e) {
             throw Status.UNAVAILABLE
                 .withDescription("Cannot read index field metadata")
                 .withCause(e)

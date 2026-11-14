@@ -354,6 +354,143 @@ def verify_stats(client, index, expected_docs):
     return first["nextPageToken"]
 
 
+def exercise_joins(client, name):
+    account_definition = {
+        "numPartitions": 2,
+        "mappings": {
+            "dynamic": False,
+            "fields": {
+                "accountKey": {"type": "token"},
+                "managerKey": {"type": "token"},
+                "region": {"type": "token"},
+            },
+        },
+    }
+    contact_definition = {
+        "numPartitions": 2,
+        "storedSource": True,
+        "mappings": {
+            "dynamic": False,
+            "fields": {"parent": {"type": "token"}, "title": {"type": "string"}},
+        },
+    }
+    account_request = {
+        "name": name + "-accounts",
+        "type": "INDEX_TYPE_SEARCH",
+        "definitionBson": encoded(account_definition),
+    }
+    accounts = ready(client, client.call("CreateIndex", account_request)["indexId"])
+    contacts = ready(
+        client,
+        client.call(
+            "CreateIndex",
+            {
+                "name": name + "-contacts",
+                "type": "INDEX_TYPE_SEARCH",
+                "definitionBson": encoded(contact_definition),
+            },
+        )["indexId"],
+    )
+    account_docs = [
+        {"_id": "a1", "accountKey": "a1", "region": "Berlin"},
+        {"_id": "a2", "accountKey": "a2", "managerKey": "a1", "region": "Paris"},
+    ]
+    contact_docs = [
+        {"_id": "c1", "parent": "a1", "title": "Principal Architect"},
+        {"_id": "c2", "parent": ["a1", "a2"], "title": "Cloud Architect"},
+        {"_id": "c3", "parent": "a2", "title": "Solutions Architect"},
+        {"_id": "c4", "title": "Software Architect"},
+    ]
+    client.call(
+        "Upsert",
+        {"indexId": accounts["indexId"], "documentsBson": [encoded(d) for d in account_docs]},
+    )
+    client.call(
+        "Upsert",
+        {"indexId": contacts["indexId"], "documentsBson": [encoded(d) for d in contact_docs]},
+    )
+    join = {
+        "join": {
+            "from": account_request["name"],
+            "localField": "parent",
+            "foreignField": "accountKey",
+            "operator": {"equals": {"path": "region", "value": "Berlin"}},
+        }
+    }
+    query = {
+        "compound": {
+            "must": [{"text": {"path": "title", "query": "architect"}}],
+            "filter": [join],
+        },
+        "returnStoredSource": True,
+        "count": {"type": "total"},
+    }
+    request = {"indexId": contacts["indexId"], "queryBson": encoded(query), "batchSize": 1}
+    first = client.call("Search", request)
+    check(int(first.get("cursorId", 0)) != 0, "Join did not retain a paged cursor")
+    check(decoded(first["metadataBson"])["count"]["total"] == 2, "Wrong join total count")
+    client.call(
+        "Upsert",
+        {
+            "indexId": accounts["indexId"],
+            "documentsBson": [encoded(dict(account_docs[0], region="Paris"))],
+        },
+    )
+    check(ids(all_results(client, first)) == {"c1", "c2"}, "Join paging changed membership")
+    check(not all_results(client, client.call("Search", request)), "Foreign update was invisible")
+    client.call(
+        "Upsert",
+        {"indexId": accounts["indexId"], "documentsBson": [encoded(account_docs[0])]},
+    )
+    exclusion = dict(query, compound={"must": query["compound"]["must"], "mustNot": [join]})
+    check(
+        ids(all_results(client, client.call("Search", dict(request, queryBson=encoded(exclusion)))))
+        == {"c3", "c4"},
+        "Join exclusion lost missing or orphaned keys",
+    )
+    self_query = {
+        "compound": {
+            "filter": [
+                {
+                    "join": {
+                        "localField": "managerKey",
+                        "foreignField": "accountKey",
+                        "operator": {"equals": {"path": "region", "value": "Berlin"}},
+                    }
+                }
+            ]
+        }
+    }
+    check(
+        ids(
+            all_results(
+                client,
+                client.call(
+                    "Search", {"indexId": accounts["indexId"], "queryBson": encoded(self_query)}
+                ),
+            )
+        )
+        == {"a2"},
+        "Same-index join failed",
+    )
+    first = client.call("Search", request)
+    client.call("DropIndex", {"indexId": accounts["indexId"], "expectedRevision": "1"})
+    client.call("GetMore", {"cursorId": str(first["cursorId"])}, error="NOT_FOUND")
+    replacement = ready(client, client.call("CreateIndex", account_request)["indexId"])
+    check(replacement["indexId"] != accounts["indexId"], "Recreated join target retained ID")
+    check(not all_results(client, client.call("Search", request)), "Recreated target reused keys")
+    accounts = replacement
+    for index, documents in ((accounts, account_docs), (contacts, contact_docs)):
+        payload = {"indexId": index["indexId"], "documentsBson": [encoded(d) for d in documents]}
+        client.call("Upsert", dict(payload, writeConcern="DOCUMENT_WRITE_CONCERN_COMMITTED"))
+        client.call("Upsert", payload)
+    check(
+        ids(all_results(client, client.call("Search", request))) == {"c1", "c2"},
+        "Reingested join target did not match",
+    )
+    return {"accounts": accounts, "contacts": contacts, "query": query}
+
+
 def exercise(client):
     checks = []
     name = client.language + "-" + uuid.uuid4().hex
@@ -543,6 +680,11 @@ def exercise(client):
         int(embedding["desiredVectorOffHeapBytes"]["value"]) > 0,
         "Vector working-set bytes unavailable",
     )
+    joins = exercise_joins(client, name)
+    checks.append(
+        "cross-index and self joins, array keys, exclusion, counts, stable paging, "
+        "foreign updates, dependency drop/recreation"
+    )
     check(client.called == RPC_NAMES, f"Missing RPC coverage: {RPC_NAMES - client.called}")
     checks.append("vector writes and queries; index drop; every RPC")
     return {
@@ -550,12 +692,29 @@ def exercise(client):
         "text": text,
         "vector": vector,
         "vectorQuery": vector_query,
+        "joins": joins,
         "checks": checks,
         "rpcs": sorted(client.called),
     }
 
 
 def verify_restart(client, state):
+    joins = state["joins"]
+    ready(client, joins["accounts"]["indexId"])
+    ready(client, joins["contacts"]["indexId"])
+    check(
+        ids(
+            all_results(
+                client,
+                client.call(
+                    "Search",
+                    {"indexId": joins["contacts"]["indexId"], "queryBson": encoded(joins["query"])},
+                ),
+            )
+        )
+        == {"c1", "c2"},
+        "Committed join documents did not survive crash restart",
+    )
     text = ready(client, state["text"]["indexId"], 2)
     check(text["generationId"] == state["text"]["generationId"], "Restart changed generation")
     response = all_results(client, search(client, text, "coffee", stored=True))
@@ -638,7 +797,8 @@ def main():
                         + "      - name: reader\n"
                         + f"        tokenFile: {json.dumps(str(reader_token))}\n"
                         + "        roles: [query]\n"
-                        + f"        indexes: ['{states[0]['text']['indexId']}']\n"
+                        + f"        indexes: ['{states[0]['text']['indexId']}', "
+                        + f"'{states[0]['joins']['contacts']['indexId']}']\n"
                         + "      - name: stats\n"
                         + f"        tokenFile: {json.dumps(str(stats_token))}\n"
                         + "        roles: [catalog]\n"
@@ -679,6 +839,14 @@ def main():
                                 {
                                     "indexId": states[0]["text"]["indexId"],
                                     "documentsBson": [encoded({"_id": "no-write"})],
+                                },
+                                error="PERMISSION_DENIED",
+                            )
+                            reader.call(
+                                "Search",
+                                {
+                                    "indexId": states[0]["joins"]["contacts"]["indexId"],
+                                    "queryBson": encoded(states[0]["joins"]["query"]),
                                 },
                                 error="PERMISSION_DENIED",
                             )

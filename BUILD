@@ -3,6 +3,7 @@ load("//bazel/java:package.bzl", "java_binary_stamped_manifest")
 load("//deploy:def.bzl", "extracted_libraries")
 
 exports_files([
+    "docs/join-design-guide.md",
     "docs/standalone-mongot.md",
     "scripts/standalone/client.py",
 ])

@@ -218,6 +218,13 @@ public class OperatorEmbeddedRootValidator {
       case AllDocumentsOperator allDocumentsOperator -> {
         // AllDocumentsOperator has no path to validate
       }
+      case JoinOperator joinOperator -> {
+        if (context.embeddedRoot().isPresent()) {
+          this.bsonParseContext.handleSemanticError("join is not supported in embedded documents");
+        }
+        // The foreign operator has its own mapping and scope, validated by the join planner.
+      }
+      case MaterializedJoinOperator joinOperator -> validate(joinOperator.join(), context);
       case AutocompleteOperator autocompleteOperator ->
           validateLeafOperatorPaths(
               List.of(autocompleteOperator.path()),

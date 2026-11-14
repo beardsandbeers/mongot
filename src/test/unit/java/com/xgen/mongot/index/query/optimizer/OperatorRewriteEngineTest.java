@@ -312,6 +312,13 @@ public class OperatorRewriteEngineTest {
     m.put(
         InOperator.class,
         new InOperator(score, List.of(fp), List.of(new StringValue("v")), Optional.empty()));
+    var join =
+        new com.xgen.mongot.index.query.operators.JoinOperator(
+            Optional.of("foreign"), fp, fp, dummyChild);
+    m.put(com.xgen.mongot.index.query.operators.JoinOperator.class, join);
+    m.put(
+        com.xgen.mongot.index.query.operators.MaterializedJoinOperator.class,
+        new com.xgen.mongot.index.query.operators.MaterializedJoinOperator(join, List.of("v")));
     m.put(
         KnnBetaOperator.class,
         new KnnBetaOperator(score, List.of(fp), List.of(), Optional.empty(), 1));
