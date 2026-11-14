@@ -108,32 +108,6 @@ impl Client {
             .max_decoding_message_size(64 * 1024 * 1024),
         })
     }
-    pub async fn create_collection(
-        &mut self,
-        message: CreateCollectionRequest,
-    ) -> Result<CollectionDescription, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .catalog
-            .create_collection(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn get_collection(
-        &mut self,
-        message: GetCollectionRequest,
-    ) -> Result<CollectionDescription, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .catalog
-            .get_collection(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
     pub async fn create_index(
         &mut self,
         message: CreateIndexRequest,
@@ -195,55 +169,6 @@ impl Client {
         Ok(self
             .catalog
             .list_indexes(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn write(&mut self, message: WriteRequest) -> Result<WriteResponse, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .documents
-            .write(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn write_batch(
-        &mut self,
-        message: WriteBatchRequest,
-    ) -> Result<WriteResponse, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .documents
-            .write_batch(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn get_write_result(
-        &mut self,
-        message: GetWriteResultRequest,
-    ) -> Result<WriteResponse, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .documents
-            .get_write_result(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn await_sequence(
-        &mut self,
-        message: AwaitSequenceRequest,
-    ) -> Result<IndexWatermarks, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .documents
-            .await_sequence(request)
             .await
             .map_err(normalize_status)?
             .into_inner())
@@ -317,32 +242,6 @@ impl Client {
         Ok(self
             .documents
             .delete(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn delete_by_query(
-        &mut self,
-        message: DeleteByQueryRequest,
-    ) -> Result<DeleteByQueryResult, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .documents
-            .delete_by_query(request)
-            .await
-            .map_err(normalize_status)?
-            .into_inner())
-    }
-    pub async fn get_delete_by_query_result(
-        &mut self,
-        message: GetDeleteByQueryResultRequest,
-    ) -> Result<DeleteByQueryResult, Status> {
-        let mut request = Request::new(message);
-        request.set_timeout(self.timeout);
-        Ok(self
-            .documents
-            .get_delete_by_query_result(request)
             .await
             .map_err(normalize_status)?
             .into_inner())

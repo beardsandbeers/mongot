@@ -127,7 +127,7 @@ Sources and the Maven POM are included. To install in your local Maven repositor
 
     mvn install:install-file -Dfile=standalone-client-{version}.jar -DpomFile=pom.xml
 
-API examples: https://github.com/beardsandbeers/mongot/blob/{commit}/clients/README.md
+API examples: https://github.com/beardsandbeers/nomongo-t/blob/{commit}/clients/README.md
 """,
         )
     run(["npm", "ci", "--no-audit", "--no-fund"], cwd=ROOT / "clients/node")

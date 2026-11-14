@@ -20,16 +20,13 @@ import com.xgen.mongot.lifecycle.DefaultLifecycleManager;
 import com.xgen.mongot.lifecycle.LifecycleConfig;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.monitor.ReplicationStateMonitor;
-import com.xgen.mongot.standalone.catalog.LocalAuthoritativeCatalog;
-import com.xgen.mongot.standalone.catalog.StandaloneDefinitionValidator;
+import com.xgen.mongot.standalone.catalog.LocalIndexCatalog;
 import com.xgen.mongot.standalone.config.StandaloneConfig;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
 import com.xgen.mongot.standalone.grpc.ServiceMetric;
 import com.xgen.mongot.standalone.grpc.ServiceStatus;
 import com.xgen.mongot.standalone.ingestion.ApiIngestionManager;
-import com.xgen.mongot.standalone.ingestion.DurableWriteLedger;
 import com.xgen.mongot.standalone.metrics.StandaloneMetrics;
-import com.xgen.mongot.standalone.store.StandaloneStore;
 import io.grpc.Status;
 import java.io.Closeable;
 import java.io.IOException;
@@ -51,13 +48,8 @@ import org.jetbrains.annotations.Nullable;
  * Standalone composition with local desired state, standard physical lifecycle and API ingestion.
  */
 public final class StandaloneRuntime implements Closeable {
-  private record BuildObservation(long revision, long startedNanos) {}
-
-  private final java.util.Map<String, BuildObservation> builds = new java.util.HashMap<>();
   private final StandaloneConfig config;
-  private final StandaloneStore store;
-  private final LocalAuthoritativeCatalog catalog;
-  private final DurableWriteLedger ledger;
+  private final LocalIndexCatalog catalog;
   private final DefaultIndexCatalog liveIndexes;
   private final MongotCursorManagerImpl cursors;
   private final ApiIngestionManager ingestion;
@@ -70,29 +62,12 @@ public final class StandaloneRuntime implements Closeable {
   private final AtomicBoolean closed = new AtomicBoolean();
   private final AtomicReference<Optional<String>> reconciliationFailure =
       new AtomicReference<>(Optional.empty());
-  private final AtomicReference<Optional<String>> retentionFailure =
-      new AtomicReference<>(Optional.empty());
 
-  /** Acquires the data-directory lock before constructing any index or background task. */
+  /** Opens the index metadata and composes the Lucene lifecycle without a source database. */
   public StandaloneRuntime(StandaloneConfig config) throws Exception {
-    this(config, unused -> {});
-  }
-
-  /** Allows in-process fault injection at the apply boundary without replacing real persistence. */
-  @org.jetbrains.annotations.TestOnly
-  public StandaloneRuntime(StandaloneConfig config, java.util.function.LongConsumer beforeApply)
-      throws Exception {
-    this(config, beforeApply, () -> {});
-  }
-
-  /** Installs bounded test observers at apply and pinned-snapshot boundaries. */
-  @org.jetbrains.annotations.TestOnly
-  public StandaloneRuntime(
-      StandaloneConfig config, java.util.function.LongConsumer beforeApply, Runnable beforeSnapshot)
-      throws Exception {
     this.config = config;
-    this.store = new StandaloneStore(config.dataPath());
-    this.resources.addFirst(this.store);
+    this.catalog = new LocalIndexCatalog(config.dataPath());
+    this.resources.addFirst(this.catalog);
     try {
       this.metrics = MeterAndFtdcRegistry.createWithSimpleRegistries();
       this.serviceMetrics = new StandaloneMetrics(this.metrics.meterRegistry());
@@ -101,9 +76,6 @@ public final class StandaloneRuntime implements Closeable {
             this.metrics.ftdcRegistry().close();
             this.metrics.meterRegistry().close();
           });
-      this.catalog = new LocalAuthoritativeCatalog(this.store);
-      this.ledger =
-          new DurableWriteLedger(this.store, config.documentLimits(), this.serviceMetrics);
       this.liveIndexes = new DefaultIndexCatalog();
       var initialized = new InitializedIndexCatalog();
       var flags = FeatureFlags.communityDefaults();
@@ -134,14 +106,8 @@ public final class StandaloneRuntime implements Closeable {
       this.resources.addFirst(cursorOwner);
       this.ingestion =
           new ApiIngestionManager(
-              this.store,
-              this.liveIndexes,
-              initialized,
-              config.commitInterval(),
-              config.refreshInterval(),
-              beforeApply,
-              this.serviceMetrics,
-              beforeSnapshot);
+              this.liveIndexes, initialized, config.documentLimits(), config.commitInterval());
+      this.resources.addFirst(() -> this.ingestion.shutdown().get(30, TimeUnit.SECONDS));
       var lifecycle =
           new DefaultLifecycleManager(
               unused -> this.ingestion,
@@ -158,9 +124,8 @@ public final class StandaloneRuntime implements Closeable {
       AutoCloseable lifecycleOwner = () -> lifecycle.shutdown().get(30, TimeUnit.SECONDS);
       this.resources.addFirst(lifecycleOwner);
       var desiredIds =
-          this.store.read(transaction -> transaction.allIndexes()).stream()
-              .filter(index -> !index.dropped())
-              .map(index -> new ObjectId(index.id()))
+          this.catalog.definitions().stream()
+              .map(index -> index.getIndexId())
               .collect(java.util.stream.Collectors.toSet());
       this.configManager =
           DefaultConfigManager.initialize(
@@ -177,8 +142,7 @@ public final class StandaloneRuntime implements Closeable {
               ReplicationStateMonitor.enabled(),
               flags,
               config.dataPath().resolve("dynamicFeatureFlags.json"),
-              dynamicFlags,
-              Optional.of(this.ingestion::isGenerationReady));
+              dynamicFlags);
       // The config manager now owns these three resources, including their drain/close ordering.
       this.resources.remove(factory);
       this.resources.remove(cursorOwner);
@@ -198,7 +162,6 @@ public final class StandaloneRuntime implements Closeable {
           });
       this.reconciler.scheduleWithFixedDelay(
           this::reconcileSafely, 100, 100, TimeUnit.MILLISECONDS);
-      this.reconciler.scheduleWithFixedDelay(this::maintainSafely, 1, 1, TimeUnit.SECONDS);
     } catch (Exception | Error e) {
       try {
         closeResources();
@@ -213,16 +176,8 @@ public final class StandaloneRuntime implements Closeable {
     return this.config;
   }
 
-  public StandaloneStore store() {
-    return this.store;
-  }
-
-  public LocalAuthoritativeCatalog catalog() {
+  public LocalIndexCatalog catalog() {
     return this.catalog;
-  }
-
-  public DurableWriteLedger ledger() {
-    return this.ledger;
   }
 
   public ApiIngestionManager ingestion() {
@@ -262,25 +217,8 @@ public final class StandaloneRuntime implements Closeable {
     }
   }
 
-  private void maintainSafely() {
-    if (this.closed.get()) {
-      return;
-    }
-    try {
-      this.store.maintain(System.currentTimeMillis() - this.config.retryRetention().toMillis());
-      this.retentionFailure.set(Optional.empty());
-    } catch (java.sql.SQLException e) {
-      // Admission fails closed after maintenance errors until a successful retry.
-      this.retentionFailure.set(Optional.of("Local retention maintenance failed"));
-    }
-  }
-
   private void reconcile() throws Exception {
-    var desired =
-        this.store.read(transaction -> transaction.allIndexes()).stream()
-            .filter(index -> !index.dropped())
-            .map(index -> StandaloneDefinitionValidator.restore(index.normalizedDefinition()))
-            .toList();
+    var desired = this.catalog.definitions();
     this.configManager.update(
         desired.stream()
             .filter(VectorIndexDefinition.class::isInstance)
@@ -293,29 +231,10 @@ public final class StandaloneRuntime implements Closeable {
         List.of(),
         Set.of(),
         Set.of());
-    var desiredIds =
-        desired.stream()
-            .map(index -> index.getIndexId().toHexString())
-            .collect(java.util.stream.Collectors.toSet());
-    this.builds.keySet().removeIf(id -> !desiredIds.contains(id));
-    for (String id : desiredIds) {
-      var status = describeIndex(id);
-      var prior = this.builds.get(id);
-      if (status.getLifecycleState().equals("READY")) {
-        if (prior != null && prior.revision() == status.getActiveRevision()) {
-          this.serviceMetrics.elapsed("build.cutover", prior.startedNanos());
-          this.builds.remove(id);
-        }
-      } else if (prior == null || prior.revision() != status.getDesiredRevision()) {
-        this.builds.put(id, new BuildObservation(status.getDesiredRevision(), System.nanoTime()));
-      }
-    }
   }
 
   public boolean managementReady() {
-    return !this.closed.get()
-        && this.reconciliationFailure.get().isEmpty()
-        && this.retentionFailure.get().isEmpty();
+    return !this.closed.get() && this.reconciliationFailure.get().isEmpty();
   }
 
   public StandaloneMetrics metrics() {
@@ -324,26 +243,14 @@ public final class StandaloneRuntime implements Closeable {
 
   /** Returns instance status and native engine meters; the RPC restricts this to administrators. */
   public ServiceStatus serviceStatus() throws Exception {
-    var statistics = this.store.read(transaction -> transaction.statistics());
     var result =
         ServiceStatus.newBuilder()
-            .setInstanceId(this.store.instanceId())
             .setManagementReady(managementReady())
-            .setFailureMessage(
-                this.retentionFailure.get().orElse(this.reconciliationFailure.get().orElse("")))
-            .setStoreSchemaVersion(StandaloneStore.SCHEMA_VERSION)
-            .setRetryRetentionMillis(this.config.retryRetention().toMillis())
-            .setLogicalLogBytes(statistics.logBytes())
-            .setRetryRequests(statistics.requests())
-            .setRetentionPins(statistics.pins())
-            .setSourceBytes(statistics.sourceBytes())
-            .setStoreFileBytes(Files.size(this.config.dataPath().resolve("standalone.sqlite")))
-            .setSqliteWalBytes(fileSize(this.config.dataPath().resolve("standalone.sqlite-wal")))
+            .setFailureMessage(this.reconciliationFailure.get().orElse(""))
             .setFreeDiskBytes(Files.getFileStore(this.config.dataPath()).getUsableSpace());
-    for (var index : this.store.read(transaction -> transaction.allIndexes())) {
-      if (!index.dropped()) {
-        result.addIndexes(describeIndex(index.id()).toBuilder().clearDesiredDefinitionBson());
-      }
+    for (var index : this.catalog.definitions()) {
+      result.addIndexes(
+          describeIndex(index.getIndexId().toHexString()).toBuilder().clearDesiredDefinitionBson());
     }
     for (var meter : this.metrics.meterRegistry().getMeters()) {
       var metric = ServiceMetric.newBuilder().setName(meter.getId().getName());
@@ -360,29 +267,23 @@ public final class StandaloneRuntime implements Closeable {
     return result.build();
   }
 
-  private static long fileSize(Path path) throws IOException {
-    return Files.exists(path) ? Files.size(path) : 0;
-  }
-
-  /** Admission includes source/log and Lucene headroom; accepted mutations are never discarded. */
+  /** Checks Lucene disk headroom before applying a pushed batch. */
   public void checkWriteAdmission(long additionalBytes) {
     if (!managementReady()) {
-      throw Status.UNAVAILABLE.withDescription("Local catalog is not ready").asRuntimeException();
+      throw Status.UNAVAILABLE.withDescription("Index catalog is not ready").asRuntimeException();
     }
     try {
       long available = Files.getFileStore(this.config.dataPath()).getUsableSpace();
-      long retained = this.store.read(StandaloneStore.Transaction::logBytes);
       if (additionalBytes < 0
           || available < additionalBytes
-          || available - additionalBytes < this.config.minFreeDiskBytes()
-          || retained > this.config.maxLogBytes() - additionalBytes) {
+          || available - additionalBytes < this.config.minFreeDiskBytes()) {
         throw Status.RESOURCE_EXHAUSTED
-            .withDescription("Local disk or retained-log budget is exhausted")
+            .withDescription("Lucene disk headroom is exhausted")
             .asRuntimeException();
       }
-    } catch (IOException | java.sql.SQLException e) {
+    } catch (IOException e) {
       throw Status.UNAVAILABLE
-          .withDescription("Cannot verify local storage admission")
+          .withDescription("Cannot verify disk headroom")
           .withCause(e)
           .asRuntimeException();
     }
@@ -403,7 +304,7 @@ public final class StandaloneRuntime implements Closeable {
       @Var String state = "PENDING";
       if (live.isPresent()) {
         var generation = live.get();
-        this.ingestion.watermarks(generation.getGenerationId()).ifPresent(result::setLive);
+        result.setGenerationId(generation.getGenerationId().uniqueString());
         if (this.ingestion.isGenerationReady(generation.getGenerationId())) {
           long active = generation.getDefinition().getDefinitionVersion().orElse(1L);
           result.setActiveRevision(active);
@@ -415,11 +316,8 @@ public final class StandaloneRuntime implements Closeable {
                   ? "FAILED"
                   : "BUILDING";
         }
-        this.ingestion.failure(generation.getGenerationId()).ifPresent(result::setFailureMessage);
       }
       if (staged.isPresent()) {
-        this.ingestion.watermarks(staged.get().getGenerationId()).ifPresent(result::setBuilding);
-        this.ingestion.failure(staged.get().getGenerationId()).ifPresent(result::setFailureMessage);
         state = "BUILDING";
       }
       return result.setLifecycleState(state).build();

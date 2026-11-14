@@ -4,10 +4,6 @@ java_library(
     name = "ingestion",
     srcs = [
         "ApiIngestionManager.java",
-        "DurableWriteLedger.java",
-        "GenerationConsumer.java",
-        "StandaloneDocumentIndexer.java",
-        "StandaloneIndexCommitUserData.java",
     ],
     deps = [
         "//src/main/java/com/xgen/mongot/catalog",
@@ -18,9 +14,8 @@ java_library(
         "//src/main/java/com/xgen/mongot/index/version",
         "//src/main/java/com/xgen/mongot/replication",
         "//src/main/java/com/xgen/mongot/standalone:bson",
-        "//src/main/java/com/xgen/mongot/standalone/catalog",
+        "//src/main/java/com/xgen/mongot/standalone/config",
         "//src/main/java/com/xgen/mongot/standalone/metrics",
-        "//src/main/java/com/xgen/mongot/standalone/store",
         "//src/main/java/com/xgen/mongot/util/mongodb",
         "//src/main/java/com/xgen/mongot/util/regex",
         "//src/proto/standalone/v1:standalone_java_proto",

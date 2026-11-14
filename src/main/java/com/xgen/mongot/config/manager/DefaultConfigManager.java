@@ -61,7 +61,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -191,41 +190,6 @@ public class DefaultConfigManager implements ConfigManager {
       FeatureFlags featureFlags,
       Path dynamicFeatureFlagsJournalPath,
       DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry) {
-    return initialize(
-        indexCatalog,
-        desiredIndexIds,
-        initializedIndexCatalog,
-        incompatibleIndexes,
-        cursorManager,
-        indexFactory,
-        materializedViewIndexFactory,
-        configJournalPath,
-        meterRegistry,
-        lifecycleManager,
-        replicationStateMonitor,
-        featureFlags,
-        dynamicFeatureFlagsJournalPath,
-        dynamicFeatureFlagRegistry,
-        Optional.empty());
-  }
-
-  /** Initializes with an ingestion-source promotion barrier installed before journal recovery. */
-  public static DefaultConfigManager initialize(
-      IndexCatalog indexCatalog,
-      Optional<Set<ObjectId>> desiredIndexIds,
-      InitializedIndexCatalog initializedIndexCatalog,
-      IncompatibleIndexes incompatibleIndexes,
-      MongotCursorManager cursorManager,
-      IndexFactory indexFactory,
-      Optional<MaterializedViewIndexFactory> materializedViewIndexFactory,
-      Path configJournalPath,
-      MeterRegistry meterRegistry,
-      LifecycleManager lifecycleManager,
-      ReplicationStateMonitor replicationStateMonitor,
-      FeatureFlags featureFlags,
-      Path dynamicFeatureFlagsJournalPath,
-      DynamicFeatureFlagRegistry dynamicFeatureFlagRegistry,
-      Optional<Predicate<GenerationId>> generationSwapGuard) {
     ConfigState configState =
         ConfigState.create(
             new StagedIndexes(),
@@ -241,8 +205,6 @@ public class DefaultConfigManager implements ConfigManager {
             meterRegistry,
             featureFlags,
             dynamicFeatureFlagRegistry);
-
-    generationSwapGuard.ifPresent(configState::setGenerationSwapGuard);
 
     return initialize(
         configState,

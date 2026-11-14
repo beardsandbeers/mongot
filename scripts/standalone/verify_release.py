@@ -96,8 +96,8 @@ def main():
         node / "consumer.ts"
     ).write_text("""import { StandaloneClient, encodeBson, decodeBson } from '@mongot/standalone-client';
 const client = new StandaloneClient();
-const status: Promise<{instanceId: string}> = client.getStatus({});
-client.createIndex({requestId: 'r', collectionId: 'c', name: 'text', type: 'INDEX_TYPE_SEARCH',
+const status: Promise<{managementReady: boolean}> = client.getStatus({});
+client.createIndex({name: 'text', type: 'INDEX_TYPE_SEARCH',
     definitionBson: encodeBson({mappings: {dynamic: true}})});
 decodeBson(encodeBson({big: 1}));
 client.close();
@@ -135,7 +135,7 @@ client.close();
     java = java / f"mongot-standalone-client-java-{version}"
     jar = java / f"standalone-client-{version}.jar"
     (java / "Consumer.java").write_text("""import com.xgen.mongot.client.StandaloneClient;
-import com.xgen.mongot.standalone.grpc.CreateCollectionRequest;
+import com.xgen.mongot.standalone.grpc.CreateIndexRequest;
 import org.bson.BsonDocument;
 class Consumer {
   public static void main(String[] args) {
@@ -143,7 +143,7 @@ class Consumer {
     var bytes = StandaloneClient.encodeBson(document);
     if (!StandaloneClient.encodeBson(StandaloneClient.decodeBson(bytes)).equals(bytes))
       throw new AssertionError("BSON changed");
-    CreateCollectionRequest.newBuilder().setDatabase("example").setName("test").build();
+    CreateIndexRequest.newBuilder().setName("test").build();
   }
 }
 """)

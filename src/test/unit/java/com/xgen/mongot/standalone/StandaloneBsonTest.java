@@ -3,9 +3,6 @@ package com.xgen.mongot.standalone;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
-import com.google.protobuf.ByteString;
-import com.xgen.mongot.standalone.grpc.Mutation;
-import com.xgen.mongot.standalone.grpc.MutationType;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.bson.BsonBinaryWriter;
@@ -18,9 +15,8 @@ import org.junit.Test;
 public class StandaloneBsonTest {
   @Test
   public void mutation_numericWidths_preservesDistinctEncodedIdentities() {
-    var int32 = validate("{_id: {$numberInt: '1'}, title: 'a'}", MutationType.MUTATION_TYPE_INSERT);
-    var int64 =
-        validate("{_id: {$numberLong: '1'}, title: 'a'}", MutationType.MUTATION_TYPE_INSERT);
+    var int32 = validate("{_id: {$numberInt: '1'}, title: 'a'}", false);
+    var int64 = validate("{_id: {$numberLong: '1'}, title: 'a'}", false);
 
     assertThat(Arrays.equals(int32.encodedId(), int64.encodedId())).isFalse();
   }
@@ -98,50 +94,38 @@ public class StandaloneBsonTest {
 
   @Test
   public void mutation_deleteWithAdditionalFields_rejects() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> validate("{_id: 'a', title: 'bad'}", MutationType.MUTATION_TYPE_DELETE));
+    assertThrows(IllegalArgumentException.class, () -> validate("{_id: 'a', title: 'bad'}", true));
   }
 
   @Test
   public void mutation_missingId_rejects() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> validate("{title: 'a'}", MutationType.MUTATION_TYPE_UPSERT));
+    assertThrows(IllegalArgumentException.class, () -> validate("{title: 'a'}", false));
   }
 
   @Test
   public void mutation_nullId_rejects() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> validate("{_id: null}", MutationType.MUTATION_TYPE_UPSERT));
+    assertThrows(IllegalArgumentException.class, () -> validate("{_id: null}", false));
   }
 
   @Test
   public void mutation_oversizedId_rejectsInsteadOfSilentLuceneOmission() {
-    var mutation =
-        Mutation.newBuilder()
-            .setType(MutationType.MUTATION_TYPE_UPSERT)
-            .setBson(ByteString.copyFrom(bson("{_id: '" + "x".repeat(32766) + "'}")))
-            .build();
-
     assertThrows(
-        IllegalArgumentException.class, () -> StandaloneBson.mutation(mutation, 100000, 100));
+        IllegalArgumentException.class,
+        () ->
+            StandaloneBson.mutation(
+                bson("{_id: '" + "x".repeat(32766) + "'}"), false, 100000, 100));
   }
 
   @Test
   public void mutation_deleteIdOnly_accepts() {
-    var result = validate("{_id: 'a'}", MutationType.MUTATION_TYPE_DELETE);
+    var result = validate("{_id: 'a'}", true);
 
     assertThat(result.delete()).isTrue();
     assertThat(result.document().getString("_id").getValue()).isEqualTo("a");
   }
 
-  private static StandaloneBson.ValidatedMutation validate(String json, MutationType type) {
-    return StandaloneBson.mutation(
-        Mutation.newBuilder().setType(type).setBson(ByteString.copyFrom(bson(json))).build(),
-        100000,
-        100);
+  private static StandaloneBson.ValidatedMutation validate(String json, boolean delete) {
+    return StandaloneBson.mutation(bson(json), delete, 100000, 100);
   }
 
   private static byte[] bson(String json) {

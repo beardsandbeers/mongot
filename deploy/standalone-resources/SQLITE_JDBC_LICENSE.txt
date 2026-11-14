@@ -1,8 +1,0 @@
-This distribution includes sqlite-jdbc by the Xerial project, distributed under
-the Apache License, Version 2.0. The original license and notices are included in
-lib/processed_sqlite-jdbc-3.54.1.0.jar (META-INF/maven/org.xerial/sqlite-jdbc/LICENSE and
-META-INF/maven/org.xerial/sqlite-jdbc/LICENSE.zentus).
-
-SQLite itself is in the public domain. Original project information:
-https://github.com/xerial/sqlite-jdbc
-https://www.sqlite.org/copyright.html

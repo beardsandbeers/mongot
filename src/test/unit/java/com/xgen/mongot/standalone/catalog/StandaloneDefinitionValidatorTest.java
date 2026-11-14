@@ -4,14 +4,10 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import com.xgen.mongot.standalone.grpc.IndexType;
-import com.xgen.mongot.standalone.store.StandaloneStore.CollectionRecord;
 import org.bson.BsonDocument;
 import org.junit.Test;
 
 public class StandaloneDefinitionValidatorTest {
-  private static final CollectionRecord COLLECTION =
-      new CollectionRecord("a5f61f66-6d7d-456c-a365-8bfc3d63cf1b", "database", "collection", 0);
-
   @Test
   public void normalize_explicitDefaultPartitions_matchesOmittedDefault() {
     var implicit = parse("{mappings: {dynamic: true}}", IndexType.INDEX_TYPE_SEARCH);
@@ -127,7 +123,6 @@ public class StandaloneDefinitionValidatorTest {
   private static StandaloneDefinitionValidator.ValidatedDefinition parse(
       String json, IndexType type) {
     return StandaloneDefinitionValidator.parse(
-        COLLECTION,
         "507f1f77bcf86cd799439011",
         "index",
         type,

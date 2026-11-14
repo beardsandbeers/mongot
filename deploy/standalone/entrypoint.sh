@@ -28,9 +28,6 @@ if [[ ! -f "${config}/standalone.yaml" ]]; then
 mode: standalone
 storage:
   dataPath: /var/lib/mongot/data
-  sourceStore:
-    engine: sqlite
-    synchronous: full
 server:
   grpc:
     address: 0.0.0.0:27029
@@ -41,7 +38,7 @@ server:
       - name: admin
         tokenFile: admin.token
         roles: [catalog, write, query]
-        collections: ['*']
+        indexes: ['*']
 CONFIG
   # Publish the complete identity atomically; never bake credentials into an image or rotate on restart.
   mv -T -- "${bootstrap}" "${config}"

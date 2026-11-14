@@ -3,7 +3,6 @@ load("//bazel/java:package.bzl", "java_library")
 java_library(
     name = "runtime",
     srcs = [
-        "DocumentWriteCoordinator.java",
         "StandaloneDiskMonitor.java",
         "StandaloneRuntime.java",
     ],
@@ -28,7 +27,6 @@ java_library(
         "//src/main/java/com/xgen/mongot/standalone/config",
         "//src/main/java/com/xgen/mongot/standalone/ingestion",
         "//src/main/java/com/xgen/mongot/standalone/metrics",
-        "//src/main/java/com/xgen/mongot/standalone/store",
         "//src/proto/standalone/v1:standalone_java_proto",
         "@com_google_protobuf//:protobuf_java",
         "@io_grpc_grpc_java//api",

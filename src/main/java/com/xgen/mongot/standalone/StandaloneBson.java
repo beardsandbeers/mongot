@@ -2,8 +2,6 @@ package com.xgen.mongot.standalone;
 
 import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.index.lucene.util.LuceneDocumentIdEncoder;
-import com.xgen.mongot.standalone.grpc.Mutation;
-import com.xgen.mongot.standalone.grpc.MutationType;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.CharacterCodingException;
@@ -15,7 +13,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.bson.BsonType;
 import org.bson.RawBsonDocument;
 
-/** Structural validation before any document reaches the durable acceptance boundary. */
+/** Structural validation before any document reaches the Lucene writer. */
 public final class StandaloneBson {
   public record ValidatedMutation(RawBsonDocument document, byte[] encodedId, boolean delete) {}
 
@@ -37,19 +35,15 @@ public final class StandaloneBson {
     return new RawBsonDocument(bytes);
   }
 
-  public static ValidatedMutation mutation(Mutation mutation, int maxBytes, int maxDepth) {
-    if (mutation.getType() == MutationType.MUTATION_TYPE_UNSPECIFIED
-        || mutation.getType() == MutationType.UNRECOGNIZED) {
-      throw new IllegalArgumentException("A supported mutation type is required");
-    }
-    var document = document(mutation.getBson().toByteArray(), maxBytes, maxDepth);
+  public static ValidatedMutation mutation(
+      byte[] bson, boolean delete, int maxBytes, int maxDepth) {
+    var document = document(bson, maxBytes, maxDepth);
     var id = document.get("_id");
     if (id == null
         || !Set.of(BsonType.STRING, BsonType.OBJECT_ID, BsonType.INT32, BsonType.INT64)
             .contains(id.getBsonType())) {
       throw new IllegalArgumentException("_id must be a string, ObjectId, int32 or int64");
     }
-    boolean delete = mutation.getType() == MutationType.MUTATION_TYPE_DELETE;
     if (delete && document.size() != 1) {
       throw new IllegalArgumentException("DELETE requires exactly the _id field");
     }

@@ -36,16 +36,6 @@ public final class ClientCli {
           var request = call.has("request") ? call.get("request").toString() : "{}";
           Message response;
           switch (call.get("method").getAsString()) {
-            case "CreateCollection" -> {
-              var b = CreateCollectionRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.createCollection(b.build());
-            }
-            case "GetCollection" -> {
-              var b = GetCollectionRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.getCollection(b.build());
-            }
             case "CreateIndex" -> {
               var b = CreateIndexRequest.newBuilder();
               JsonFormat.parser().merge(request, b);
@@ -70,26 +60,6 @@ public final class ClientCli {
               var b = ListIndexesRequest.newBuilder();
               JsonFormat.parser().merge(request, b);
               response = client.listIndexes(b.build());
-            }
-            case "Write" -> {
-              var b = WriteRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.write(b.build());
-            }
-            case "WriteBatch" -> {
-              var b = WriteBatchRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.writeBatch(b.build());
-            }
-            case "GetWriteResult" -> {
-              var b = GetWriteResultRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.getWriteResult(b.build());
-            }
-            case "AwaitSequence" -> {
-              var b = AwaitSequenceRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.awaitSequence(b.build());
             }
             case "GetStatus" -> {
               var b = GetStatusRequest.newBuilder();
@@ -125,16 +95,6 @@ public final class ClientCli {
               var b = DeleteRequest.newBuilder();
               JsonFormat.parser().merge(request, b);
               response = client.delete(b.build());
-            }
-            case "DeleteByQuery" -> {
-              var b = DeleteByQueryRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.deleteByQuery(b.build());
-            }
-            case "GetDeleteByQueryResult" -> {
-              var b = GetDeleteByQueryResultRequest.newBuilder();
-              JsonFormat.parser().merge(request, b);
-              response = client.getDeleteByQueryResult(b.build());
             }
             default -> throw new IllegalArgumentException("Unknown method");
           }

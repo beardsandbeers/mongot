@@ -1,62 +1,16 @@
-# Standalone mongot @VERSION@ prerelease
+# mongot push-mode packages @VERSION@
 
-Source commit: `@COMMIT@`. Server platform: **Linux x86_64**. Client packages are platform independent.
-Download the assets from this GitHub release and keep SHA256SUMS alongside them:
+Install server and clients from the same release. Verify artifacts with SHA256SUMS.
+The server archive includes Java and native libraries. See standalone-mongot.md inside the
+archive and clients/README.md in the source release for examples.
 
-```sh
-sha256sum --ignore-missing -c SHA256SUMS
-```
+Python: `python3 -m pip install mongot-standalone-client==@VERSION@`
+(or install the included wheel).
+Java: unpack `mongot-standalone-client-java-@VERSION@.zip` and use the bundled client JAR.
+Node: `npm install ./mongot-standalone-client-@VERSION@.tgz`
+Rust: `cargo add mongot-standalone-client@@VERSION@`
+(or use the included `.crate` as a vendored dependency).
+Docker: `docker pull mybyte/nomongo-t:@VERSION@`
 
-## Server
-
-```sh
-tar -xzf mongot-standalone-@VERSION@-linux-x86_64.tgz
-cd mongot-standalone
-./mongot-standalone --config standalone.yaml
-```
-
-The archive includes Java 21, native libraries, licenses and the API schema. The sample
-configuration binds unauthenticated loopback port 27029 and persists to ./data. SIGTERM stops it.
-Secure external listeners with TLS and collection/role-scoped bearer principals as described in
-[the operating guide](https://github.com/beardsandbeers/nomongo-t/blob/@COMMIT@/docs/standalone-mongot.md).
-
-## Client packages
-
-- **Python 3.10+**: `python -m pip install mongot-standalone-client==@VERSION@` from PyPI, or
-  install `mongot_standalone_client-@VERSION@-py3-none-any.whl` directly.
-  The `.tar.gz` is the source distribution; pip can install it instead.
-- **Node 22+/TypeScript**: `npm install ./mongot-standalone-client-@VERSION@.tgz`.
-  Use `require('@mongot/standalone-client')` or import the typed package. Compiled JS, declarations
-  and the schema are included.
-- **Java 17+**: unzip `mongot-standalone-client-java-@VERSION@.zip`. Its main JAR bundles runtime
-  dependencies, exposes the typed library, and runs as a JSON-lines adapter with `java -jar`.
-- **Rust**: `cargo add mongot-standalone-client@@VERSION@` from crates.io, or extract
-  `mongot-standalone-client-@VERSION@.crate` with tar and add a Cargo path dependency on the
-  resulting directory. A current stable Rust compiler and crates.io access are required.
-  The crate includes the protobuf schema and a vendored protoc build dependency. Cargo verifies
-  that it builds independently of this repository.
-
-Python, npm and Cargo resolve dependencies through their normal registries. The Java main JAR
-bundles its dependencies. Python and Rust are also published on PyPI and crates.io. Java and Node
-packages are distributed as release assets.
-
-[Full API examples](https://github.com/beardsandbeers/nomongo-t/blob/@COMMIT@/clients/README.md).
-All clients expose the 20 catalog/document/query/status RPCs, BSON helpers, TLS/bearer auth and
-per-call deadlines. Preserve request IDs/payloads for retries and inspect per-item write outcomes.
-
-## Docker
-
-The public Docker Hub image can be pulled without a registry login:
-
-```sh
-docker pull mybyte/nomongo-t:@VERSION@
-```
-
-`mybyte/nomongo-t:latest` tracks the current standalone release. The image is Linux amd64
-and includes the server runtime. See the operating guide for TLS, persistent volumes, and startup.
-
-## Verification and provenance
-
-The manifest records the source commit, platform, artifact sizes and SHA-256 hashes. Packaged-client
-verification reports exercise every RPC, index/document changes and process restart using clients
-installed from these assets. Confirm `passed: true` in the reports.
+This API manages indexes and pushes BSON to Lucene. Schema updates require reingestion. The
+collection-backed 0.2.x API and data directories are incompatible; use a new data directory.

@@ -1,156 +1,68 @@
-# NoMongo-T
+# NoMongo-T: mongot push mode
 
-Standalone [mongot](https://github.com/mongodb/mongot) with durable BSON document storage,
-Lucene full-text and vector search, and a gRPC API. Run it without MongoDB and use the published
-Python, Rust, Java, or Node/TypeScript clients to manage indexes and documents.
+Run mongot's existing Lucene text and vector search engine without a MongoDB server.
+Create an index with the ordinary mongot mapping schema, push BSON documents to that index,
+and query it over gRPC.
 
-- **Docker image:** [`mybyte/nomongo-t`](https://hub.docker.com/r/mybyte/nomongo-t), tags `0.2.0` and `latest`.
-- **Python client:** [`mongot-standalone-client`](https://pypi.org/project/mongot-standalone-client/).
-- **Source and releases:** [beardsandbeers/nomongo-t](https://github.com/beardsandbeers/nomongo-t).
+Content is stored only in Lucene. There is no collection API, source document database,
+mutation log, or durable retry ledger. Each index receives its own writes. Creating a new index
+or updating a mapping requires the caller to reingest content from its own source.
 
-## Quickstart: Docker + Python
+## Docker and Python quickstart
 
-You need Docker and Python 3.10+ with `venv`/pip. No MongoDB server, host Java, Bazel, or
-repository checkout is needed. The image is **Linux amd64**. On ARM hosts with amd64 emulation,
-add `--platform linux/amd64` to the `docker run` command.
+Release **0.3.0** is published as [mybyte/nomongo-t](https://hub.docker.com/r/mybyte/nomongo-t).
+Run the image with a fresh persistent volume:
 
-### 1. Start the server
-
-```bash
-docker run -d --name nomongo-t \
-  -p 127.0.0.1:27029:27029 \
-  -v nomongo-t-data:/var/lib/mongot \
-  mybyte/nomongo-t:0.2.0
-
-# Wait for the authenticated health check to report SERVING.
-for attempt in {1..60}; do
-  if docker exec nomongo-t mongotctl health >/dev/null 2>&1; then break; fi
-  sleep 1
-done
-docker exec nomongo-t mongotctl health
+```sh
+docker run -d --name mongot -p 127.0.0.1:27029:27029 \
+  -v nomongo-t-push_state:/var/lib/mongot mybyte/nomongo-t:0.3.0
+docker exec mongot mongotctl status
 ```
 
-The listener is **gRPC over TLS on localhost:27029**. On first start, the container generates a
-certificate and admin token and saves them with its data in `nomongo-t-data`. The token stays
-stable across restarts. Port 27029 is a gRPC endpoint for the SDKs, rather than an HTTP UI or
-MongoDB wire-protocol listener.
+Wait for startup before calling status. The image includes Java and native libraries. First
+startup writes the TLS certificate and admin token to `/var/lib/mongot/config` in the volume.
+Export those files and install the matching Python client:
 
-### 2. Export client credentials and install the Python client
-
-On Debian/Ubuntu, install `python3-venv` first if creating a virtual environment reports a missing
-`ensurepip` module. Other Python distributions normally include it.
-
-```bash
+```sh
 mkdir -p .nomongo-t
-chmod 700 .nomongo-t
-docker cp nomongo-t:/var/lib/mongot/config/server.crt .nomongo-t/server.crt
-docker cp nomongo-t:/var/lib/mongot/config/admin.token .nomongo-t/admin.token
-chmod 600 .nomongo-t/admin.token
-
+docker cp mongot:/var/lib/mongot/config/server.crt .nomongo-t/server.crt
+docker cp mongot:/var/lib/mongot/config/admin.token .nomongo-t/admin.token
 python3 -m venv .venv-nomongo-t
-. .venv-nomongo-t/bin/activate
-python -m pip install 'mongot-standalone-client==0.2.0'
+.venv-nomongo-t/bin/python -m pip install mongot-standalone-client==0.3.0
 ```
 
-Keep the token private. Run the Python example from the same working directory so the relative
-credential paths resolve correctly. The SDK validates TLS using the exported certificate.
+Run the following example with `.venv-nomongo-t/bin/python`. For a source build, use
+`docker compose -f deploy/standalone/compose.yaml up --build --wait` and install `./clients/python`.
 
-### 3. Create an index, upsert documents, search, and delete
-
-```bash
-python - <<'PY'
-import time
+```python
 from mongot_standalone import Client, api, encode_bson, decode_bson
+import time
 
-with Client(
-    "localhost:27029",
-    ca_file=".nomongo-t/server.crt",
-    token_file=".nomongo-t/admin.token",
-) as client:
-    collection = client.create_collection(api.CreateCollectionRequest(
-        request_id="quickstart-collection-v1", database="demo", name="articles",
-    ))
+with Client("127.0.0.1:27029", ca_file=".nomongo-t/server.crt",
+            token_file=".nomongo-t/admin.token") as client:
     index = client.create_index(api.CreateIndexRequest(
-        request_id="quickstart-index-v1", collection_id=collection.collection_id,
-        name="text", type=api.INDEX_TYPE_SEARCH,
+        name="articles", type=api.INDEX_TYPE_SEARCH,
         definition_bson=encode_bson({"mappings": {"dynamic": True}}),
     ))
-
-    deadline = time.monotonic() + 60
-    while index.lifecycle_state != "READY":
-        if index.failure_message:
-            raise RuntimeError(index.failure_message)
-        if time.monotonic() >= deadline:
-            raise TimeoutError("Index did not become ready")
-        time.sleep(0.2)
-        index = client.get_index(api.GetIndexRequest(index_id=index.index_id))
-
-    docs = client.collection(collection.collection_id)
-    docs.upsert_many([
-        {"_id": "coffee-1", "title": "Coffee brewing basics"},
-        {"_id": "coffee-2", "title": "An introduction to coffee"},
-        {"_id": "tea-1", "title": "A guide to green tea"},
-    ])
-
-    query = {"text": {"path": "title", "query": "coffee"}}
+    while client.get_index(api.GetIndexRequest(index_id=index.index_id)).lifecycle_state != "READY":
+        time.sleep(0.05)
+    client.upsert(index.index_id, {"_id": "a", "title": "Coffee guide"})
     response = client.search(api.QueryRequest(
-        index_id=index.index_id, query_bson=encode_bson(query), batch_size=10,
+        index_id=index.index_id,
+        query_bson=encode_bson({"text": {"path": "title", "query": "coffee"}}),
     ))
-    hits = []
-    while True:
-        hits.extend(decode_bson(response.batch_bson)["results"])
-        if not response.cursor_id:
-            break
-        response = client.get_more(api.GetMoreRequest(cursor_id=response.cursor_id))
-
-    print("Coffee matches:", len(hits))
-    print("Deleted by ID:", docs.delete("coffee-1").deleted_count)
-    print("Deleted by query:", docs.delete_by_query(index.index_id, query).deleted_count)
-    print("Collection:", collection.collection_id)
-    print("Index:", index.index_id)
-PY
+    print(decode_bson(response.batch_bson))
+    client.delete(index.index_id, "a")
 ```
 
-Expected counts are `Coffee matches: 2`, `Deleted by ID: 1`, and `Deleted by query: 1`.
-The tea document remains. You can rerun the example: it reuses the collection/index and seeds the
-three documents again. Writes wait for search visibility by default.
+This push-only API breaks compatibility with the previous collection-backed 0.2.x API and
+state layout. Use matching 0.3.x clients and a new data directory; reingest your content.
+Release 0.2.x images and client packages implement the older API.
 
-`upsert` replaces a complete document; `delete` takes its ID directly. IDs must be strings,
-ObjectIds, or signed BSON int32/int64 integers. UUIDs can be represented as strings. Query deletion
-uses the server's search expression syntax, saves progress for retries, and skips concurrently
-changed documents. It is an ordered, non-atomic operation.
+Bound concurrent writes and back off on `RESOURCE_EXHAUSTED`; see the
+[backpressure contract](docs/standalone-mongot.md#backpressure-and-overload).
 
-## Everyday operations
-
-```bash
-docker logs --tail 100 nomongo-t
-docker exec nomongo-t mongotctl status
-docker stop nomongo-t
-docker start nomongo-t
-```
-
-Add `--follow` to `docker logs` to stream output; press Ctrl-C to stop following.
-
-The named volume retains documents, indexes, retry history, and TLS/auth credentials when the
-container is stopped or removed. Keep a stopped backup before upgrades; see the operating guide.
-
-## Documentation
-
-- [Detailed image instructions](deploy/standalone/DOCKERHUB.md): Compose, storage, credentials,
-  configuration, resource limits, backup/restore, upgrades, and troubleshooting. These instructions
-  are also published in the [Docker Hub overview](https://hub.docker.com/r/mybyte/nomongo-t).
-- [Client API guide](clients/README.md): document commands, full-text/vector queries, BSON types,
-  deadlines, visibility, and retry behavior for all four languages.
-- [Standalone operating guide](docs/standalone-mongot.md): source builds, server configuration,
-  durability, and index lifecycle.
-- [Canonical gRPC schema](src/proto/standalone/v1/standalone.proto).
-- [Building the upstream application](docs/building.md).
-
-## Upstream and license
-
-This repository builds on MongoDB Search's `mongot` engine. The original MongoDB-connected
-community executable remains available in this source tree; standalone mode uses a separate
-bootstrap and local store. This is an independent deployment of the engine, rather than the
-MongoDB Community Search Docker image.
-
-Source is available under the [Server Side Public License (SSPL) v1](LICENSE).
+See [operation and write semantics](docs/standalone-mongot.md),
+[architecture](docs/standalone-mongot-grpc-guide.md), [clients](clients/README.md),
+and [Docker instructions](deploy/standalone/DOCKERHUB.md).
+The ordinary MongoDB-connected executable remains available independently.

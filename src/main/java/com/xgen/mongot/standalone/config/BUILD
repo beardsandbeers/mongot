@@ -5,7 +5,6 @@ java_library(
     srcs = ["StandaloneConfig.java"],
     deps = [
         "//src/main/java/com/xgen/mongot/standalone/catalog",
-        "//src/main/java/com/xgen/mongot/standalone/ingestion",
         "@maven//:com_fasterxml_jackson_core_jackson_core",
         "@maven//:com_fasterxml_jackson_core_jackson_databind",
         "@maven//:com_fasterxml_jackson_dataformat_jackson_dataformat_yaml",

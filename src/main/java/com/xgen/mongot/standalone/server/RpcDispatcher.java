@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jetbrains.annotations.Nullable;
 
-/** Bounded work on dedicated workers; indexing waits do not occupy Netty or worker threads. */
+/** Bounded work on dedicated workers; synchronous indexing does not occupy Netty threads. */
 final class RpcDispatcher implements AutoCloseable {
   private final ThreadPoolExecutor executor;
   private final Semaphore requests;

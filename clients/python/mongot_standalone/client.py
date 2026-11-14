@@ -54,20 +54,6 @@ class Client(DocumentCommandsMixin):
     def __exit__(self, *_):
         self.close()
 
-    def create_collection(
-        self, request: api.CreateCollectionRequest, *, timeout=None
-    ) -> api.CollectionDescription:
-        return self.catalog.CreateCollection(
-            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
-        )
-
-    def get_collection(
-        self, request: api.GetCollectionRequest, *, timeout=None
-    ) -> api.CollectionDescription:
-        return self.catalog.GetCollection(
-            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
-        )
-
     def create_index(
         self, request: api.CreateIndexRequest, *, timeout=None
     ) -> api.IndexDescription:
@@ -96,30 +82,6 @@ class Client(DocumentCommandsMixin):
         self, request: api.ListIndexesRequest, *, timeout=None
     ) -> api.ListIndexesResponse:
         return self.catalog.ListIndexes(
-            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
-        )
-
-    def write(self, request: api.WriteRequest, *, timeout=None) -> api.WriteResponse:
-        return self.documents.Write(
-            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
-        )
-
-    def write_batch(self, request: api.WriteBatchRequest, *, timeout=None) -> api.WriteResponse:
-        return self.documents.WriteBatch(
-            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
-        )
-
-    def get_write_result(
-        self, request: api.GetWriteResultRequest, *, timeout=None
-    ) -> api.WriteResponse:
-        return self.documents.GetWriteResult(
-            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
-        )
-
-    def await_sequence(
-        self, request: api.AwaitSequenceRequest, *, timeout=None
-    ) -> api.IndexWatermarks:
-        return self.documents.AwaitSequence(
             request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
         )
 

@@ -13,7 +13,6 @@ import com.xgen.mongot.server.command.management.definition.common.UserIndexDefi
 import com.xgen.mongot.server.command.management.util.IndexMapper;
 import com.xgen.mongot.standalone.StandaloneBson;
 import com.xgen.mongot.standalone.grpc.IndexType;
-import com.xgen.mongot.standalone.store.StandaloneStore.CollectionRecord;
 import com.xgen.mongot.util.bson.parser.BsonDocumentParser;
 import com.xgen.mongot.util.bson.parser.BsonParseException;
 import java.time.Instant;
@@ -45,12 +44,7 @@ public final class StandaloneDefinitionValidator {
    * Parses public mappings, assigns local identity, and checks the standalone feature allowlist.
    */
   public static ValidatedDefinition parse(
-      CollectionRecord collection,
-      String indexId,
-      String name,
-      IndexType type,
-      long revision,
-      byte[] bson) {
+      String indexId, String name, IndexType type, long revision, byte[] bson) {
     if (type != IndexType.INDEX_TYPE_SEARCH && type != IndexType.INDEX_TYPE_VECTOR_SEARCH) {
       throw new IllegalArgumentException("An explicit supported index type is required");
     }
@@ -75,9 +69,9 @@ public final class StandaloneDefinitionValidator {
               name,
               Optional.of(new ObjectId(indexId)),
               user,
-              UUID.fromString(collection.id()),
-              collection.database(),
-              collection.name(),
+              UUID.nameUUIDFromBytes(indexId.getBytes(java.nio.charset.StandardCharsets.US_ASCII)),
+              "__push",
+              name,
               Optional.empty(),
               revision,
               Instant.now(),

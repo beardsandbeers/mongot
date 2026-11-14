@@ -108,7 +108,6 @@ package_deploy_tar(
     bin = ["//:mongot_standalone_deploy.jar"],
     lib = [
         "//:fips-jars",
-        "@maven//:org_xerial_sqlite_jdbc",
     ] + select({
         "//bazel/platforms:is_macos_x86_64": [],
         "//conditions:default": ["//src/main/c:mongot_vecsim"],
@@ -116,7 +115,6 @@ package_deploy_tar(
     license = [
         ":community-resources/LICENSE/LICENSE",
         ":community-resources/LICENSE/THIRD_PARTY_NOTICES.txt",
-        ":standalone-resources/SQLITE_JDBC_LICENSE.txt",
     ],
     target_jdk = "//deploy:release_target_jdk",
     toplevel = [

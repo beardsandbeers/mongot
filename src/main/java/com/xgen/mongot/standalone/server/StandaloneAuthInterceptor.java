@@ -1,6 +1,6 @@
 package com.xgen.mongot.standalone.server;
 
-import com.xgen.mongot.standalone.catalog.LocalAuthoritativeCatalog;
+import com.xgen.mongot.standalone.catalog.LocalIndexCatalog;
 import com.xgen.mongot.standalone.config.StandaloneConfig;
 import com.xgen.mongot.standalone.config.StandaloneConfig.Principal;
 import com.xgen.mongot.standalone.config.StandaloneConfig.Role;
@@ -60,10 +60,10 @@ final class StandaloneAuthInterceptor implements ServerInterceptor {
     }
   }
 
-  static void requireCollection(String collectionId) {
-    if (!principal().allows(collectionId)) {
+  static void requireIndex(String indexId) {
+    if (!principal().allows(indexId)) {
       throw Status.PERMISSION_DENIED
-          .withDescription("Principal cannot access this collection")
+          .withDescription("Principal cannot access this index")
           .asRuntimeException();
     }
   }
@@ -152,8 +152,7 @@ final class StandaloneAuthInterceptor implements ServerInterceptor {
           .asRuntimeException();
     }
     byte[] digest =
-        LocalAuthoritativeCatalog.digest(
-            authorization.substring(7).getBytes(StandardCharsets.US_ASCII));
+        LocalIndexCatalog.digest(authorization.substring(7).getBytes(StandardCharsets.US_ASCII));
     return principals.stream()
         .filter(principal -> MessageDigest.isEqual(principal.tokenDigest(), digest))
         .findFirst()

@@ -14,7 +14,7 @@ public class StandaloneConfigTest {
   @Rule public final TemporaryFolder folder = new TemporaryFolder();
 
   @Test
-  public void fromFile_minimalConfig_usesLocalStorageAndLoopbackDefaults() throws Exception {
+  public void fromFile_minimalConfig_usesIndexStorageAndLoopbackDefaults() throws Exception {
     Path file = config("storage:\n  dataPath: data\n");
 
     var parsed = StandaloneConfig.fromFile(file);
@@ -50,7 +50,7 @@ public class StandaloneConfigTest {
   public void fromFile_acceptanceOnlyCompletion_rejects() throws Exception {
     Path file = config("storage:\n  dataPath: data\ningestion:\n  writeCompletion: durable\n");
 
-    assertThrows(IllegalArgumentException.class, () -> StandaloneConfig.fromFile(file));
+    assertThrows(IOException.class, () -> StandaloneConfig.fromFile(file));
   }
 
   @Test
@@ -67,7 +67,7 @@ public class StandaloneConfigTest {
                 + "      - name: app\n"
                 + "        tokenFile: token\n"
                 + "        roles: [write]\n"
-                + "        collections: ['*']\n");
+                + "        indexes: ['*']\n");
 
     var parsed = StandaloneConfig.fromFile(file);
 

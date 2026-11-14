@@ -4,71 +4,32 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import com.google.protobuf.ByteString;
-import com.xgen.mongot.index.lucene.vector.Similarity;
-import com.xgen.mongot.standalone.catalog.LocalAuthoritativeCatalog;
 import com.xgen.mongot.standalone.catalog.StandaloneDefinitionValidator;
 import com.xgen.mongot.standalone.config.StandaloneConfig;
-import com.xgen.mongot.standalone.grpc.AwaitSequenceRequest;
 import com.xgen.mongot.standalone.grpc.CatalogServiceGrpc;
-import com.xgen.mongot.standalone.grpc.CreateCollectionRequest;
 import com.xgen.mongot.standalone.grpc.CreateIndexRequest;
-import com.xgen.mongot.standalone.grpc.DeleteByQueryRequest;
 import com.xgen.mongot.standalone.grpc.DeleteRequest;
-import com.xgen.mongot.standalone.grpc.DocumentId;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
+import com.xgen.mongot.standalone.grpc.DocumentWriteConcern;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
-import com.xgen.mongot.standalone.grpc.GetCollectionRequest;
-import com.xgen.mongot.standalone.grpc.GetDeleteByQueryResultRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
-import com.xgen.mongot.standalone.grpc.GetMoreRequest;
-import com.xgen.mongot.standalone.grpc.GetStatusRequest;
-import com.xgen.mongot.standalone.grpc.GetWriteResultRequest;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
 import com.xgen.mongot.standalone.grpc.IndexType;
-import com.xgen.mongot.standalone.grpc.KillCursorRequest;
 import com.xgen.mongot.standalone.grpc.ListIndexesRequest;
-import com.xgen.mongot.standalone.grpc.Mutation;
-import com.xgen.mongot.standalone.grpc.MutationType;
-import com.xgen.mongot.standalone.grpc.OperationsServiceGrpc;
 import com.xgen.mongot.standalone.grpc.QueryRequest;
-import com.xgen.mongot.standalone.grpc.QueryResponse;
 import com.xgen.mongot.standalone.grpc.QueryServiceGrpc;
-import com.xgen.mongot.standalone.grpc.SequenceCondition;
 import com.xgen.mongot.standalone.grpc.UpdateIndexRequest;
 import com.xgen.mongot.standalone.grpc.UpsertRequest;
-import com.xgen.mongot.standalone.grpc.WriteBatchRequest;
-import com.xgen.mongot.standalone.grpc.WriteItemState;
-import com.xgen.mongot.standalone.grpc.WriteRequest;
-import com.xgen.mongot.standalone.grpc.WriteResponse;
 import com.xgen.mongot.standalone.runtime.StandaloneRuntime;
-import io.grpc.Channel;
 import io.grpc.ManagedChannel;
-import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
-import io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.NettyChannelBuilder;
-import io.grpc.stub.MetadataUtils;
-import java.math.BigInteger;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyPairGenerator;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x509.Extension;
-import org.bouncycastle.asn1.x509.GeneralName;
-import org.bouncycastle.asn1.x509.GeneralNames;
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemWriter;
 import org.bson.BsonDocument;
+import org.bson.RawBsonDocument;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -77,1762 +38,191 @@ public class StandaloneGrpcServerTest {
   @Rule public final TemporaryFolder folder = new TemporaryFolder();
 
   @Test
-  public void restart_interruptedSnapshot_rebuildsIncompleteGenerationWithoutPrematureCutover()
-      throws Exception {
-    String indexId;
-    var armed = new java.util.concurrent.atomic.AtomicBoolean();
-    var config = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    try (var fixture = new Fixture(config, unused -> {}, () -> failSnapshotIfArmed(armed))) {
-      String collection = fixture.collection();
-      indexId = fixture.index(collection).getIndexId();
-      fixture
-          .documents()
-          .write(
-              WriteRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("snapshot-source")
-                  .setMutation(
-                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a',title:'historical'}"))
+  public void push_upsertsAndDeletesOnlyTheSelectedIndex() throws Exception {
+    try (var f = new Fixture(data())) {
+      String first = f.create("first");
+      String second = f.create("second");
+      f.upsert(first, "{_id: 'a', title: 'coffee', privateField: 'not-stored'}");
+      assertThat(f.results(first, "coffee").getArray("results")).hasSize(1);
+      assertThat(f.results(second, "coffee").getArray("results")).isEmpty();
+      f.upsert(first, "{_id: 'a', title: 'tea'}");
+      assertThat(f.results(first, "coffee").getArray("results")).isEmpty();
+      assertThat(f.results(first, "tea").getArray("results")).hasSize(1);
+      var deleted =
+          f.docs.delete(
+              DeleteRequest.newBuilder()
+                  .setIndexId(first)
+                  .addIdsBson(bson("{_id: 'a'}"))
+                  .addIdsBson(bson("{_id: 'missing'}"))
                   .build());
-      armed.set(true);
-      fixture
-          .catalog()
-          .updateIndex(
-              UpdateIndexRequest.newBuilder()
-                  .setIndexId(indexId)
-                  .setExpectedRevision(1)
-                  .setRequestId("snapshot-revision")
-                  .setDefinitionBson(bson("{mappings:{dynamic:true},storedSource:true}"))
-                  .build());
-      var failed = fixture.indexFailure(indexId);
-
-      assertThat(failed.getActiveRevision()).isEqualTo(1);
-      assertThat(failed.getDesiredRevision()).isEqualTo(2);
-      assertThat(results(fixture.search(indexId, "{text:{path:'title',query:'historical'}}")))
-          .hasSize(1);
-    }
-    try (var fixture = new Fixture(config)) {
-      var recovered = fixture.readyRevision(indexId, 2);
-      fixture.visible(recovered, 1);
-
-      var response =
-          fixture.search(
-              indexId, "{text:{path:'title',query:'historical'},returnStoredSource:true}");
-      assertThat(results(response)).hasSize(1);
-      assertThat(results(response).get(0).asDocument().getDocument("storedSource"))
-          .isEqualTo(BsonDocument.parse("{_id:'a',title:'historical'}"));
-    }
-  }
-
-  private static void failSnapshotIfArmed(java.util.concurrent.atomic.AtomicBoolean armed) {
-    if (armed.get()) {
-      throw new IllegalStateException(
-          "Injected interruption after durable incomplete-build checkpoint");
+      assertThat(deleted.getProcessedCount()).isEqualTo(2);
+      assertThat(f.results(first, "tea").getArray("results")).isEmpty();
     }
   }
 
   @Test
-  public void reconcile_unreadableDesiredDefinition_preservesLiveProjectionAndStopsAdmission()
-      throws Exception {
-    var config = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    try (var fixture = new Fixture(config)) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      executeSql(config.dataPath(), "UPDATE indexes SET normalized_definition=x'0000'");
-      fixture.runtime.catalogChanged();
-      fixture.managementFailure();
+  public void restart_preservesCommittedLuceneDataAndIndexDefinitionsOnly() throws Exception {
+    Path data = data();
+    String id;
+    try (var f = new Fixture(data)) {
+      id = f.create("persistent");
+      f.docs.upsert(
+          UpsertRequest.newBuilder()
+              .setIndexId(id)
+              .setWriteConcern(DocumentWriteConcern.DOCUMENT_WRITE_CONCERN_COMMITTED)
+              .addDocumentsBson(
+                  bson("{_id: 'a', title: 'coffee', privateField: 'secret-content-marker'}"))
+              .build());
+    }
+    try (var f = new Fixture(data)) {
+      f.ready(id, 1);
+      var result = f.results(id, "coffee").getArray("results");
+      assertThat(result).hasSize(1);
+      assertThat(result.get(0).asDocument().containsKey("storedSource")).isFalse();
+      assertThat(f.catalog.listIndexes(ListIndexesRequest.getDefaultInstance()).getIndexesCount())
+          .isEqualTo(1);
+    }
+    assertThat(Files.exists(data.resolve("standalone.sqlite"))).isFalse();
+    assertThat(Files.readString(data.resolve("indexes.json")))
+        .doesNotContain("secret-content-marker");
+    try (var paths = Files.list(data)) {
+      assertThat(paths.filter(Files::isRegularFile).map(p -> p.getFileName().toString()).toList())
+          .containsExactly(
+              "standalone.lock", "indexes.json", "configJournal.json", "dynamicFeatureFlags.json");
+    }
+  }
 
-      assertThat(
-              fixture
-                  .runtime
-                  .liveIndexes()
-                  .getIndexById(new org.bson.types.ObjectId(index.getIndexId())))
-          .isPresent();
-      var rejected =
+  @Test
+  public void mappingUpdate_startsEmptyAndRequiresReingestion() throws Exception {
+    try (var f = new Fixture(data())) {
+      String id = f.create("schema");
+      f.upsert(id, "{_id: 'a', title: 'coffee'}");
+      String oldGeneration = f.ready(id, 1).getGenerationId();
+      f.catalog.updateIndex(
+          UpdateIndexRequest.newBuilder()
+              .setIndexId(id)
+              .setExpectedRevision(1)
+              .setDefinitionBson(
+                  bson("{mappings: {dynamic: false, fields: {title: {type: 'string'}}}}"))
+              .build());
+      var updated = f.ready(id, 2);
+      assertThat(updated.getGenerationId()).isNotEqualTo(oldGeneration);
+      assertThat(f.results(id, "coffee").getArray("results")).isEmpty();
+      var stale =
           assertThrows(
               StatusRuntimeException.class,
               () ->
-                  fixture
-                      .documents()
-                      .write(
-                          WriteRequest.newBuilder()
-                              .setCollectionId(collection)
-                              .setRequestId("unreadable-desired")
-                              .setMutation(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a'}"))
-                              .build()));
-      assertThat(rejected.getStatus().getCode()).isEqualTo(Status.Code.UNAVAILABLE);
-      assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(0);
+                  f.docs.upsert(
+                      UpsertRequest.newBuilder()
+                          .setIndexId(id)
+                          .setGenerationId(oldGeneration)
+                          .addDocumentsBson(bson("{_id: 'a', title: 'coffee'}"))
+                          .build()));
+      assertThat(stale.getStatus().getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
+      f.upsert(id, "{_id: 'a', title: 'coffee'}");
+      assertThat(f.results(id, "coffee").getArray("results")).hasSize(1);
     }
   }
 
   @Test
-  public void writeBatch_targetFailure_stopsContiguousProgressAndRebuildsAcceptedSource()
-      throws Exception {
-    var blocker = new ApplyBlocker();
-    try (var fixture =
-        new Fixture(
-            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
-            sequence -> failSecondApply(sequence, blocker))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      var request =
-          WriteBatchRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("failed-target")
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a',title:'retained'}"))
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'b',title:'retained'}"))
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'c',title:'retained'}"))
-              .build();
-      var pending = DocumentServiceGrpc.newFutureStub(fixture.channel).writeBatch(request);
-      blocker.awaitEntered();
-      fixture.acceptedItems(collection, request.getRequestId(), 3);
-
-      blocker.release();
-      var failed = pending.get(10, TimeUnit.SECONDS);
-
-      assertThat(failed.getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-      assertThat(failed.getResults(1).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXING_FAILED);
-      assertThat(failed.getResults(2).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXING_FAILED);
-      var stopped =
-          fixture
-              .catalog()
-              .getIndex(GetIndexRequest.newBuilder().setIndexId(index.getIndexId()).build());
-      assertThat(stopped.getLive().getAppliedSequence()).isEqualTo(1);
-      assertThat(stopped.getFailureMessage()).contains("sequence 1");
-      fixture
-          .catalog()
-          .updateIndex(
-              UpdateIndexRequest.newBuilder()
-                  .setIndexId(index.getIndexId())
-                  .setExpectedRevision(1)
-                  .setRequestId("recover-failed-target")
-                  .setDefinitionBson(bson("{mappings:{dynamic:true},storedSource:true}"))
-                  .build());
-      var recovered = fixture.readyRevision(index.getIndexId(), 2);
-      fixture.visible(recovered, 3);
-
+  public void newIndex_neverBackfillsContentFromAnotherIndex() throws Exception {
+    try (var f = new Fixture(data())) {
+      String first = f.create("first");
+      f.upsert(first, "{_id: 'a', title: 'coffee'}");
+      String second = f.create("second");
+      assertThat(f.results(second, "coffee").getArray("results")).isEmpty();
+      f.catalog.dropIndex(
+          DropIndexRequest.newBuilder().setIndexId(first).setExpectedRevision(1).build());
       assertThat(
-              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'retained'}}")))
-          .hasSize(3);
-      assertThat(fixture.documents().writeBatch(request)).isEqualTo(failed);
-    } finally {
-      blocker.release();
-    }
-  }
-
-  private static void failSecondApply(long sequence, ApplyBlocker blocker) {
-    if (sequence == 2) {
-      blocker.accept(sequence);
-      throw new IllegalStateException("Injected target apply failure");
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.docs.upsert(
+                              UpsertRequest.newBuilder()
+                                  .setIndexId(first)
+                                  .addDocumentsBson(bson("{_id: 'a'}"))
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.NOT_FOUND);
+      String replacement = f.create("first");
+      assertThat(replacement).isNotEqualTo(first);
+      assertThat(f.results(replacement, "coffee").getArray("results")).isEmpty();
     }
   }
 
   @Test
-  public void write_sqliteAcceptanceFailure_rollsBackSourceAndResumesSameManifest()
-      throws Exception {
-    var config = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    try (var fixture = new Fixture(config)) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-      var request =
-          WriteRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("sqlite-failure")
-              .setMutation(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a',title:'recoverable'}"))
-              .build();
-      executeSql(
-          config.dataPath(),
-          "CREATE TRIGGER reject_mutation BEFORE INSERT ON mutations"
-              + " BEGIN SELECT RAISE(ABORT, 'injected SQLite acceptance failure'); END");
-
-      var failed =
-          assertThrows(StatusRuntimeException.class, () -> fixture.documents().write(request));
-
-      assertThat(failed.getStatus().getCode()).isEqualTo(Status.Code.UNAVAILABLE);
-      assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(0);
-      var interrupted =
-          fixture
-              .documents()
-              .getWriteResult(
-                  GetWriteResultRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId(request.getRequestId())
-                      .build());
-      assertThat(interrupted.getComplete()).isFalse();
-      assertThat(interrupted.getResultsList()).isEmpty();
-
-      executeSql(config.dataPath(), "DROP TRIGGER reject_mutation");
-      var recovered = fixture.documents().write(request);
-      assertThat(recovered.getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-      assertThat(recovered.getResults(0).getAcceptedSequence()).isEqualTo(1);
-    }
-  }
-
-  private static void executeSql(Path data, String sql) throws Exception {
-    try (var connection =
-            java.sql.DriverManager.getConnection(
-                "jdbc:sqlite:" + data.resolve("standalone.sqlite"));
-        var statement = connection.createStatement()) {
-      statement.execute("PRAGMA busy_timeout=5000");
-      statement.execute(sql);
-    }
-  }
-
-  @Test
-  public void write_diskHeadroomExhausted_rejectsBeforePersistingManifestOrSource()
-      throws Exception {
-    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    var config =
-        new StandaloneConfig(
-            base.dataPath(),
-            base.address(),
-            base.documentLimits(),
-            base.maxInFlightRequests(),
-            base.maxInFlightBytes(),
-            base.maxLogBytes(),
-            Long.MAX_VALUE,
-            base.commitInterval(),
-            base.refreshInterval(),
-            base.retryRetention(),
-            base.maxRpcDuration(),
-            base.tls(),
-            base.principals());
-    try (var fixture = new Fixture(config)) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-
+  public void validation_rejectsMalformedBatchBeforeWriting() throws Exception {
+    try (var f = new Fixture(data())) {
+      String id = f.create("validation");
       var error =
           assertThrows(
               StatusRuntimeException.class,
               () ->
-                  fixture
-                      .documents()
-                      .write(
-                          WriteRequest.newBuilder()
-                              .setCollectionId(collection)
-                              .setRequestId("disk")
-                              .setMutation(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a'}"))
-                              .build()));
-
-      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.RESOURCE_EXHAUSTED);
+                  f.docs.upsert(
+                      UpsertRequest.newBuilder()
+                          .setIndexId(id)
+                          .addDocumentsBson(bson("{_id:'a',title:'coffee'}"))
+                          .addDocumentsBson(bson("{title:'missing id'}"))
+                          .build()));
+      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
+      assertThat(f.results(id, "coffee").getArray("results")).isEmpty();
       assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(0);
-      var absent =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .documents()
-                      .getWriteResult(
-                          GetWriteResultRequest.newBuilder()
-                              .setCollectionId(collection)
-                              .setRequestId("disk")
-                              .build()));
-      assertThat(absent.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.docs.delete(
+                              DeleteRequest.newBuilder()
+                                  .setIndexId(id)
+                                  .addIdsBson(bson("{_id:'a',other:1}"))
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.INVALID_ARGUMENT);
     }
   }
 
   @Test
-  public void update_pinnedSnapshot_catchesConcurrentReplacementAndDeleteBeforeCutover()
-      throws Exception {
-    var snapshot = new SnapshotBlocker();
-    try (var fixture =
-        new Fixture(
-            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
-            unused -> {},
-            snapshot)) {
-      String collection = fixture.collection();
-      String id =
-          fixture
-              .catalog()
-              .createIndex(
-                  indexRequest(collection).toBuilder()
-                      .setDefinitionBson(
-                          bson(
-                              "{mappings: {dynamic: false, fields: {title: {type: 'string'}}},"
-                                  + " storedSource: true}"))
-                      .build())
-              .getIndexId();
-      var original = fixture.ready(id);
-      fixture
-          .documents()
-          .writeBatch(
-              WriteBatchRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("seed-build")
-                  .addMutations(
-                      mutation(
-                          MutationType.MUTATION_TYPE_INSERT,
-                          "{_id:'a', title:'old', next:'original'}"))
-                  .addMutations(
-                      mutation(
-                          MutationType.MUTATION_TYPE_INSERT,
-                          "{_id:'b', title:'old', next:'deleted'}"))
-                  .build());
-      snapshot.arm();
-      fixture
-          .catalog()
-          .updateIndex(
-              UpdateIndexRequest.newBuilder()
-                  .setIndexId(id)
-                  .setRequestId("mapping-build")
-                  .setExpectedRevision(1)
+  public void vectorPush_usesExistingVectorSchemaAndReader() throws Exception {
+    com.xgen.mongot.index.lucene.vector.Similarity.load();
+    try (var f = new Fixture(data())) {
+      var index =
+          f.catalog.createIndex(
+              CreateIndexRequest.newBuilder()
+                  .setName("vectors")
+                  .setType(IndexType.INDEX_TYPE_VECTOR_SEARCH)
                   .setDefinitionBson(
                       bson(
-                          "{mappings: {dynamic: false, fields: {title: {type:'string'}, next:"
-                              + " {type:'string'}}}, storedSource: true}"))
+                          "{fields:[{type:'vector',path:'embedding',"
+                              + "numDimensions:3,similarity:'cosine'}]}"))
                   .build());
-      snapshot.awaitEntered();
-      var during = fixture.catalog().getIndex(GetIndexRequest.newBuilder().setIndexId(id).build());
-      assertThat(during.getActiveRevision()).isEqualTo(1);
-      assertThat(during.getLive().getGenerationId())
-          .isEqualTo(original.getLive().getGenerationId());
-      assertThat(during.hasBuilding()).isTrue();
-
-      fixture
-          .documents()
-          .writeBatch(
-              WriteBatchRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("during-build")
-                  .addMutations(
-                      mutation(
-                          MutationType.MUTATION_TYPE_UPSERT,
-                          "{_id:'a', title:'replacement', next:'changed'}"))
-                  .addMutations(mutation(MutationType.MUTATION_TYPE_DELETE, "{_id:'b'}"))
+      String id = index.getIndexId();
+      f.ready(id, 1);
+      f.upsert(id, "{_id:'near',embedding:[1.0,0.0,0.0]}");
+      var result =
+          f.queries.vectorSearch(
+              QueryRequest.newBuilder()
+                  .setIndexId(id)
+                  .setQueryBson(
+                      bson("{path:'embedding',queryVector:[1.0,0.0,0.0],exact:true,limit:1}"))
                   .build());
-      fixture.runtime.store().maintain(0);
-      fixture.visible(original, 4);
-      var oldResults =
-          fixture
-              .queries()
-              .search(
-                  QueryRequest.newBuilder()
-                      .setIndexId(id)
-                      .setQueryBson(
-                          bson("{text:{path:'title',query:'replacement'},returnStoredSource:true}"))
-                      .build());
-      assertThat(results(oldResults)).hasSize(1);
-
-      snapshot.release();
-      var replacement = fixture.readyRevision(id, 2);
-      fixture.visible(replacement, 4);
-      var changed =
-          fixture
-              .queries()
-              .search(
-                  QueryRequest.newBuilder()
-                      .setIndexId(id)
-                      .setQueryBson(
-                          bson("{text:{path:'next',query:'changed'},returnStoredSource:true}"))
-                      .build());
-      var deleted =
-          fixture
-              .queries()
-              .search(
-                  QueryRequest.newBuilder()
-                      .setIndexId(id)
-                      .setQueryBson(bson("{text:{path:'next',query:'deleted'}}"))
-                      .build());
-
-      assertThat(replacement.getLive().getGenerationId())
-          .isNotEqualTo(original.getLive().getGenerationId());
-      assertThat(results(changed)).hasSize(1);
-      assertThat(results(deleted)).isEmpty();
-    } finally {
-      snapshot.release();
-    }
-  }
-
-  @Test
-  public void operations_status_reportsLocalWatermarksStorageAndMetrics() throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      var request =
-          WriteRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("metrics")
-              .setMutation(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'metrics', title: 'term'}"))
-              .build();
-      fixture.documents().write(request);
-      fixture.documents().write(request);
-
-      var status =
-          OperationsServiceGrpc.newBlockingStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .getStatus(GetStatusRequest.getDefaultInstance());
-
-      assertThat(status.getManagementReady()).isTrue();
-      assertThat(status.getStoreSchemaVersion()).isEqualTo(3);
-      assertThat(status.getInstanceId()).isNotEmpty();
-      assertThat(status.getRetryRequests()).isAtLeast(3);
-      assertThat(status.getRetentionPins()).isAtLeast(1);
-      assertThat(status.getSourceBytes()).isGreaterThan(0);
-      assertThat(
-              status.getIndexesList().stream()
-                  .filter(value -> value.getIndexId().equals(index.getIndexId()))
-                  .findFirst()
-                  .orElseThrow()
-                  .getLive()
-                  .getAppliedSequence())
-          .isEqualTo(1);
-      assertThat(status.getMetricsList().stream().map(value -> value.getName()).toList())
-          .containsAtLeast(
-              "standalone.mutations",
-              "standalone.write.retries",
-              "standalone.rpc.inflight",
-              "standalone.rpc.duration",
-              "standalone.acceptance",
-              "standalone.apply");
-      assertThat(
-              status.getMetricsList().stream()
-                  .flatMap(value -> value.getLabelsMap().values().stream())
-                  .toList())
-          .doesNotContain("metrics");
-    }
-  }
-
-  @Test
-  public void tls_authenticatedTransport_servesAuthorizedCatalogAndRejectsMissingToken()
-      throws Exception {
-    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    var tls = generateTls(this.folder.newFolder("tls").toPath());
-    var config =
-        new StandaloneConfig(
-            base.dataPath(),
-            base.address(),
-            base.documentLimits(),
-            base.maxInFlightRequests(),
-            base.maxInFlightBytes(),
-            base.maxLogBytes(),
-            base.minFreeDiskBytes(),
-            base.commitInterval(),
-            base.refreshInterval(),
-            base.retryRetention(),
-            base.maxRpcDuration(),
-            java.util.Optional.of(tls),
-            List.of(principal("admin", "tls-token", Set.of(StandaloneConfig.Role.CATALOG))));
-    try (var fixture = new Fixture(config)) {
-      var denied = assertThrows(StatusRuntimeException.class, fixture::collection);
-      assertThat(denied.getStatus().getCode()).isEqualTo(Status.Code.UNAUTHENTICATED);
-
-      var authorized =
-          CatalogServiceGrpc.newBlockingStub(fixture.authenticated("tls-token"))
-              .withDeadlineAfter(10, TimeUnit.SECONDS);
-      var created =
-          authorized.createCollection(
-              CreateCollectionRequest.newBuilder()
-                  .setRequestId("tls-collection")
-                  .setDatabase("db")
-                  .setName("tls")
-                  .build());
-
-      assertThat(created.getCollectionId()).isNotEmpty();
-    }
-  }
-
-  private static StandaloneConfig.Tls generateTls(Path directory) throws Exception {
-    var generator = KeyPairGenerator.getInstance("RSA");
-    generator.initialize(2048);
-    var keyPair = generator.generateKeyPair();
-    var name = new X500Name("CN=localhost");
-    var now = Instant.now();
-    var certificate =
-        new JcaX509v3CertificateBuilder(
-                name,
-                BigInteger.ONE,
-                Date.from(now.minusSeconds(60)),
-                Date.from(now.plus(Duration.ofDays(1))),
-                name,
-                keyPair.getPublic())
-            .addExtension(
-                Extension.subjectAlternativeName,
-                false,
-                new GeneralNames(new GeneralName(GeneralName.iPAddress, "127.0.0.1")))
-            .build(new JcaContentSignerBuilder("SHA256WithRSA").build(keyPair.getPrivate()));
-    Path certificateFile = directory.resolve("server-cert.pem");
-    Path keyFile = directory.resolve("server-key.pem");
-    writePem(certificateFile, new PemObject("CERTIFICATE", certificate.getEncoded()));
-    writePem(keyFile, new PemObject("PRIVATE KEY", keyPair.getPrivate().getEncoded()));
-    return new StandaloneConfig.Tls(certificateFile, keyFile);
-  }
-
-  private static void writePem(Path path, PemObject object) throws Exception {
-    try (var writer = new PemWriter(Files.newBufferedWriter(path))) {
-      writer.writeObject(object);
-    }
-  }
-
-  @Test
-  public void write_serverDeadline_preservesAcceptedSourceForLaterResultRecovery()
-      throws Exception {
-    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    var config =
-        new StandaloneConfig(
-            base.dataPath(),
-            base.address(),
-            base.documentLimits(),
-            base.maxInFlightRequests(),
-            base.maxInFlightBytes(),
-            base.maxLogBytes(),
-            base.minFreeDiskBytes(),
-            base.commitInterval(),
-            base.refreshInterval(),
-            base.retryRetention(),
-            Duration.ofSeconds(2),
-            base.tls(),
-            base.principals());
-    var blocker = new ApplyBlocker();
-    try (var fixture = new Fixture(config, blocker)) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-      var request =
-          WriteRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("deadline")
-              .setMutation(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'deadline', title: 'term'}"))
-              .build();
-      var future = DocumentServiceGrpc.newFutureStub(fixture.channel).write(request);
-      blocker.awaitEntered();
-
-      var error =
-          assertThrows(
-              java.util.concurrent.ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS));
-      assertThat(Status.fromThrowable(error).getCode()).isEqualTo(Status.Code.DEADLINE_EXCEEDED);
-      assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(1);
-
-      blocker.release();
-      assertThat(fixture.documents().write(request).getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-    } finally {
-      blocker.release();
-    }
-  }
-
-  @Test
-  public void writeBatch_mixedOutcomesAndRetryAfterDelete_preservesOriginalOutcomesAcrossRestart()
-      throws Exception {
-    String collection;
-    String indexId;
-    WriteBatchRequest batch;
-    WriteResponse original;
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      collection = fixture.collection();
-      var index = fixture.index(collection);
-      indexId = index.getIndexId();
-      batch =
-          WriteBatchRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("batch")
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a', title: 'first'}"))
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a', title: 'duplicate'}"))
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_UPSERT, "{_id: 'a', title: 'replacement'}"))
-              .addMutations(mutation(MutationType.MUTATION_TYPE_DELETE, "{_id: 'b'}"))
-              .addMutations(
-                  Mutation.newBuilder()
-                      .setType(MutationType.MUTATION_TYPE_UPSERT)
-                      .setBson(ByteString.copyFrom(new byte[] {1, 2, 3})))
-              .addMutations(
-                  mutation(MutationType.MUTATION_TYPE_UPSERT, "{_id: 'b', title: 'other'}"))
-              .build();
-
-      original = fixture.documents().writeBatch(batch);
-
-      assertThat(original.getComplete()).isTrue();
-      assertThat(original.getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-      assertThat(original.getResults(1).getStatusCode())
-          .isEqualTo(Status.Code.ALREADY_EXISTS.value());
-      assertThat(original.getResults(2).getAcceptedSequence()).isEqualTo(2);
-      assertThat(original.getResults(4).getStatusCode())
-          .isEqualTo(Status.Code.INVALID_ARGUMENT.value());
-      assertThat(original.getResults(5).getAcceptedSequence()).isEqualTo(4);
-      fixture.visible(index, 4);
-      fixture
-          .documents()
-          .write(
-              WriteRequest.newBuilder()
-                  .setRequestId("delete")
-                  .setCollectionId(collection)
-                  .setMutation(mutation(MutationType.MUTATION_TYPE_DELETE, "{_id: 'a'}"))
-                  .build());
-    }
-
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      var restored = fixture.ready(indexId);
-
-      assertThat(restored.getCollectionId()).isEqualTo(collection);
-      assertThat(fixture.documents().writeBatch(batch)).isEqualTo(original);
-      assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(5);
-    }
-  }
-
-  @Test
-  public void updateAndDrop_durableCatalogOperations_restoreNewRevisionAndRetainDrop()
-      throws Exception {
-    String collection;
-    String indexId;
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      collection = fixture.collection();
-      var index = fixture.index(collection);
-      indexId = index.getIndexId();
-      fixture
-          .documents()
-          .write(
-              WriteRequest.newBuilder()
-                  .setRequestId("write")
-                  .setCollectionId(collection)
-                  .setMutation(
-                      mutation(
-                          MutationType.MUTATION_TYPE_INSERT,
-                          "{_id: 'a', title: 'historical', category: 'test'}"))
-                  .build());
-
-      fixture
-          .catalog()
-          .updateIndex(
-              UpdateIndexRequest.newBuilder()
-                  .setRequestId("update")
-                  .setIndexId(indexId)
-                  .setExpectedRevision(1)
-                  .setDefinitionBson(bson("{mappings: {dynamic: true}, storedSource: true}"))
-                  .build());
-      var updated = fixture.readyRevision(indexId, 2);
-
-      assertThat(updated.getActiveRevision()).isEqualTo(2);
-      var historical =
-          fixture.search(
-              indexId, "{text: {path: 'title', query: 'historical'}, returnStoredSource: true}");
-      assertThat(results(historical)).hasSize(1);
-      assertThat(results(historical).get(0).asDocument().getDocument("storedSource"))
-          .isEqualTo(BsonDocument.parse("{_id: 'a', title: 'historical', category: 'test'}"));
-      fixture
-          .catalog()
-          .dropIndex(
-              DropIndexRequest.newBuilder()
-                  .setRequestId("drop")
-                  .setIndexId(indexId)
-                  .setExpectedRevision(2)
-                  .build());
-    }
-
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      var dropped =
-          fixture.catalog().getIndex(GetIndexRequest.newBuilder().setIndexId(indexId).build());
-
-      assertThat(dropped.getLifecycleState()).isEqualTo("DROPPED");
-      assertThat(
-              fixture
-                  .catalog()
-                  .listIndexes(ListIndexesRequest.newBuilder().setCollectionId(collection).build())
-                  .getIndexesList())
-          .isEmpty();
-      assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(1);
-    }
-  }
-
-  @Test
-  public void authentication_rolesAndRetryNamespaces_enforcesPrincipalIsolation() throws Exception {
-    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    var config =
-        new StandaloneConfig(
-            base.dataPath(),
-            base.address(),
-            base.documentLimits(),
-            base.maxInFlightRequests(),
-            base.maxInFlightBytes(),
-            base.maxLogBytes(),
-            base.minFreeDiskBytes(),
-            base.commitInterval(),
-            base.refreshInterval(),
-            base.retryRetention(),
-            base.maxRpcDuration(),
-            base.tls(),
-            List.of(
-                principal("admin", "admin-token", Set.of(StandaloneConfig.Role.CATALOG)),
-                principal("alice", "alice-token", Set.of(StandaloneConfig.Role.WRITE)),
-                principal("bob", "bob-token", Set.of(StandaloneConfig.Role.WRITE))));
-    try (var fixture = new Fixture(config)) {
-      var unauthenticated = assertThrows(StatusRuntimeException.class, fixture::collection);
-      assertThat(unauthenticated.getStatus().getCode()).isEqualTo(Status.Code.UNAUTHENTICATED);
-
-      var admin = fixture.authenticated("admin-token");
-      var adminCatalog =
-          CatalogServiceGrpc.newBlockingStub(admin).withDeadlineAfter(10, TimeUnit.SECONDS);
-      String collection =
-          adminCatalog
-              .createCollection(
-                  CreateCollectionRequest.newBuilder()
-                      .setRequestId("collection")
-                      .setDatabase("database")
-                      .setName("collection")
-                      .build())
-              .getCollectionId();
-      var index = adminCatalog.createIndex(indexRequest(collection));
-      fixture.ready(adminCatalog, index.getIndexId(), 1);
-      var alice = fixture.authenticated("alice-token");
-      var denied =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  CatalogServiceGrpc.newBlockingStub(alice)
-                      .createCollection(
-                          CreateCollectionRequest.newBuilder()
-                              .setRequestId("denied")
-                              .setDatabase("database")
-                              .setName("denied")
-                              .build()));
-      assertThat(denied.getStatus().getCode()).isEqualTo(Status.Code.PERMISSION_DENIED);
-
-      DocumentServiceGrpc.newBlockingStub(alice)
-          .withDeadlineAfter(10, TimeUnit.SECONDS)
-          .write(
-              WriteRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("private")
-                  .setMutation(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a'}"))
-                  .build());
-      var hidden =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  DocumentServiceGrpc.newBlockingStub(fixture.authenticated("bob-token"))
-                      .getWriteResult(
-                          GetWriteResultRequest.newBuilder()
-                              .setCollectionId(collection)
-                              .setRequestId("private")
-                              .build()));
-
-      assertThat(hidden.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
-    }
-  }
-
-  @Test
-  public void query_textPaginationAndHistoricalVectorIndex_runsEntirelyThroughGrpc()
-      throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var text = fixture.index(collection);
-      fixture
-          .documents()
-          .writeBatch(
-              WriteBatchRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("write")
-                  .addMutations(
-                      mutation(
-                          MutationType.MUTATION_TYPE_INSERT,
-                          "{_id: 'a', title: 'needle', embedding: [1.0, 0.0, 0.0]}"))
-                  .addMutations(
-                      mutation(
-                          MutationType.MUTATION_TYPE_INSERT,
-                          "{_id: 'b', title: 'needle', embedding: [0.0, 1.0, 0.0]}"))
-                  .build());
-      fixture.visible(text, 2);
-
-      var first =
-          fixture
-              .queries()
-              .search(
-                  QueryRequest.newBuilder()
-                      .setIndexId(text.getIndexId())
-                      .setBatchSize(1)
-                      .setQueryBson(bson("{text: {path: 'title', query: 'needle'}}"))
-                      .build());
-      var next =
-          fixture
-              .queries()
-              .getMore(
-                  GetMoreRequest.newBuilder()
-                      .setCursorId(first.getCursorId())
-                      .setBatchSize(1)
-                      .build());
-
-      assertThat(first.getCursorId()).isGreaterThan(0);
-      assertThat(results(first)).hasSize(1);
-      assertThat(results(next)).hasSize(1);
-      assertThat(results(first).get(0).asDocument().getString("_id"))
-          .isNotEqualTo(results(next).get(0).asDocument().getString("_id"));
-
-      var vector =
-          fixture
-              .catalog()
-              .createIndex(
-                  CreateIndexRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId("vector")
-                      .setName("vector")
-                      .setType(IndexType.INDEX_TYPE_VECTOR_SEARCH)
-                      .setDefinitionBson(
-                          bson(
-                              "{fields: [{type: 'vector', path: 'embedding', numDimensions: 3,"
-                                  + " similarity: 'cosine'}]}"))
-                      .build());
-      var ready = fixture.ready(vector.getIndexId());
-      fixture.visible(ready, 2);
-      var nearest =
-          fixture
-              .queries()
-              .vectorSearch(
-                  QueryRequest.newBuilder()
-                      .setIndexId(vector.getIndexId())
-                      .setQueryBson(
-                          bson(
-                              "{path: 'embedding', queryVector: [1.0, 0.0, 0.0], exact: true,"
-                                  + " limit: 1}"))
-                      .build());
-
-      assertThat(results(nearest)).hasSize(1);
-      assertThat(results(nearest).get(0).asDocument().getString("_id").getValue()).isEqualTo("a");
-    }
-  }
-
-  @Test
-  public void killCursor_subsequentGetMore_returnsNotFound() throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      fixture
-          .documents()
-          .writeBatch(
-              WriteBatchRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("write")
-                  .addMutations(
-                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a', title: 'needle'}"))
-                  .addMutations(
-                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'b', title: 'needle'}"))
-                  .build());
-      fixture.visible(index, 2);
-      var cursor =
-          fixture
-              .queries()
-              .search(
-                  QueryRequest.newBuilder()
-                      .setIndexId(index.getIndexId())
-                      .setBatchSize(1)
-                      .setQueryBson(bson("{text: {path: 'title', query: 'needle'}}"))
-                      .build());
-
-      fixture
-          .queries()
-          .killCursor(KillCursorRequest.newBuilder().setCursorId(cursor.getCursorId()).build());
-      var error =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .queries()
-                      .getMore(
-                          GetMoreRequest.newBuilder().setCursorId(cursor.getCursorId()).build()));
-
-      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
-    }
-  }
-
-  @Test
-  public void dropIndex_openCursor_subsequentGetMoreReturnsNotFound() throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      fixture
-          .documents()
-          .writeBatch(
-              WriteBatchRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("write")
-                  .addMutations(
-                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'a',title:'needle'}"))
-                  .addMutations(
-                      mutation(MutationType.MUTATION_TYPE_INSERT, "{_id:'b',title:'needle'}"))
-                  .build());
-      fixture.visible(index, 2);
-      var cursor =
-          fixture
-              .queries()
-              .search(
-                  QueryRequest.newBuilder()
-                      .setIndexId(index.getIndexId())
-                      .setBatchSize(1)
-                      .setQueryBson(bson("{text:{path:'title',query:'needle'}}"))
-                      .build());
-      assertThat(cursor.getCursorId()).isGreaterThan(0);
-
-      fixture
-          .catalog()
-          .dropIndex(
-              DropIndexRequest.newBuilder()
-                  .setIndexId(index.getIndexId())
-                  .setRequestId("drop")
-                  .setExpectedRevision(1)
-                  .build());
-      var error =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .queries()
-                      .getMore(
-                          GetMoreRequest.newBuilder().setCursorId(cursor.getCursorId()).build()));
-
-      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
-    }
-  }
-
-  @Test
-  public void upsertAndDelete_typedIds_returnCountsAndDefaultToVisible() throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      var inserted =
-          fixture
-              .documents()
-              .upsert(
-                  UpsertRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId("upsert-ids")
-                      .addDocumentsBson(bson("{_id:'string',title:'needle'}"))
-                      .addDocumentsBson(
-                          bson("{_id:{$oid:'0123456789abcdef01234567'},title:'needle'}"))
-                      .addDocumentsBson(bson("{_id:1,title:'needle'}"))
-                      .addDocumentsBson(bson("{_id:{$numberLong:'1'},title:'needle'}"))
-                      .build());
-
-      assertThat(inserted.getUpsertedCount()).isEqualTo(4);
-      assertThat(
-              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'needle'}}")))
-          .hasSize(4);
-      var request =
-          DeleteRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("delete-ids")
-              .addIds(DocumentId.newBuilder().setStringValue("string"))
-              .addIds(DocumentId.newBuilder().setObjectId("0123456789abcdef01234567"))
-              .addIds(DocumentId.newBuilder().setInt32Value(1))
-              .addIds(DocumentId.newBuilder().setStringValue("absent"))
-              .build();
-      var deleted = fixture.documents().delete(request);
-      var retry = fixture.documents().delete(request);
-      var remaining =
-          results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'needle'}}"));
-
-      assertThat(deleted.getDeletedCount()).isEqualTo(3);
-      assertThat(retry).isEqualTo(deleted);
-      assertThat(remaining).hasSize(1);
-      assertThat(remaining.get(0).asDocument().get("_id").getBsonType())
-          .isEqualTo(org.bson.BsonType.INT64);
-    }
-  }
-
-  @Test
-  public void upsert_partialFailure_reportsErrorAndDurableItemOutcomes() throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-      var request =
-          UpsertRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("partial-upsert")
-              .addDocumentsBson(bson("{_id:'valid'}"))
-              .addDocumentsBson(bson("{missing:'id'}"))
-              .build();
-
-      var error =
-          assertThrows(StatusRuntimeException.class, () -> fixture.documents().upsert(request));
-      var outcome =
-          fixture
-              .documents()
-              .getWriteResult(
-                  GetWriteResultRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId(request.getRequestId())
-                      .build());
-
-      assertThat(error.getStatus().getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
-      assertThat(outcome.getComplete()).isTrue();
-      assertThat(outcome.getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-      assertThat(outcome.getResults(1).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_REJECTED);
-    }
-  }
-
-  @Test
-  public void deleteByQuery_multiplePages_retriesFrozenSelectionAndReportsProgress()
-      throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("query-seed")
-                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
-                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
-                  .addDocumentsBson(bson("{_id:'c',title:'remove'}"))
-                  .addDocumentsBson(bson("{_id:'keep',title:'keep'}"))
-                  .build());
-      var request =
-          DeleteByQueryRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("query-delete")
-              .setIndexId(index.getIndexId())
-              .setBatchSize(1)
-              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
-              .build();
-
-      var result = fixture.documents().deleteByQuery(request);
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("new-match")
-                  .addDocumentsBson(bson("{_id:'new',title:'remove'}"))
-                  .build());
-      var retry = fixture.documents().deleteByQuery(request);
-      var progress =
-          fixture
-              .documents()
-              .getDeleteByQueryResult(
-                  GetDeleteByQueryResultRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId(request.getRequestId())
-                      .build());
-
-      assertThat(result.getMatchedCount()).isEqualTo(3);
-      assertThat(result.getDeletedCount()).isEqualTo(3);
-      assertThat(result.getComplete()).isTrue();
-      assertThat(result.getSelectionComplete()).isTrue();
-      assertThat(result.getConflictCount()).isEqualTo(0);
-      assertThat(retry).isEqualTo(result);
-      assertThat(progress).isEqualTo(result);
-      assertThat(
-              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'remove'}}")))
+      assertThat(new RawBsonDocument(result.getBatchBson().toByteArray()).getArray("results"))
           .hasSize(1);
-      assertThat(results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'keep'}}")))
-          .hasSize(1);
-      var conflict =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .documents()
-                      .deleteByQuery(
-                          request.toBuilder()
-                              .setQueryBson(bson("{text:{path:'title',query:'keep'}}"))
-                              .build()));
-      assertThat(conflict.getStatus().getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);
     }
   }
 
   @Test
-  public void deleteByQuery_concurrentReplacement_skipsChangedDocuments() throws Exception {
-    var blocker = new ApplyBlocker();
-    try (var fixture =
-        new Fixture(
-            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
-            sequence -> {
-              if (sequence >= 3) {
-                blocker.accept(sequence);
-              }
-            })) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("seed")
-                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
-                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
-                  .build());
-      var request =
-          DeleteByQueryRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("concurrent-delete")
-              .setIndexId(index.getIndexId())
-              .setBatchSize(1)
-              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
-              .build();
-      var pending =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .deleteByQuery(request);
-      blocker.awaitEntered();
-      var replaced =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .upsert(
-                  UpsertRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId("concurrent-upsert")
-                      .addDocumentsBson(bson("{_id:'a',title:'changed'}"))
-                      .addDocumentsBson(bson("{_id:'b',title:'changed'}"))
-                      .build());
-      fixture.acceptedItems(collection, "concurrent-upsert", 2);
-
-      blocker.release();
-      var result = pending.get(10, TimeUnit.SECONDS);
-      replaced.get(10, TimeUnit.SECONDS);
-      var retry = fixture.documents().deleteByQuery(request);
-
-      assertThat(result.getDeletedCount()).isEqualTo(1);
-      assertThat(result.getConflictCount()).isEqualTo(1);
-      assertThat(result.getMatchedCount()).isEqualTo(2);
-      assertThat(retry).isEqualTo(result);
-      assertThat(
-              results(fixture.search(index.getIndexId(), "{text:{path:'title',query:'changed'}}")))
-          .hasSize(2);
-    } finally {
-      blocker.release();
-    }
-  }
-
-  @Test
-  public void deleteByQuery_cancelledAndRestarted_resumesDurableTargetsWithoutMatchingNewDocuments()
-      throws Exception {
-    var blocker = new ApplyBlocker();
-    var config = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    String collection;
-    String indexId;
-    DeleteByQueryRequest request;
-    try (var fixture =
-        new Fixture(
-            config,
-            sequence -> {
-              if (sequence >= 3) {
-                blocker.accept(sequence);
-              }
-            })) {
-      collection = fixture.collection();
-      var index = fixture.index(collection);
-      indexId = index.getIndexId();
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("restart-seed")
-                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
-                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
-                  .build());
-      request =
-          DeleteByQueryRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("restart-query")
-              .setIndexId(indexId)
-              .setBatchSize(1)
-              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
-              .build();
-      var pending =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .deleteByQuery(request);
-      blocker.awaitEntered();
-
-      pending.cancel(true);
-      fixture.awaitDeleteQueriesIdle();
-      var retryFailure =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .documents()
-                      .withDeadlineAfter(300, TimeUnit.MILLISECONDS)
-                      .deleteByQuery(request));
-      fixture.awaitDeleteQueriesIdle();
-      assertThat(retryFailure.getStatus().getCode()).isEqualTo(Status.Code.DEADLINE_EXCEEDED);
-      assertThat(fixture.runtime.catalog().getCollection(collection).getAcceptedSequence())
-          .isEqualTo(3);
-      blocker.release();
-      fixture.visible(index, 3);
-      var interrupted =
-          fixture
-              .documents()
-              .getDeleteByQueryResult(
-                  GetDeleteByQueryResultRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId(request.getRequestId())
-                      .build());
-
-      assertThat(interrupted.getSelectionComplete()).isTrue();
-      assertThat(interrupted.getComplete()).isFalse();
-      assertThat(interrupted.getMatchedCount()).isEqualTo(2);
-      assertThat(interrupted.getDeletedCount()).isEqualTo(1);
-    } finally {
-      blocker.release();
-    }
-    try (var fixture = new Fixture(config)) {
-      fixture.ready(indexId);
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("after-restart")
-                  .addDocumentsBson(bson("{_id:'new',title:'remove'}"))
-                  .build());
-
-      var completed = fixture.documents().deleteByQuery(request);
-      var retry = fixture.documents().deleteByQuery(request);
-      var remaining = results(fixture.search(indexId, "{text:{path:'title',query:'remove'}}"));
-
-      assertThat(completed.getComplete()).isTrue();
-      assertThat(completed.getMatchedCount()).isEqualTo(2);
-      assertThat(completed.getDeletedCount()).isEqualTo(2);
-      assertThat(retry).isEqualTo(completed);
-      assertThat(remaining).hasSize(1);
-      assertThat(remaining.get(0).asDocument().getString("_id").getValue()).isEqualTo("new");
-    }
-  }
-
-  @Test
-  public void documentCommands_retryAfterDrop_returnsOriginalSuccessfulOutcome() throws Exception {
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0))) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      var upsert =
-          UpsertRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("cached-upsert")
-              .addDocumentsBson(bson("{_id:'a',title:'cached'}"))
-              .build();
-      var delete =
-          DeleteRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("cached-delete")
-              .addIds(DocumentId.newBuilder().setStringValue("absent"))
-              .build();
-      var originalUpsert = fixture.documents().upsert(upsert);
-      var originalDelete = fixture.documents().delete(delete);
-
-      fixture
-          .catalog()
-          .dropIndex(
-              DropIndexRequest.newBuilder()
-                  .setIndexId(index.getIndexId())
-                  .setExpectedRevision(1)
-                  .setRequestId("drop-cached")
-                  .build());
-      var upsertRetry = fixture.documents().upsert(upsert);
-      var deleteRetry = fixture.documents().delete(delete);
-
-      assertThat(upsertRetry).isEqualTo(originalUpsert);
-      assertThat(deleteRetry).isEqualTo(originalDelete);
-    }
-  }
-
-  @Test
-  public void deleteByQuery_writeOnlyPrincipal_isDeniedWhileDeleteByIdIsAllowed() throws Exception {
-    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    var config =
-        new StandaloneConfig(
-            base.dataPath(),
-            base.address(),
-            base.documentLimits(),
-            base.maxInFlightRequests(),
-            base.maxInFlightBytes(),
-            base.maxLogBytes(),
-            base.minFreeDiskBytes(),
-            base.commitInterval(),
-            base.refreshInterval(),
-            base.retryRetention(),
-            base.maxRpcDuration(),
-            base.tls(),
-            List.of(
-                principal("admin", "admin-token", Set.of(StandaloneConfig.Role.values())),
-                principal("writer", "writer-token", Set.of(StandaloneConfig.Role.WRITE))));
-    try (var fixture = new Fixture(config)) {
-      var catalog =
-          CatalogServiceGrpc.newBlockingStub(fixture.authenticated("admin-token"))
-              .withDeadlineAfter(10, TimeUnit.SECONDS);
-      String collection =
-          catalog
-              .createCollection(
-                  CreateCollectionRequest.newBuilder()
-                      .setRequestId("role-collection")
-                      .setDatabase("roles")
-                      .setName("docs")
-                      .build())
-              .getCollectionId();
-      var index =
-          fixture.ready(catalog, catalog.createIndex(indexRequest(collection)).getIndexId(), 1);
-      var writer =
-          DocumentServiceGrpc.newBlockingStub(fixture.authenticated("writer-token"))
-              .withDeadlineAfter(10, TimeUnit.SECONDS);
-      writer.upsert(
-          UpsertRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("role-upsert")
-              .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
-              .build());
-
-      var denied =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  writer.deleteByQuery(
-                      DeleteByQueryRequest.newBuilder()
-                          .setCollectionId(collection)
-                          .setRequestId("role-query")
-                          .setIndexId(index.getIndexId())
-                          .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
-                          .build()));
-      var deleted =
-          writer.delete(
-              DeleteRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("role-delete")
-                  .addIds(DocumentId.newBuilder().setStringValue("a"))
-                  .build());
-
-      assertThat(denied.getStatus().getCode()).isEqualTo(Status.Code.PERMISSION_DENIED);
-      assertThat(deleted.getDeletedCount()).isEqualTo(1);
-    }
-  }
-
-  @Test
-  public void deleteByQuery_retiredGeneration_preservesInspectablePartialFailure()
-      throws Exception {
-    var blocker = new ApplyBlocker();
-    try (var fixture =
-        new Fixture(
-            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
-            sequence -> {
-              if (sequence >= 3) {
-                blocker.accept(sequence);
-              }
-            })) {
-      String collection = fixture.collection();
-      var index = fixture.index(collection);
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("retired-seed")
-                  .addDocumentsBson(bson("{_id:'a',title:'remove'}"))
-                  .addDocumentsBson(bson("{_id:'b',title:'remove'}"))
-                  .build());
-      var request =
-          DeleteByQueryRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("retired-query")
-              .setIndexId(index.getIndexId())
-              .setBatchSize(1)
-              .setQueryBson(bson("{text:{path:'title',query:'remove'}}"))
-              .build();
-      var pending =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .deleteByQuery(request);
-      blocker.awaitEntered();
-      pending.cancel(true);
-      fixture.awaitDeleteQueriesIdle();
-      blocker.release();
-      fixture.visible(index, 3);
-      var checkpoint =
-          fixture
-              .documents()
-              .getDeleteByQueryResult(
-                  GetDeleteByQueryResultRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId(request.getRequestId())
-                      .build());
-      assertThat(checkpoint.getDeletedCount()).isEqualTo(1);
-      var retirement =
-          fixture
-              .runtime
-              .ingestion()
-              .await(
-                  index.getIndexId(),
-                  index.getLive().getGenerationId(),
-                  Long.MAX_VALUE,
-                  SequenceCondition.SEQUENCE_CONDITION_VISIBLE);
-      fixture
-          .catalog()
-          .dropIndex(
-              DropIndexRequest.newBuilder()
-                  .setIndexId(index.getIndexId())
-                  .setRequestId("retire-query-index")
-                  .setExpectedRevision(1)
-                  .build());
+  public void ownershipLock_rejectsSecondRuntime() throws Exception {
+    Path data = data();
+    try (var f = new Fixture(data)) {
       assertThrows(
-          java.util.concurrent.ExecutionException.class,
-          () -> retirement.get(10, TimeUnit.SECONDS));
-
-      var failed =
-          assertThrows(
-              StatusRuntimeException.class, () -> fixture.documents().deleteByQuery(request));
-      var progress =
-          fixture
-              .documents()
-              .getDeleteByQueryResult(
-                  GetDeleteByQueryResultRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId(request.getRequestId())
-                      .build());
-
-      assertThat(failed.getStatus().getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
-      assertThat(progress.getComplete()).isTrue();
-      assertThat(progress.getDeletedCount()).isEqualTo(1);
-      assertThat(progress.getFailedCount()).isEqualTo(1);
-      assertThat(progress.getFailureMessage()).isNotEmpty();
-    } finally {
-      blocker.release();
+          java.io.IOException.class,
+          () -> new StandaloneRuntime(StandaloneConfig.development(data, 0)));
     }
   }
 
-  @Test
-  public void deleteByQuery_pendingQueryIndex_rejectsBeforeSourceChanges() throws Exception {
-    var snapshot = new SnapshotBlocker();
-    try (var fixture =
-        new Fixture(
-            StandaloneConfig.development(this.folder.getRoot().toPath(), 0),
-            unused -> {},
-            snapshot)) {
-      String collection = fixture.collection();
-      var live = fixture.index(collection);
-      fixture
-          .documents()
-          .upsert(
-              UpsertRequest.newBuilder()
-                  .setCollectionId(collection)
-                  .setRequestId("pending-seed")
-                  .addDocumentsBson(bson("{_id:'a',title:'keep'}"))
-                  .build());
-      snapshot.arm();
-      var building =
-          fixture
-              .catalog()
-              .createIndex(
-                  indexRequest(collection).toBuilder()
-                      .setRequestId("pending-query-index")
-                      .setName("building")
-                      .build());
-      snapshot.awaitEntered();
-
-      var denied =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .documents()
-                      .deleteByQuery(
-                          DeleteByQueryRequest.newBuilder()
-                              .setCollectionId(collection)
-                              .setRequestId("pending-query")
-                              .setIndexId(building.getIndexId())
-                              .setQueryBson(bson("{text:{path:'title',query:'keep'}}"))
-                              .build()));
-      snapshot.release();
-
-      assertThat(denied.getStatus().getCode()).isEqualTo(Status.Code.FAILED_PRECONDITION);
-      assertThat(results(fixture.search(live.getIndexId(), "{text:{path:'title',query:'keep'}}")))
-          .hasSize(1);
-    } finally {
-      snapshot.release();
-    }
-  }
-
-  private static org.bson.BsonArray results(QueryResponse response) {
-    return new org.bson.RawBsonDocument(response.getBatchBson().toByteArray()).getArray("results");
-  }
-
-  @Test
-  public void write_pausedTarget_keepsSingleRpcPendingUntilIndexed() throws Exception {
-    exerciseBlockingWrite(false);
-  }
-
-  @Test
-  public void writeBatch_pausedTarget_keepsBatchRpcPendingUntilIndexed() throws Exception {
-    exerciseBlockingWrite(true);
-  }
-
-  @Test
-  public void write_cancelledAfterAcceptance_recoversThroughGetWriteResultWithoutReapplying()
-      throws Exception {
-    var blocker = new ApplyBlocker();
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0), blocker)) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-      var request =
-          WriteRequest.newBuilder()
-              .setCollectionId(collection)
-              .setRequestId("cancelled")
-              .setMutation(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a'}"))
-              .build();
-      var pending =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .write(request);
-      blocker.awaitEntered();
-
-      pending.cancel(true);
-      blocker.release();
-      var recovered = fixture.writeResult(collection, "cancelled", true);
-      var retried = fixture.documents().write(request);
-
-      assertThat(recovered.getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-      assertThat(retried).isEqualTo(recovered);
-      assertThat(
-              fixture
-                  .catalog()
-                  .getCollection(
-                      GetCollectionRequest.newBuilder().setCollectionId(collection).build())
-                  .getAcceptedSequence())
-          .isEqualTo(1);
-    } finally {
-      blocker.release();
-    }
-  }
-
-  @Test
-  public void write_admissionFull_rejectsBeforeAcceptingAnotherSourceMutation() throws Exception {
-    var base = StandaloneConfig.development(this.folder.getRoot().toPath(), 0);
-    var config =
-        new StandaloneConfig(
-            base.dataPath(),
-            base.address(),
-            base.documentLimits(),
-            1,
-            base.maxInFlightBytes(),
-            base.maxLogBytes(),
-            base.minFreeDiskBytes(),
-            base.commitInterval(),
-            base.refreshInterval(),
-            base.retryRetention(),
-            base.maxRpcDuration(),
-            base.tls(),
-            base.principals());
-    var blocker = new ApplyBlocker();
-    try (var fixture = new Fixture(config, blocker)) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-      var pending =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS)
-              .write(
-                  WriteRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId("first")
-                      .setMutation(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a'}"))
-                      .build());
-      blocker.awaitEntered();
-
-      var rejected =
-          assertThrows(
-              StatusRuntimeException.class,
-              () ->
-                  fixture
-                      .documents()
-                      .write(
-                          WriteRequest.newBuilder()
-                              .setCollectionId(collection)
-                              .setRequestId("second")
-                              .setMutation(
-                                  mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'b'}"))
-                              .build()));
-
-      assertThat(rejected.getStatus().getCode()).isEqualTo(Status.Code.RESOURCE_EXHAUSTED);
-      assertThat(fixture.runtime.catalog().getCollection(collection).getAcceptedSequence())
-          .isEqualTo(1);
-      blocker.release();
-      assertThat(pending.get(10, TimeUnit.SECONDS).getComplete()).isTrue();
-    } finally {
-      blocker.release();
-    }
-  }
-
-  private void exerciseBlockingWrite(boolean batch) throws Exception {
-    var blocker = new ApplyBlocker();
-    try (var fixture =
-        new Fixture(StandaloneConfig.development(this.folder.getRoot().toPath(), 0), blocker)) {
-      String collection = fixture.collection();
-      fixture.index(collection);
-      var stub =
-          DocumentServiceGrpc.newFutureStub(fixture.channel)
-              .withDeadlineAfter(10, TimeUnit.SECONDS);
-      var pending =
-          batch
-              ? stub.writeBatch(
-                  WriteBatchRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId("wait")
-                      .addMutations(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a'}"))
-                      .addMutations(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'b'}"))
-                      .build())
-              : stub.write(
-                  WriteRequest.newBuilder()
-                      .setCollectionId(collection)
-                      .setRequestId("wait")
-                      .setMutation(mutation(MutationType.MUTATION_TYPE_INSERT, "{_id: 'a'}"))
-                      .build());
-      blocker.awaitEntered();
-      var accepted = fixture.writeResult(collection, "wait", false);
-
-      assertThat(pending.isDone()).isFalse();
-      assertThat(accepted.getResults(0).getState())
-          .isEqualTo(WriteItemState.WRITE_ITEM_STATE_PENDING_INDEXING);
-      assertThat(accepted.getResults(0).hasAcceptedSequence()).isTrue();
-
-      blocker.release();
-      var completed = pending.get(10, TimeUnit.SECONDS);
-
-      assertThat(completed.getComplete()).isTrue();
-      assertThat(
-              completed.getResultsList().stream()
-                  .map(result -> result.getState())
-                  .distinct()
-                  .toList())
-          .containsExactly(WriteItemState.WRITE_ITEM_STATE_INDEXED);
-    } finally {
-      blocker.release();
-    }
-  }
-
-  private static final class ApplyBlocker implements java.util.function.LongConsumer {
-    private final java.util.concurrent.CountDownLatch entered =
-        new java.util.concurrent.CountDownLatch(1);
-    private final java.util.concurrent.CountDownLatch released =
-        new java.util.concurrent.CountDownLatch(1);
-
-    @Override
-    public void accept(long sequence) {
-      this.entered.countDown();
-      try {
-        if (!this.released.await(10, TimeUnit.SECONDS)) {
-          throw new IllegalStateException("Test apply barrier timed out");
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IllegalStateException(e);
-      }
-    }
-
-    private void awaitEntered() throws Exception {
-      if (!this.entered.await(10, TimeUnit.SECONDS)) {
-        throw new AssertionError("Target never reached apply boundary");
-      }
-    }
-
-    private void release() {
-      this.released.countDown();
-    }
-  }
-
-  private static final class SnapshotBlocker implements Runnable {
-    private final ApplyBlocker barrier = new ApplyBlocker();
-    private volatile boolean armed;
-
-    private void arm() {
-      this.armed = true;
-    }
-
-    @Override
-    public void run() {
-      if (this.armed) {
-        this.barrier.accept(0);
-      }
-    }
-
-    private void awaitEntered() throws Exception {
-      this.barrier.awaitEntered();
-    }
-
-    private void release() {
-      this.barrier.release();
-    }
-  }
-
-  private static StandaloneConfig.Principal principal(
-      String name, String token, Set<StandaloneConfig.Role> roles) {
-    return new StandaloneConfig.Principal(
-        name,
-        LocalAuthoritativeCatalog.digest(token.getBytes(StandardCharsets.US_ASCII)),
-        roles,
-        Set.of("*"));
-  }
-
-  private static CreateIndexRequest indexRequest(String collection) {
-    return CreateIndexRequest.newBuilder()
-        .setRequestId("create")
-        .setCollectionId(collection)
-        .setName("text")
-        .setType(IndexType.INDEX_TYPE_SEARCH)
-        .setDefinitionBson(bson("{mappings: {dynamic: true}}"))
-        .build();
-  }
-
-  private static Mutation mutation(MutationType type, String json) {
-    return Mutation.newBuilder().setType(type).setBson(bson(json)).build();
+  private Path data() {
+    return this.folder.getRoot().toPath().resolve("data");
   }
 
   private static ByteString bson(String json) {
@@ -1843,208 +233,84 @@ public class StandaloneGrpcServerTest {
     private final StandaloneRuntime runtime;
     private final StandaloneGrpcServer server;
     private final ManagedChannel channel;
+    private final CatalogServiceGrpc.CatalogServiceBlockingStub catalog;
+    private final DocumentServiceGrpc.DocumentServiceBlockingStub docs;
+    private final QueryServiceGrpc.QueryServiceBlockingStub queries;
 
-    private Fixture(StandaloneConfig config) throws Exception {
-      this(config, unused -> {});
-    }
-
-    private Fixture(StandaloneConfig config, java.util.function.LongConsumer beforeApply)
-        throws Exception {
-      this(config, beforeApply, () -> {});
-    }
-
-    private Fixture(
-        StandaloneConfig config,
-        java.util.function.LongConsumer beforeApply,
-        Runnable beforeSnapshot)
-        throws Exception {
-      Similarity.load();
-      this.runtime = new StandaloneRuntime(config, beforeApply, beforeSnapshot);
+    private Fixture(Path data) throws Exception {
+      this.runtime = new StandaloneRuntime(StandaloneConfig.development(data, 0));
       this.server = new StandaloneGrpcServer(this.runtime).start();
-      var builder =
-          NettyChannelBuilder.forAddress(
-              config.address().getAddress().getHostAddress(), this.server.port());
-      if (config.tls().isPresent()) {
-        builder.sslContext(
-            GrpcSslContexts.forClient()
-                .sslProvider(io.netty.handler.ssl.SslProvider.JDK)
-                .trustManager(config.tls().get().certificate().toFile())
-                .build());
-      } else {
-        builder.usePlaintext();
-      }
-      this.channel = builder.build();
+      this.channel =
+          NettyChannelBuilder.forAddress("127.0.0.1", this.server.port()).usePlaintext().build();
+      this.catalog =
+          CatalogServiceGrpc.newBlockingStub(this.channel).withDeadlineAfter(45, TimeUnit.SECONDS);
+      this.docs =
+          DocumentServiceGrpc.newBlockingStub(this.channel).withDeadlineAfter(45, TimeUnit.SECONDS);
+      this.queries =
+          QueryServiceGrpc.newBlockingStub(this.channel).withDeadlineAfter(45, TimeUnit.SECONDS);
     }
 
-    private CatalogServiceGrpc.CatalogServiceBlockingStub catalog() {
-      return CatalogServiceGrpc.newBlockingStub(this.channel)
-          .withDeadlineAfter(10, TimeUnit.SECONDS);
+    private String create(String name) throws Exception {
+      String id =
+          this.catalog
+              .createIndex(
+                  CreateIndexRequest.newBuilder()
+                      .setName(name)
+                      .setType(IndexType.INDEX_TYPE_SEARCH)
+                      .setDefinitionBson(bson("{mappings:{dynamic:true}}"))
+                      .build())
+              .getIndexId();
+      ready(id, 1);
+      return id;
     }
 
-    private DocumentServiceGrpc.DocumentServiceBlockingStub documents() {
-      return DocumentServiceGrpc.newBlockingStub(this.channel)
-          .withDeadlineAfter(10, TimeUnit.SECONDS);
-    }
-
-    private QueryServiceGrpc.QueryServiceBlockingStub queries() {
-      return QueryServiceGrpc.newBlockingStub(this.channel).withDeadlineAfter(10, TimeUnit.SECONDS);
-    }
-
-    private QueryResponse search(String indexId, String expression) {
-      return queries()
-          .search(
-              QueryRequest.newBuilder().setIndexId(indexId).setQueryBson(bson(expression)).build());
-    }
-
-    private WriteResponse writeResult(String collection, String requestId, boolean complete)
-        throws Exception {
-      long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-      while (System.nanoTime() < until) {
-        var result =
-            documents()
-                .getWriteResult(
-                    GetWriteResultRequest.newBuilder()
-                        .setCollectionId(collection)
-                        .setRequestId(requestId)
-                        .build());
-        if (result.getResultsCount() > 0 && result.getComplete() == complete) {
-          return result;
-        }
-        Thread.sleep(10);
-      }
-      throw new AssertionError("Write result did not reach expected completion state");
-    }
-
-    private WriteResponse acceptedItems(String collection, String requestId, int count)
-        throws Exception {
-      long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-      while (System.nanoTime() < until) {
-        WriteResponse response;
-        try {
-          response =
-              documents()
-                  .getWriteResult(
-                      GetWriteResultRequest.newBuilder()
-                          .setCollectionId(collection)
-                          .setRequestId(requestId)
-                          .build());
-        } catch (StatusRuntimeException e) {
-          if (e.getStatus().getCode() != Status.Code.NOT_FOUND) {
-            throw e;
-          }
-          Thread.sleep(10);
-          continue;
-        }
-        if (response.getResultsCount() == count) {
-          return response;
-        }
-        Thread.sleep(10);
-      }
-      throw new AssertionError("Batch did not finish source acceptance");
-    }
-
-    private void awaitDeleteQueriesIdle() throws Exception {
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    private IndexDescription ready(String id, long revision) throws Exception {
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
       while (System.nanoTime() < deadline) {
-        var metric =
-            this.runtime.serviceStatus().getMetricsList().stream()
-                .filter(value -> value.getName().equals("standalone.delete_query.active"))
-                .findFirst()
-                .orElseThrow();
-        if (metric.getMeasurementsMap().values().stream().allMatch(value -> value == 0)) {
-          return;
-        }
-        Thread.sleep(10);
-      }
-      throw new AssertionError("Cancelled DeleteByQuery worker did not stop");
-    }
-
-    private IndexDescription indexFailure(String indexId) throws Exception {
-      long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-      while (System.nanoTime() < until) {
-        var index = catalog().getIndex(GetIndexRequest.newBuilder().setIndexId(indexId).build());
-        if (!index.getFailureMessage().isEmpty()) {
+        var index = this.catalog.getIndex(GetIndexRequest.newBuilder().setIndexId(id).build());
+        if (index.getLifecycleState().equals("READY") && index.getActiveRevision() == revision) {
           return index;
         }
-        Thread.sleep(10);
-      }
-      throw new AssertionError("Injected build failure was not reported");
-    }
-
-    private void managementFailure() throws Exception {
-      long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-      while (System.nanoTime() < until && this.runtime.managementReady()) {
-        Thread.sleep(10);
-      }
-      assertThat(this.runtime.managementReady()).isFalse();
-    }
-
-    private String collection() {
-      return catalog()
-          .createCollection(
-              CreateCollectionRequest.newBuilder()
-                  .setRequestId("collection")
-                  .setDatabase("database")
-                  .setName("collection")
-                  .build())
-          .getCollectionId();
-    }
-
-    private IndexDescription index(String collection) throws Exception {
-      return ready(catalog().createIndex(indexRequest(collection)).getIndexId());
-    }
-
-    private IndexDescription ready(String id) throws Exception {
-      return readyRevision(id, 1);
-    }
-
-    private IndexDescription ready(
-        CatalogServiceGrpc.CatalogServiceBlockingStub stub, String id, long revision)
-        throws Exception {
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-      while (System.nanoTime() < deadline) {
-        var status =
-            stub.withDeadlineAfter(5, TimeUnit.SECONDS)
-                .getIndex(GetIndexRequest.newBuilder().setIndexId(id).build());
-        if (status.getLifecycleState().equals("READY") && status.getActiveRevision() == revision) {
-          return status;
-        }
-        Thread.sleep(10);
+        Thread.sleep(20);
       }
       throw new AssertionError(
-          "Index did not reach READY: "
-              + stub.withDeadlineAfter(5, TimeUnit.SECONDS)
-                  .getIndex(GetIndexRequest.newBuilder().setIndexId(id).build()));
+          "Index never became ready: "
+              + this.catalog.getIndex(GetIndexRequest.newBuilder().setIndexId(id).build()));
     }
 
-    private IndexDescription readyRevision(String id, long revision) throws Exception {
-      return ready(catalog(), id, revision);
+    private void upsert(String id, String json) {
+      assertThat(
+              this.docs
+                  .upsert(
+                      UpsertRequest.newBuilder()
+                          .setIndexId(id)
+                          .addDocumentsBson(bson(json))
+                          .build())
+                  .getIndexedCount())
+          .isEqualTo(1);
     }
 
-    private void visible(IndexDescription index, long sequence) {
-      documents()
-          .awaitSequence(
-              AwaitSequenceRequest.newBuilder()
-                  .setIndexId(index.getIndexId())
-                  .setGenerationId(index.getLive().getGenerationId())
-                  .setSequence(sequence)
-                  .setCondition(SequenceCondition.SEQUENCE_CONDITION_VISIBLE)
-                  .build());
-    }
-
-    private Channel authenticated(String token) {
-      var headers = new Metadata();
-      headers.put(
-          Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Bearer " + token);
-      return io.grpc.ClientInterceptors.intercept(
-          this.channel, MetadataUtils.newAttachHeadersInterceptor(headers));
+    private BsonDocument results(String id, String term) {
+      return new RawBsonDocument(
+          this.queries
+              .search(
+                  QueryRequest.newBuilder()
+                      .setIndexId(id)
+                      .setQueryBson(bson("{text:{path:'title',query:'" + term + "'}}"))
+                      .build())
+              .getBatchBson()
+              .toByteArray());
     }
 
     @Override
     public void close() throws Exception {
-      this.channel.shutdownNow().awaitTermination(10, TimeUnit.SECONDS);
-      this.server.close();
-      this.runtime.close();
+      this.channel.shutdownNow();
+      this.channel.awaitTermination(5, TimeUnit.SECONDS);
+      try {
+        this.server.close();
+      } finally {
+        this.runtime.close();
+      }
     }
   }
 }

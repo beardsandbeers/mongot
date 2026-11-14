@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generated-stub example and bounded load client for a disposable standalone collection."""
+"""Generated-stub example and bounded load client for a disposable standalone index."""
 
 import argparse
 import concurrent.futures
@@ -51,17 +51,9 @@ def run(args):
         raise TimeoutError("Index did not become ready")
 
     try:
-        collection = catalog.CreateCollection(
-            api.CreateCollectionRequest(
-                request_id=run_id + "-collection", database="benchmark", name=run_id
-            ),
-            **options,
-        )
         index = catalog.CreateIndex(
             api.CreateIndexRequest(
-                request_id=run_id + "-index",
-                collection_id=collection.collection_id,
-                name="text",
+                name="text-" + run_id,
                 type=api.INDEX_TYPE_SEARCH,
                 definition_bson=bson.encode({"mappings": {"dynamic": True}}),
             ),
@@ -70,31 +62,25 @@ def run(args):
         index = ready(index.index_id)
 
         def write_batch(start):
-            request = api.WriteBatchRequest(
-                collection_id=collection.collection_id,
-                request_id=f"{run_id}-{start}",
-                mutations=[
-                    api.Mutation(
-                        type=api.MUTATION_TYPE_INSERT,
-                        bson=bson.encode(
-                            {
-                                "_id": str(i),
-                                "title": "capacityterm",
-                                "payload": "x" * args.payload_bytes,
-                            }
-                        ),
+            request = api.UpsertRequest(
+                index_id=index.index_id,
+                documents_bson=[
+                    bson.encode(
+                        {
+                            "_id": str(i),
+                            "title": "capacityterm",
+                            "payload": "x" * args.payload_bytes,
+                        }
                     )
                     for i in range(start, min(start + args.batch_size, args.documents))
                 ],
             )
             began = time.perf_counter()
-            response = documents.WriteBatch(request, **options)
+            response = documents.Upsert(request, **options)
             elapsed = (time.perf_counter() - began) * 1000
-            if not response.complete or any(
-                result.state != api.WRITE_ITEM_STATE_INDEXED for result in response.results
-            ):
-                raise RuntimeError(f"A batch did not finish indexing: {response}")
-            return elapsed, max(result.accepted_sequence for result in response.results)
+            if response.indexed_count != len(request.documents_bson):
+                raise RuntimeError(f"Wrong indexed count: {response}")
+            return elapsed
 
         began = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -114,16 +100,6 @@ def run(args):
                     if start is not None:
                         pending.add(pool.submit(write_batch, start))
         elapsed = time.perf_counter() - began
-        sequence = max(result[1] for result in results)
-        documents.AwaitSequence(
-            api.AwaitSequenceRequest(
-                index_id=index.index_id,
-                generation_id=index.live.generation_id,
-                sequence=sequence,
-                condition=api.SEQUENCE_CONDITION_VISIBLE,
-            ),
-            **options,
-        )
         response = queries.Search(
             api.QueryRequest(
                 index_id=index.index_id,
@@ -142,11 +118,10 @@ def run(args):
         if count != args.documents:
             raise RuntimeError(f"Expected {args.documents} searchable documents, found {count}")
         status = operations.GetStatus(api.GetStatusRequest(), **options)
-        latencies = [result[0] for result in results]
+        latencies = results
         print(
             json.dumps(
                 {
-                    "collection_id": collection.collection_id,
                     "index_id": index.index_id,
                     "documents": args.documents,
                     "batch_size": args.batch_size,
@@ -158,10 +133,6 @@ def run(args):
                         str(p): round(percentile(latencies, p / 100), 2) for p in (50, 95, 99)
                     },
                     "verified_search_results": count,
-                    "accepted_sequence": sequence,
-                    "logical_log_bytes": status.logical_log_bytes,
-                    "source_bytes": status.source_bytes,
-                    "sqlite_wal_bytes": status.sqlite_wal_bytes,
                     "free_disk_bytes": status.free_disk_bytes,
                 },
                 indent=2,

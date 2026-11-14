@@ -1,23 +1,14 @@
 package com.xgen.mongot.standalone.server;
 
-import com.xgen.mongot.standalone.grpc.AwaitSequenceRequest;
 import com.xgen.mongot.standalone.grpc.CatalogServiceGrpc;
-import com.xgen.mongot.standalone.grpc.CollectionDescription;
-import com.xgen.mongot.standalone.grpc.CreateCollectionRequest;
 import com.xgen.mongot.standalone.grpc.CreateIndexRequest;
-import com.xgen.mongot.standalone.grpc.DeleteByQueryRequest;
-import com.xgen.mongot.standalone.grpc.DeleteByQueryResult;
 import com.xgen.mongot.standalone.grpc.DeleteRequest;
 import com.xgen.mongot.standalone.grpc.DeleteResponse;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
-import com.xgen.mongot.standalone.grpc.GetCollectionRequest;
-import com.xgen.mongot.standalone.grpc.GetDeleteByQueryResultRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
 import com.xgen.mongot.standalone.grpc.GetStatusRequest;
-import com.xgen.mongot.standalone.grpc.GetWriteResultRequest;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
-import com.xgen.mongot.standalone.grpc.IndexWatermarks;
 import com.xgen.mongot.standalone.grpc.ListIndexesRequest;
 import com.xgen.mongot.standalone.grpc.ListIndexesResponse;
 import com.xgen.mongot.standalone.grpc.OperationsServiceGrpc;
@@ -26,10 +17,6 @@ import com.xgen.mongot.standalone.grpc.ServiceStatus;
 import com.xgen.mongot.standalone.grpc.UpdateIndexRequest;
 import com.xgen.mongot.standalone.grpc.UpsertRequest;
 import com.xgen.mongot.standalone.grpc.UpsertResponse;
-import com.xgen.mongot.standalone.grpc.WriteBatchRequest;
-import com.xgen.mongot.standalone.grpc.WriteRequest;
-import com.xgen.mongot.standalone.grpc.WriteResponse;
-import com.xgen.mongot.standalone.runtime.DocumentWriteCoordinator;
 import com.xgen.mongot.standalone.runtime.StandaloneRuntime;
 import io.grpc.Server;
 import io.grpc.ServerInterceptors;
@@ -47,12 +34,10 @@ import java.util.concurrent.TimeUnit;
 public final class StandaloneGrpcServer implements AutoCloseable {
   private final StandaloneRuntime runtime;
   private final RpcDispatcher dispatcher;
-  private final DocumentWriteCoordinator writes;
   private final ScheduledThreadPoolExecutor deadlines;
   private final HealthStatusManager health = new HealthStatusManager();
   private final Server server;
   private final StandaloneQueryService queries;
-  private final DocumentCommands commands;
 
   /**
    * Registers bounded standalone services and their transport security without starting listeners.
@@ -60,9 +45,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
   public StandaloneGrpcServer(StandaloneRuntime runtime) throws IOException {
     this.runtime = runtime;
     this.dispatcher = new RpcDispatcher(runtime.config(), runtime.metrics());
-    this.writes = new DocumentWriteCoordinator(runtime);
     this.queries = new StandaloneQueryService(runtime, this.dispatcher);
-    this.commands = new DocumentCommands(runtime, this.writes, this.queries);
     this.deadlines =
         new ScheduledThreadPoolExecutor(
             1, Thread.ofPlatform().name("standalone-deadlines").factory());
@@ -124,7 +107,6 @@ public final class StandaloneGrpcServer implements AutoCloseable {
       this.server.awaitTermination(10, TimeUnit.SECONDS);
     }
     this.dispatcher.close();
-    this.commands.close();
     this.queries.close();
     this.deadlines.shutdownNow();
     this.deadlines.awaitTermination(10, TimeUnit.SECONDS);
@@ -132,59 +114,18 @@ public final class StandaloneGrpcServer implements AutoCloseable {
 
   private final class Catalog extends CatalogServiceGrpc.CatalogServiceImplBase {
     @Override
-    public void createCollection(
-        CreateCollectionRequest request, StreamObserver<CollectionDescription> observer) {
-      StandaloneGrpcServer.this.dispatcher.unary(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection("*");
-            return StandaloneGrpcServer.this
-                .runtime
-                .ingestion()
-                .coordinate(
-                    () ->
-                        StandaloneGrpcServer.this
-                            .runtime
-                            .catalog()
-                            .createCollection(
-                                StandaloneAuthInterceptor.principal().name(), request));
-          });
-    }
-
-    @Override
-    public void getCollection(
-        GetCollectionRequest request, StreamObserver<CollectionDescription> observer) {
-      StandaloneGrpcServer.this.dispatcher.unary(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this
-                .runtime
-                .catalog()
-                .getCollection(request.getCollectionId());
-          });
-    }
-
-    @Override
     public void createIndex(CreateIndexRequest request, StreamObserver<IndexDescription> observer) {
       StandaloneGrpcServer.this.dispatcher.unary(
           request.getSerializedSize(),
           observer,
           () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
+            StandaloneAuthInterceptor.requireIndex("*");
             var result =
                 StandaloneGrpcServer.this
                     .runtime
                     .ingestion()
                     .coordinate(
-                        () ->
-                            StandaloneGrpcServer.this
-                                .runtime
-                                .catalog()
-                                .createIndex(
-                                    StandaloneAuthInterceptor.principal().name(), request));
+                        () -> StandaloneGrpcServer.this.runtime.catalog().createIndex(request));
             StandaloneGrpcServer.this.runtime.catalogChanged();
             return result;
           });
@@ -196,23 +137,14 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           request.getSerializedSize(),
           observer,
           () -> {
-            StandaloneAuthInterceptor.requireCollection(
-                StandaloneGrpcServer.this
-                    .runtime
-                    .catalog()
-                    .getIndex(request.getIndexId())
-                    .getCollectionId());
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
             var result =
                 StandaloneGrpcServer.this
                     .runtime
                     .ingestion()
                     .coordinate(
-                        () ->
-                            StandaloneGrpcServer.this
-                                .runtime
-                                .catalog()
-                                .updateIndex(
-                                    StandaloneAuthInterceptor.principal().name(), request));
+                        () -> StandaloneGrpcServer.this.runtime.catalog().updateIndex(request));
+            StandaloneGrpcServer.this.queries.indexDropped(request.getIndexId());
             StandaloneGrpcServer.this.runtime.catalogChanged();
             return result;
           });
@@ -224,22 +156,13 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           request.getSerializedSize(),
           observer,
           () -> {
-            StandaloneAuthInterceptor.requireCollection(
-                StandaloneGrpcServer.this
-                    .runtime
-                    .catalog()
-                    .getIndex(request.getIndexId())
-                    .getCollectionId());
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
             var result =
                 StandaloneGrpcServer.this
                     .runtime
                     .ingestion()
                     .coordinate(
-                        () ->
-                            StandaloneGrpcServer.this
-                                .runtime
-                                .catalog()
-                                .dropIndex(StandaloneAuthInterceptor.principal().name(), request));
+                        () -> StandaloneGrpcServer.this.runtime.catalog().dropIndex(request));
             StandaloneGrpcServer.this.queries.indexDropped(request.getIndexId());
             StandaloneGrpcServer.this.runtime.catalogChanged();
             return result;
@@ -252,9 +175,8 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           request.getSerializedSize(),
           observer,
           () -> {
-            var result = StandaloneGrpcServer.this.runtime.describeIndex(request.getIndexId());
-            StandaloneAuthInterceptor.requireCollection(result.getCollectionId());
-            return result;
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
+            return StandaloneGrpcServer.this.runtime.describeIndex(request.getIndexId());
           });
     }
 
@@ -265,17 +187,94 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           request.getSerializedSize(),
           observer,
           () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            var result = StandaloneGrpcServer.this.runtime.catalog().listIndexes(request);
-            return result.toBuilder()
-                .clearIndexes()
-                .addAllIndexes(
-                    result.getIndexesList().stream()
-                        .map(
-                            index ->
-                                StandaloneGrpcServer.this.runtime.describeIndex(index.getIndexId()))
-                        .toList())
-                .build();
+            var result = ListIndexesResponse.newBuilder();
+            for (var definition : StandaloneGrpcServer.this.runtime.catalog().definitions()) {
+              String id = definition.getIndexId().toHexString();
+              if (StandaloneAuthInterceptor.principal().allows(id)) {
+                result.addIndexes(StandaloneGrpcServer.this.runtime.describeIndex(id));
+              }
+            }
+            return result.build();
+          });
+    }
+  }
+
+  private final class Documents extends DocumentServiceGrpc.DocumentServiceImplBase {
+    @Override
+    public void upsert(UpsertRequest request, StreamObserver<UpsertResponse> observer) {
+      StandaloneGrpcServer.this.dispatcher.unary(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
+            return StandaloneGrpcServer.this
+                .runtime
+                .ingestion()
+                .coordinate(
+                    () -> {
+                      var index =
+                          StandaloneGrpcServer.this
+                              .runtime
+                              .catalog()
+                              .getIndex(request.getIndexId());
+                      StandaloneGrpcServer.this.runtime.checkWriteAdmission(
+                          request.getSerializedSize());
+                      String generation =
+                          StandaloneGrpcServer.this
+                              .runtime
+                              .ingestion()
+                              .write(
+                                  request.getIndexId(),
+                                  index.getDesiredRevision(),
+                                  request.getGenerationId(),
+                                  request.getDocumentsBsonList(),
+                                  false,
+                                  request.getWriteConcern());
+                      return UpsertResponse.newBuilder()
+                          .setIndexId(request.getIndexId())
+                          .setGenerationId(generation)
+                          .setIndexedCount(request.getDocumentsBsonCount())
+                          .build();
+                    });
+          });
+    }
+
+    @Override
+    public void delete(DeleteRequest request, StreamObserver<DeleteResponse> observer) {
+      StandaloneGrpcServer.this.dispatcher.unary(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
+            return StandaloneGrpcServer.this
+                .runtime
+                .ingestion()
+                .coordinate(
+                    () -> {
+                      var index =
+                          StandaloneGrpcServer.this
+                              .runtime
+                              .catalog()
+                              .getIndex(request.getIndexId());
+                      StandaloneGrpcServer.this.runtime.checkWriteAdmission(
+                          request.getSerializedSize());
+                      String generation =
+                          StandaloneGrpcServer.this
+                              .runtime
+                              .ingestion()
+                              .write(
+                                  request.getIndexId(),
+                                  index.getDesiredRevision(),
+                                  request.getGenerationId(),
+                                  request.getIdsBsonList(),
+                                  true,
+                                  request.getWriteConcern());
+                      return DeleteResponse.newBuilder()
+                          .setIndexId(request.getIndexId())
+                          .setGenerationId(generation)
+                          .setProcessedCount(request.getIdsBsonCount())
+                          .build();
+                    });
           });
     }
   }
@@ -287,132 +286,12 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           request.getSerializedSize(),
           observer,
           () -> {
-            StandaloneAuthInterceptor.requireCollection("*");
+            StandaloneAuthInterceptor.requireIndex("*");
             try {
               return StandaloneGrpcServer.this.runtime.serviceStatus();
             } catch (Exception e) {
-              throw io.grpc.Status.UNAVAILABLE
-                  .withDescription("Cannot read local operational status")
-                  .withCause(e)
-                  .asRuntimeException();
+              throw new java.util.concurrent.CompletionException(e);
             }
-          });
-    }
-  }
-
-  private final class Documents extends DocumentServiceGrpc.DocumentServiceImplBase {
-    @Override
-    public void upsert(UpsertRequest request, StreamObserver<UpsertResponse> observer) {
-      StandaloneGrpcServer.this.dispatcher.async(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.commands.upsert(
-                StandaloneAuthInterceptor.principal().name(), request);
-          });
-    }
-
-    @Override
-    public void delete(DeleteRequest request, StreamObserver<DeleteResponse> observer) {
-      StandaloneGrpcServer.this.dispatcher.async(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.commands.delete(
-                StandaloneAuthInterceptor.principal().name(), request);
-          });
-    }
-
-    @Override
-    public void deleteByQuery(
-        DeleteByQueryRequest request, StreamObserver<DeleteByQueryResult> observer) {
-      StandaloneGrpcServer.this.dispatcher.async(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.commands.deleteByQuery(
-                StandaloneAuthInterceptor.principal().name(), request);
-          });
-    }
-
-    @Override
-    public void getDeleteByQueryResult(
-        GetDeleteByQueryResultRequest request, StreamObserver<DeleteByQueryResult> observer) {
-      StandaloneGrpcServer.this.dispatcher.unary(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.commands.queryResult(
-                StandaloneAuthInterceptor.principal().name(),
-                request.getCollectionId(),
-                request.getRequestId());
-          });
-    }
-
-    @Override
-    public void write(WriteRequest request, StreamObserver<WriteResponse> observer) {
-      StandaloneGrpcServer.this.dispatcher.async(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.writes.write(
-                StandaloneAuthInterceptor.principal().name(), request);
-          });
-    }
-
-    @Override
-    public void writeBatch(WriteBatchRequest request, StreamObserver<WriteResponse> observer) {
-      StandaloneGrpcServer.this.dispatcher.async(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.writes.write(
-                StandaloneAuthInterceptor.principal().name(), request);
-          });
-    }
-
-    @Override
-    public void getWriteResult(
-        GetWriteResultRequest request, StreamObserver<WriteResponse> observer) {
-      StandaloneGrpcServer.this.dispatcher.unary(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(request.getCollectionId());
-            return StandaloneGrpcServer.this.writes.get(
-                StandaloneAuthInterceptor.principal().name(),
-                request.getCollectionId(),
-                request.getRequestId());
-          });
-    }
-
-    @Override
-    public void awaitSequence(
-        AwaitSequenceRequest request, StreamObserver<IndexWatermarks> observer) {
-      StandaloneGrpcServer.this.dispatcher.async(
-          request.getSerializedSize(),
-          observer,
-          () -> {
-            StandaloneAuthInterceptor.requireCollection(
-                StandaloneGrpcServer.this
-                    .runtime
-                    .catalog()
-                    .getIndex(request.getIndexId())
-                    .getCollectionId());
-            return StandaloneGrpcServer.this
-                .runtime
-                .ingestion()
-                .await(
-                    request.getIndexId(),
-                    request.getGenerationId(),
-                    request.getSequence(),
-                    request.getCondition());
           });
     }
   }

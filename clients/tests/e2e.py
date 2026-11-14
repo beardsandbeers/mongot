@@ -20,12 +20,11 @@ import tempfile
 import time
 import uuid
 from contextlib import ExitStack
-from datetime import datetime, timezone
 from pathlib import Path
 
 import bson
 import grpc
-from bson import Binary, Int64, ObjectId
+from bson import Int64
 from mongot_standalone import Client, api
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -187,7 +186,7 @@ class Server:
       - name: admin
         tokenFile: {json.dumps(str(token))}
         roles: [catalog, write, query]
-        collections: ['*']
+        indexes: ['*']
 """
         self.config = directory / "standalone.yaml"
         self.config.write_text(f"""mode: standalone
@@ -266,22 +265,6 @@ def ready(client, index_id, revision=1):
     raise TimeoutError(f"Index {index_id} did not reach revision {revision}")
 
 
-def await_sequence(client, index, sequence, condition="VISIBLE"):
-    response = client.call(
-        "AwaitSequence",
-        {
-            "indexId": index["indexId"],
-            "generationId": index["live"]["generationId"],
-            "sequence": str(sequence),
-            "condition": "SEQUENCE_CONDITION_" + condition,
-        },
-    )
-    check(
-        int(response.get(condition.lower() + "Sequence", 0)) >= sequence,
-        f"{condition} watermark did not reach {sequence}: {response}",
-    )
-
-
 def batch_results(response):
     return decoded(response["batchBson"])["results"]
 
@@ -307,244 +290,117 @@ def all_results(client, response):
 
 
 def ids(results):
-    return {row["_id"] for row in results}
-
-
-def indexed(response, count=1):
-    check(response.get("complete") is True, f"Write incomplete: {response}")
-    check(len(response["results"]) == count, f"Wrong mutation count: {response}")
-    for item in response["results"]:
-        check(
-            item["state"] == "WRITE_ITEM_STATE_INDEXED" and int(item.get("statusCode", 0)) == 0,
-            f"Mutation failed: {item}",
-        )
-        check("acceptedSequence" in item, f"Missing accepted sequence: {item}")
-    return max(int(item["acceptedSequence"]) for item in response["results"])
+    return {row["_id"] if "_id" in row else row["storedSource"]["_id"] for row in results}
 
 
 def exercise(client):
     checks = []
-    run_id = client.language + "-" + uuid.uuid4().hex
-    status = client.call("GetStatus")
-    check(status["managementReady"] and status["instanceId"], "Management not ready")
-    collection_request = {
-        "requestId": run_id + "-collection",
-        "database": "client_e2e",
-        "name": run_id,
-    }
-    collection = client.call("CreateCollection", collection_request)
-    collection_id = collection["collectionId"]
-    check(
-        client.call("CreateCollection", collection_request)["collectionId"] == collection_id,
-        "Collection retry changed identity",
-    )
-    check(
-        client.call("GetCollection", {"collectionId": collection_id})["name"] == run_id,
-        "Collection lookup mismatch",
-    )
-    checks.append("collection creation, lookup and idempotency")
-
-    def write(request_id, mutation_type, document):
-        return {
-            "collectionId": collection_id,
-            "requestId": run_id + "-" + request_id,
-            "mutation": {"type": "MUTATION_TYPE_" + mutation_type, "bson": encoded(document)},
-        }
-
-    seed = {
-        "_id": "a",
-        "title": "original",
-        "old": "obsolete",
-        "category": "rebuilt",
-        "embedding": [1.0, 0.0, 0.0],
-    }
-    client.call("Write", write("before-index", "INSERT", seed), error="FAILED_PRECONDITION")
-    bootstrap = client.call(
-        "CreateIndex",
-        {
-            "requestId": run_id + "-bootstrap",
-            "collectionId": collection_id,
-            "name": "ingest",
-            "type": "INDEX_TYPE_SEARCH",
-            "definitionBson": encoded({"mappings": {"dynamic": True}}),
-        },
-    )
-    ready(client, bootstrap["indexId"])
-    first_request = write("seed", "INSERT", seed)
-    first = client.call("Write", first_request)
-    sequence = indexed(first)
-    check(client.call("Write", first_request) == first, "Identical retry changed result")
-    check(
-        client.call(
-            "GetWriteResult",
-            {"collectionId": collection_id, "requestId": first_request["requestId"]},
-        )
-        == first,
-        "Retry ledger differs from write response",
-    )
-    conflict = write("seed", "UPSERT", seed)
-    client.call("Write", conflict, error="INVALID_ARGUMENT")
-    checks.append("single insert, retry ledger and request ID conflict")
-
-    text_definition = {"mappings": {"dynamic": True}, "storedSource": True}
-    create_request = {
-        "requestId": run_id + "-text",
-        "collectionId": collection_id,
-        "name": "text",
+    name = client.language + "-" + uuid.uuid4().hex
+    check(client.call("GetStatus")["managementReady"], "Management is not ready")
+    request = {
+        "name": name,
         "type": "INDEX_TYPE_SEARCH",
-        "definitionBson": encoded(text_definition),
+        "definitionBson": encoded({"mappings": {"dynamic": True}, "storedSource": True}),
     }
-    text = client.call("CreateIndex", create_request)
-    text_id = text["indexId"]
+    text = client.call("CreateIndex", request)
     check(
-        client.call("CreateIndex", create_request)["indexId"] == text_id,
-        "Index retry changed identity",
+        client.call("CreateIndex", request)["indexId"] == text["indexId"],
+        "Equivalent create changed identity",
     )
-    text = ready(client, text_id)
-    await_sequence(client, text, sequence)
+    text = ready(client, text["indexId"])
+    other = client.call("CreateIndex", dict(request, name=name + "-other"))
+    other = ready(client, other["indexId"])
+    docs = [{"_id": str(i), "title": "coffee", "amount": Int64(2**60 + 1)} for i in range(3)]
+    written = client.call(
+        "Upsert", {"indexId": text["indexId"], "documentsBson": [encoded(d) for d in docs]}
+    )
+    check(int(written["indexedCount"]) == 3, "Wrong indexed count")
     check(
-        ids(all_results(client, search(client, text, "original"))) == {"a"},
-        "Historical index missed source document",
+        ids(all_results(client, search(client, text, "coffee", stored=True, size=1)))
+        == {"0", "1", "2"},
+        "Wrong text results",
     )
-    checks.append("index creation, retry and historical backfill")
+    check(
+        not all_results(client, search(client, other, "coffee")), "Writes leaked into another index"
+    )
+    checks.append("direct text writes, cursor pagination, BSON preservation, index isolation")
+    response = search(client, text, "coffee", size=1)
+    cursor = response["cursorId"]
+    client.call("KillCursor", {"cursorId": str(cursor)})
+    client.call("GetMore", {"cursorId": str(cursor)}, error="NOT_FOUND")
     client.call(
-        "DropIndex",
+        "Delete",
         {
-            "requestId": run_id + "-drop-bootstrap",
-            "indexId": bootstrap["indexId"],
-            "expectedRevision": "1",
+            "indexId": text["indexId"],
+            "idsBson": [encoded({"_id": "1"}), encoded({"_id": "missing"})],
         },
     )
-
-    duplicate = client.call("Write", write("duplicate", "INSERT", seed))
-    check(
-        duplicate["results"][0]["state"] == "WRITE_ITEM_STATE_REJECTED"
-        and int(duplicate["results"][0]["statusCode"]) == 6,
-        "Strict INSERT did not reject a duplicate",
+    check(ids(all_results(client, search(client, text, "coffee"))) == {"0", "2"}, "Delete failed")
+    client.call(
+        "Upsert",
+        {"indexId": text["indexId"], "documentsBson": [encoded({"_id": "0", "title": "tea"})]},
     )
     check(
-        "acceptedSequence" not in duplicate["results"][0], "Rejected duplicate consumed a sequence"
+        ids(all_results(client, search(client, text, "coffee"))) == {"2"},
+        "Replacement retained old terms",
     )
-    rich = {
-        "_id": "c",
-        "title": "common",
-        "category": "rebuilt",
-        "embedding": [0.0, 1.0, 0.0],
-        "big": Int64(2**60 + 1),
-        "binary": Binary(b"\x00\xff\x01"),
-        "object": ObjectId(),
-        "date": datetime(2025, 1, 2, tzinfo=timezone.utc),
-        "nested": {"items": [1, True, None]},
-    }
-    documents = [
-        dict(seed, _id="b", title="common"),
-        rich,
-        dict(seed, _id="b", title="duplicate"),
-        {"title": "missingid"},
-        dict(seed, _id="d", title="common"),
-    ]
-    batch_request = {
-        "collectionId": collection_id,
-        "requestId": run_id + "-batch",
-        "mutations": [{"type": "MUTATION_TYPE_INSERT", "bson": encoded(doc)} for doc in documents],
-    }
-    batch = client.call("WriteBatch", batch_request)
-    check(batch["complete"] and len(batch["results"]) == 5, "Batch response incomplete")
+    client.call(
+        "Upsert",
+        {"indexId": text["indexId"], "documentsBson": [encoded({"missing": "id"})]},
+        error="INVALID_ARGUMENT",
+    )
+    listed = client.call("ListIndexes").get("indexes", [])
+    check(text["indexId"] in {i["indexId"] for i in listed}, "ListIndexes lost index")
+    checks.append("replacement and deletion semantics; invalid input; cursor release")
+    old_generation = text["generationId"]
+    client.call(
+        "UpdateIndex",
+        {
+            "indexId": text["indexId"],
+            "expectedRevision": "1",
+            "definitionBson": request["definitionBson"],
+        },
+    )
+    text = ready(client, text["indexId"], 2)
+    check(text["generationId"] != old_generation, "Mapping rebuild retained generation")
     check(
-        [int(item.get("ordinal", 0)) for item in batch["results"]] == list(range(5)),
-        "Batch reordered results",
+        not all_results(client, search(client, text, "coffee")),
+        "Mapping rebuild replayed old content",
     )
-    check(
-        [item["state"] for item in batch["results"]]
-        == [
-            "WRITE_ITEM_STATE_INDEXED",
-            "WRITE_ITEM_STATE_INDEXED",
-            "WRITE_ITEM_STATE_REJECTED",
-            "WRITE_ITEM_STATE_REJECTED",
-            "WRITE_ITEM_STATE_INDEXED",
-        ],
-        "Partial batch states wrong",
+    client.call(
+        "Upsert",
+        {
+            "indexId": text["indexId"],
+            "generationId": old_generation,
+            "documentsBson": [encoded(docs[0])],
+        },
+        error="FAILED_PRECONDITION",
     )
-    check(
-        [int(batch["results"][i]["statusCode"]) for i in (2, 3)] == [6, 3],
-        "Partial batch status codes wrong",
+    client.call(
+        "UpdateIndex",
+        {
+            "indexId": text["indexId"],
+            "expectedRevision": "1",
+            "definitionBson": request["definitionBson"],
+        },
+        error="ABORTED",
     )
-    check(
-        all("acceptedSequence" not in batch["results"][i] for i in (2, 3)),
-        "Rejected batch item consumed sequence",
+    client.call(
+        "Upsert",
+        {
+            "indexId": text["indexId"],
+            "documentsBson": [encoded(docs[0])],
+            "writeConcern": "DOCUMENT_WRITE_CONCERN_COMMITTED",
+        },
     )
-    check(
-        [int(batch["results"][i]["acceptedSequence"]) for i in (0, 1, 4)]
-        == [sequence + 1, sequence + 2, sequence + 3],
-        "Rejected items left a gap in collection sequencing",
+    client.call("Upsert", {"indexId": text["indexId"], "documentsBson": [encoded(docs[0])]})
+    checks.append(
+        "schema update starts empty; explicit reingestion; revision and generation fences"
     )
-    sequence = max(int(item.get("acceptedSequence", 0)) for item in batch["results"])
-    check(client.call("WriteBatch", batch_request) == batch, "Batch retry changed outcomes")
-    await_sequence(client, text, sequence, "APPLIED")
-    await_sequence(client, text, sequence, "COMMITTED")
-    await_sequence(client, text, sequence)
-    response = search(client, text, "common", stored=True, size=1)
-    check(int(response.get("cursorId", 0)) != 0, "Search did not create a cursor")
-    rows = all_results(client, response)
-    check(
-        {r["storedSource"]["_id"] for r in rows} == {"b", "c", "d"},
-        "Cursor omitted or duplicated documents",
-    )
-    returned = next(r["storedSource"] for r in rows if r["storedSource"]["_id"] == "c")
-    check(
-        bson.encode(returned) == bson.encode(rich), "BSON stored source changed bytes/types/order"
-    )
-    abandoned = search(client, text, "common", size=1)
-    cursor = str(abandoned["cursorId"])
-    client.call("KillCursor", {"cursorId": cursor})
-    client.call("GetMore", {"cursorId": cursor}, error="NOT_FOUND")
-    checks.append("ordered partial batches, strict INSERT and BSON fidelity")
-    checks.append("APPLIED/COMMITTED/VISIBLE watermarks, cursor paging and kill")
-
-    replacement = {
-        "_id": "a",
-        "title": "changed",
-        "category": "rebuilt",
-        "embedding": [1.0, 0.0, 0.0],
-    }
-    sequence = indexed(client.call("Write", write("replace", "UPSERT", replacement)))
-    await_sequence(client, text, sequence)
-    check(
-        not all_results(client, search(client, text, "original")),
-        "UPSERT retained old indexed value",
-    )
-    check(
-        ids(all_results(client, search(client, text, "obsolete", path="old"))) == {"b", "d"},
-        "UPSERT retained omitted field",
-    )
-    row = all_results(client, search(client, text, "changed", stored=True))[0]["storedSource"]
-    check(row == replacement, "UPSERT did not replace the full stored source")
-    new = dict(replacement, _id="e", title="common")
-    sequence = indexed(client.call("Write", write("new-upsert", "UPSERT", new)))
-    sequence = indexed(client.call("Write", write("delete", "DELETE", {"_id": "b"})))
-    sequence = indexed(client.call("Write", write("delete-missing", "DELETE", {"_id": "b"})))
-    await_sequence(client, text, sequence)
-    check(
-        ids(all_results(client, search(client, text, "common"))) == {"c", "d", "e"},
-        "Delete/upsert search results wrong",
-    )
-    invalid_delete = client.call(
-        "Write",
-        write("invalid-delete", "DELETE", {"_id": "c", "extra": True}),
-    )
-    check(
-        invalid_delete["results"][0]["state"] == "WRITE_ITEM_STATE_REJECTED"
-        and int(invalid_delete["results"][0]["statusCode"]) == 3,
-        "DELETE with extra fields was not rejected",
-    )
-    checks.append("full replacement UPSERT, create-by-UPSERT and idempotent DELETE")
-
     vector = client.call(
         "CreateIndex",
         {
-            "requestId": run_id + "-vector",
-            "collectionId": collection_id,
-            "name": "vector",
+            "name": name + "-vectors",
             "type": "INDEX_TYPE_VECTOR_SEARCH",
             "definitionBson": encoded(
                 {
@@ -561,446 +417,75 @@ def exercise(client):
         },
     )
     vector = ready(client, vector["indexId"])
-    await_sequence(client, vector, sequence)
-    nearest = client.call(
-        "VectorSearch",
+    client.call(
+        "Upsert",
         {
             "indexId": vector["indexId"],
-            "batchSize": 100,
-            "queryBson": encoded(
-                {"path": "embedding", "queryVector": [0.0, 1.0, 0.0], "exact": True, "limit": 1}
-            ),
+            "documentsBson": [encoded({"_id": "near", "embedding": [1.0, 0.0, 0.0]})],
+            "writeConcern": "DOCUMENT_WRITE_CONCERN_COMMITTED",
         },
     )
-    check(ids(all_results(client, nearest)) == {"c"}, "Vector nearest neighbor wrong")
-
-    def nearest_ids(target, *, limit=1, index_id=None):
-        response = client.call(
-            "VectorSearch",
-            {
-                "indexId": index_id or vector["indexId"],
-                "queryBson": encoded(
-                    {"path": "embedding", "queryVector": target, "exact": True, "limit": limit}
-                ),
-            },
-        )
-        return ids(all_results(client, response))
-
-    changed = dict(new, title="fanout", embedding=[0.0, 0.0, 1.0])
-    sequence = indexed(client.call("Write", write("vector-replace", "UPSERT", changed)))
-    await_sequence(client, text, sequence)
-    await_sequence(client, vector, sequence)
-    check(
-        ids(all_results(client, search(client, text, "fanout"))) == {"e"},
-        "Write did not fan out to the text index",
-    )
-    check(nearest_ids([0.0, 0.0, 1.0]) == {"e"}, "Vector UPSERT did not replace embedding")
-    sequence = indexed(client.call("Write", write("vector-delete", "DELETE", {"_id": "e"})))
-    await_sequence(client, text, sequence)
-    await_sequence(client, vector, sequence)
-    check(not all_results(client, search(client, text, "fanout")), "Text DELETE did not fan out")
-    check(
-        nearest_ids([0.0, 0.0, 1.0], limit=10) == {"a", "c", "d"},
-        "Vector DELETE did not remove embedding",
-    )
-    sequence = indexed(client.call("Write", write("vector-restore", "UPSERT", new)))
-    await_sequence(client, text, sequence)
-    await_sequence(client, vector, sequence)
-    checks.append("document replacement/deletion fan out to text and vector indexes")
-
-    previous_vector_generation = vector["live"]["generationId"]
-    vector_definition = {
-        "fields": [
-            {"type": "vector", "path": "embedding", "numDimensions": 3, "similarity": "euclidean"}
-        ]
-    }
+    # The visible concern explicitly refreshes after a committed write.
     client.call(
-        "UpdateIndex",
+        "Upsert",
         {
-            "requestId": run_id + "-vector-update",
             "indexId": vector["indexId"],
-            "expectedRevision": "1",
-            "definitionBson": encoded(vector_definition),
+            "documentsBson": [encoded({"_id": "near", "embedding": [1.0, 0.0, 0.0]})],
         },
     )
-    vector = ready(client, vector["indexId"], 2)
-    check(
-        vector["live"]["generationId"] != previous_vector_generation,
-        "Vector definition update did not replace generation",
-    )
-    await_sequence(client, vector, sequence)
-    check(nearest_ids([0.0, 1.0, 0.0]) == {"c"}, "Updated vector index lost source vectors")
-    dropped_vector_id = vector["indexId"]
-    client.call(
-        "DropIndex",
-        {
-            "requestId": run_id + "-vector-drop",
-            "indexId": dropped_vector_id,
-            "expectedRevision": "2",
-        },
-    )
-    client.call(
-        "VectorSearch",
-        {
-            "indexId": dropped_vector_id,
-            "queryBson": encoded(
-                {
-                    "path": "embedding",
-                    "queryVector": [0.0, 1.0, 0.0],
-                    "exact": True,
-                    "limit": 1,
-                }
-            ),
-        },
-        error="NOT_FOUND",
-    )
-    vector = client.call(
-        "CreateIndex",
-        {
-            "requestId": run_id + "-vector-recreate",
-            "collectionId": collection_id,
-            "name": "vector",
-            "type": "INDEX_TYPE_VECTOR_SEARCH",
-            "definitionBson": encoded(vector_definition),
-        },
-    )
-    check(vector["indexId"] != dropped_vector_id, "Recreated vector reused dropped ID")
-    vector = ready(client, vector["indexId"])
-    await_sequence(client, vector, sequence)
-    check(nearest_ids([0.0, 1.0, 0.0]) == {"c"}, "Recreated vector index lost source vectors")
-    checks.append("vector definition replacement, drop and name recreation")
-    listed = []
-    token = ""
-    while True:
-        page = client.call(
-            "ListIndexes", {"collectionId": collection_id, "pageSize": 1, "pageToken": token}
-        )
-        listed.extend(item["indexId"] for item in page.get("indexes", []))
-        token = page.get("nextPageToken", "")
-        if not token:
-            break
-    check(
-        len(listed) == 2 and set(listed) == {text_id, vector["indexId"]}, "Index pagination wrong"
-    )
-    checks.append("vector index backfill, nearest neighbor and catalog pagination")
-
-    old_generation = text["live"]["generationId"]
-    update_request = {
-        "requestId": run_id + "-update",
-        "indexId": text_id,
-        "expectedRevision": "1",
-        "definitionBson": encoded(
-            {
-                "mappings": {"dynamic": False, "fields": {"category": {"type": "string"}}},
-                "storedSource": True,
-            }
+    vector_query = {
+        "indexId": vector["indexId"],
+        "queryBson": encoded(
+            {"path": "embedding", "queryVector": [1.0, 0.0, 0.0], "exact": True, "limit": 1}
         ),
     }
-    updated = client.call("UpdateIndex", update_request)
-    check(int(updated["desiredRevision"]) == 2, "Update did not advance revision")
     check(
-        int(client.call("UpdateIndex", update_request)["desiredRevision"]) == 2,
-        "Update retry advanced twice",
+        ids(all_results(client, client.call("VectorSearch", vector_query))) == {"near"},
+        "Vector ingestion failed",
     )
-    stale = dict(update_request, requestId=run_id + "-stale")
-    client.call("UpdateIndex", stale, error="ABORTED")
-    text = ready(client, text_id, 2)
-    check(
-        text["live"]["generationId"] != old_generation, "Mapping update did not replace generation"
-    )
-    await_sequence(client, text, sequence)
-    check(
-        ids(all_results(client, search(client, text, "rebuilt", path="category")))
-        == {"a", "c", "d", "e"},
-        "Mapping rebuild lost documents or restored deletion",
-    )
-    check(
-        not all_results(client, search(client, text, "common")),
-        "Replacement mapping still indexed excluded field",
-    )
-    client.call(
-        "Search",
-        {
-            "indexId": text_id,
-            "generationId": old_generation,
-            "queryBson": encoded({"text": {"path": "category", "query": "rebuilt"}}),
-        },
-        error="FAILED_PRECONDITION",
-    )
-    checks.append("mapping replacement, revision CAS/retry and generation fencing")
-
-    drop_cursor = search(client, text, "rebuilt", path="category", size=1)
-    drop_request = {"requestId": run_id + "-drop", "indexId": text_id, "expectedRevision": "2"}
-    client.call(
-        "DropIndex",
-        dict(drop_request, requestId=run_id + "-stale-drop", expectedRevision="1"),
-        error="ABORTED",
-    )
-    dropped = client.call("DropIndex", drop_request)
-    check(dropped["lifecycleState"] == "DROPPED", "Drop did not tombstone index")
-    check(
-        client.call("DropIndex", drop_request)["lifecycleState"] == "DROPPED",
-        "Drop retry changed state",
-    )
-    check(
-        client.call("GetIndex", {"indexId": text_id})["lifecycleState"] == "DROPPED",
-        "Dropped index lookup wrong",
-    )
-    client.call("GetMore", {"cursorId": str(drop_cursor["cursorId"])}, error="NOT_FOUND")
-    client.call(
-        "Search",
-        {"indexId": text_id, "queryBson": encoded({"text": {"path": "title", "query": "common"}})},
-        error="NOT_FOUND",
-    )
-    check(
-        [
-            i["indexId"]
-            for i in client.call("ListIndexes", {"collectionId": collection_id}).get("indexes", [])
-        ]
-        == [vector["indexId"]],
-        "Dropped index remained listed",
-    )
-    recreated = client.call("CreateIndex", dict(create_request, requestId=run_id + "-recreate"))
-    check(recreated["indexId"] != text_id, "Recreated name reused dropped ID")
-    recreated = ready(client, recreated["indexId"])
-    await_sequence(client, recreated, sequence)
-    check(
-        ids(all_results(client, search(client, recreated, "common"))) == {"c", "d", "e"},
-        "Drop/recreate lost source or restored deleted document",
-    )
-    check(
-        int(client.call("GetCollection", {"collectionId": collection_id})["acceptedSequence"])
-        == sequence,
-        "Collection watermark wrong",
-    )
-    exercise_document_commands(client, recreated["indexId"])
-    check(client.called == RPC_NAMES, f"Untested RPCs: {RPC_NAMES - client.called}")
-    checks.append("drop, stale revision rejection, cursor invalidation and name recreation")
+    client.call("DropIndex", {"indexId": other["indexId"], "expectedRevision": "1"})
+    client.call("GetIndex", {"indexId": other["indexId"]}, error="NOT_FOUND")
+    check(client.called == RPC_NAMES, f"Missing RPC coverage: {RPC_NAMES - client.called}")
+    checks.append("vector writes and queries; index drop; every RPC")
     return {
         "language": client.language,
-        "collectionId": collection_id,
-        "text": recreated,
+        "text": text,
         "vector": vector,
-        "sequence": sequence,
-        "retryRequest": batch_request,
-        "retryResponse": batch,
-        "instanceId": status["instanceId"],
+        "vectorQuery": vector_query,
         "checks": checks,
         "rpcs": sorted(client.called),
     }
 
 
-def exercise_document_commands(client, other_index_id):
-    run_id = "commands-" + client.language + "-" + uuid.uuid4().hex
-    collection = client.call(
-        "CreateCollection", {"requestId": run_id, "database": "commands", "name": run_id}
-    )["collectionId"]
-    index = client.call(
-        "CreateIndex",
-        {
-            "requestId": run_id + "-index",
-            "collectionId": collection,
-            "name": "text",
-            "type": "INDEX_TYPE_SEARCH",
-            "definitionBson": encoded({"mappings": {"dynamic": True}}),
-        },
-    )
-    index = ready(client, index["indexId"])
-    oid = ObjectId()
-    documents = [
-        {"_id": "a", "title": "remove"},
-        {"_id": "b", "title": "remove"},
-        {"_id": "keep", "title": "keep"},
-        {"_id": oid, "title": "remove"},
-        {"_id": 7, "title": "remove"},
-        {"_id": Int64(7), "title": "keep"},
-    ]
-    upsert = {
-        "collectionId": collection,
-        "requestId": run_id + "-upsert",
-        "documentsBson": [encoded(document) for document in documents],
-    }
-    inserted = client.call("Upsert", upsert)
-    check(int(inserted["upsertedCount"]) == 6, "Upsert did not report all documents")
-    check(client.call("Upsert", upsert) == inserted, "Upsert retry changed result")
-    check(
-        len(all_results(client, search(client, index, "remove"))) == 4,
-        "Upsert default concern did not provide reader visibility",
-    )
-    delete = {
-        "collectionId": collection,
-        "requestId": run_id + "-delete",
-        "ids": [
-            {"stringValue": "a"},
-            {"objectId": str(oid)},
-            {"int32Value": 7},
-            {"stringValue": "absent"},
-        ],
-    }
-    deleted = client.call("Delete", delete)
-    check(int(deleted["deletedCount"]) == 3, "Delete count included an absent ID")
-    check(
-        client.call("Delete", delete) == deleted, "Delete retry did not preserve its original count"
-    )
-    check(
-        ids(all_results(client, search(client, index, "remove"))) == {"b"},
-        "Typed deletion removed the wrong documents",
-    )
-    keep = all_results(client, search(client, index, "keep"))
-    check(
-        len(keep) == 2 and any(isinstance(row["_id"], Int64) for row in keep),
-        "int32 deletion also deleted the int64 ID",
-    )
-    client.call(
-        "Upsert",
-        {
-            "collectionId": collection,
-            "requestId": run_id + "-more",
-            "documentsBson": [
-                encoded({"_id": "b", "title": "remove", "changed": True}),
-                encoded({"_id": "d", "title": "remove"}),
-                encoded({"_id": "e", "title": "remove"}),
-            ],
-        },
-    )
-    query = {
-        "collectionId": collection,
-        "requestId": run_id + "-query",
-        "indexId": index["indexId"],
-        "queryBson": encoded({"text": {"path": "title", "query": "remove"}}),
-        "batchSize": 1,
-    }
-    result = client.call("DeleteByQuery", query)
-    check(
-        result["complete"]
-        and result["selectionComplete"]
-        and int(result["matchedCount"]) == 3
-        and int(result["deletedCount"]) == 3
-        and int(result.get("conflictCount", 0)) == 0,
-        "DeleteByQuery did not complete its full cursor selection",
-    )
-    check(
-        not all_results(client, search(client, index, "remove")),
-        "DeleteByQuery default concern was not visible",
-    )
-    client.call(
-        "Upsert",
-        {
-            "collectionId": collection,
-            "requestId": run_id + "-late",
-            "documentsBson": [encoded({"_id": "late", "title": "remove"})],
-        },
-    )
-    check(
-        client.call("DeleteByQuery", query) == result,
-        "DeleteByQuery retry changed its frozen selection",
-    )
-    check(
-        client.call(
-            "GetDeleteByQueryResult", {"collectionId": collection, "requestId": query["requestId"]}
-        )
-        == result,
-        "DeleteByQuery result lookup differs from its durable outcome",
-    )
-    check(
-        ids(all_results(client, search(client, index, "remove"))) == {"late"},
-        "Query retry deleted a newly matching document",
-    )
-    client.call(
-        "DeleteByQuery",
-        dict(query, queryBson=encoded({"text": {"path": "title", "query": "keep"}})),
-        error="INVALID_ARGUMENT",
-    )
-    client.call(
-        "GetWriteResult",
-        {"collectionId": collection, "requestId": query["requestId"]},
-        error="FAILED_PRECONDITION",
-    )
-    client.call(
-        "Delete",
-        {"collectionId": collection, "requestId": run_id + "-bad-id", "ids": [{}]},
-        error="INVALID_ARGUMENT",
-    )
-    client.call(
-        "DeleteByQuery",
-        dict(query, requestId=run_id + "-wrong-collection", indexId=other_index_id),
-        error="INVALID_ARGUMENT",
-    )
-    partial = {
-        "collectionId": collection,
-        "requestId": run_id + "-partial",
-        "documentsBson": [
-            encoded({"_id": "valid", "title": "keep"}),
-            encoded({"title": "missingid"}),
-        ],
-    }
-    client.call("Upsert", partial, error="INVALID_ARGUMENT")
-    outcomes = client.call(
-        "GetWriteResult", {"collectionId": collection, "requestId": partial["requestId"]}
-    )
-    check(
-        outcomes["complete"]
-        and [item["state"] for item in outcomes["results"]]
-        == ["WRITE_ITEM_STATE_INDEXED", "WRITE_ITEM_STATE_REJECTED"],
-        "Partial command outcomes were lost",
-    )
-
-
 def verify_restart(client, state):
+    text = ready(client, state["text"]["indexId"], 2)
+    check(text["generationId"] == state["text"]["generationId"], "Restart changed generation")
+    response = all_results(client, search(client, text, "coffee", stored=True))
+    check(ids(response) == {"0"}, "Committed text disappeared after restart")
+    check(response[0]["storedSource"]["amount"] == Int64(2**60 + 1), "BSON type/value changed")
+    ready(client, state["vector"]["indexId"])
     check(
-        client.call("GetStatus")["instanceId"] == state["instanceId"], "Restart changed instance ID"
+        ids(all_results(client, client.call("VectorSearch", state["vectorQuery"]))) == {"near"},
+        "Committed vectors disappeared",
     )
-    text = ready(client, state["text"]["indexId"])
-    await_sequence(client, text, state["sequence"])
-    check(
-        ids(all_results(client, search(client, text, "common"))) == {"c", "d", "e"},
-        "Restart lost source/index data",
-    )
-    check(
-        client.call("WriteBatch", state["retryRequest"]) == state["retryResponse"],
-        "Restart lost retry ledger",
-    )
-    vector = ready(client, state["vector"]["indexId"])
-    await_sequence(client, vector, state["sequence"])
-    result = client.call(
-        "VectorSearch",
-        {
-            "indexId": vector["indexId"],
-            "queryBson": encoded(
-                {"path": "embedding", "queryVector": [0.0, 1.0, 0.0], "exact": True, "limit": 1}
-            ),
-        },
-    )
-    check(ids(all_results(client, result)) == {"c"}, "Restart changed vector result")
-    state["checks"].append("process restart preserves identity, source, indexes and retry outcomes")
+    state["checks"].append("crash restart preserves committed Lucene content and index definitions")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument(
-        "--launcher",
-        help="Path to packaged mongot-standalone; runs isolated state and verifies restart",
-    )
-    source.add_argument(
-        "--address", help="Existing disposable server; uses MONGOT_CA/MONGOT_TOKEN_FILE; no restart"
-    )
+    source.add_argument("--launcher")
+    source.add_argument("--address")
     parser.add_argument(
         "--languages",
         nargs="+",
         choices=["python", "java", "node", "rust"],
         default=["python", "java", "node", "rust"],
     )
-    parser.add_argument(
-        "--plaintext",
-        action="store_true",
-        help="Use plaintext for the isolated server (default TLS/auth)",
-    )
-    parser.add_argument("--output", type=Path, default=Path("/tmp/mongot-client-e2e-results.json"))
+    parser.add_argument("--plaintext", action="store_true")
+    parser.add_argument("--output", type=Path, default=Path("/tmp/mongot-push-e2e.json"))
     args = parser.parse_args()
-    if args.address and args.plaintext:
-        parser.error("--plaintext applies only to --launcher")
-    directory = Path(tempfile.mkdtemp(prefix="mongot-client-e2e-"))
+    directory = Path(tempfile.mkdtemp(prefix="mongot-push-e2e-"))
     print(f"Logs and isolated state: {directory}", flush=True)
     report = {
         "schemaSha256": hashlib.sha256(PROTO.read_bytes()).hexdigest(),
@@ -1022,42 +507,85 @@ def main():
             for language in args.languages:
                 with Driver(language, environment, directory) as client:
                     state = exercise(client)
-                if server and environment.get("MONGOT_CA"):
-                    wrong_token = directory / "wrong.token"
-                    wrong_token.write_text(secrets.token_hex(32))
-                    wrong_token.chmod(0o600)
+                if environment.get("MONGOT_CA"):
+                    token = directory / "wrong.token"
+                    token.write_text(secrets.token_hex(32))
                     with Driver(
-                        language, dict(environment, MONGOT_TOKEN_FILE=str(wrong_token)), directory
+                        language, dict(environment, MONGOT_TOKEN_FILE=str(token)), directory
                     ) as client:
                         client.call("GetStatus", error="UNAUTHENTICATED")
-                    state["checks"].append("TLS bearer authentication rejects an invalid token")
-                with Driver(language, dict(environment, MONGOT_TIMEOUT="1"), directory) as client:
-                    client.call(
-                        "AwaitSequence",
-                        {
-                            "indexId": state["text"]["indexId"],
-                            "generationId": state["text"]["live"]["generationId"],
-                            "sequence": str(state["sequence"] + 1000),
-                            "condition": "SEQUENCE_CONDITION_VISIBLE",
-                        },
-                        error="DEADLINE_EXCEEDED",
-                    )
-                state["checks"].append("per-call deadline bounds a blocked sequence wait")
+                    state["checks"].append("TLS bearer authentication rejects invalid tokens")
                 states.append(state)
-                report["results"].append(
-                    {k: state[k] for k in ("language", "collectionId", "checks", "rpcs")}
-                )
-                print(
-                    f"{language}: all {len(RPC_NAMES)} RPCs and {len(state['checks'])} behavior checks passed",
-                    flush=True,
-                )
+                report["results"].append(state)
+                print(f"{language}: all {len(RPC_NAMES)} RPCs passed", flush=True)
             if server:
-                server.stop()
+                # A hard kill proves COMMITTED data survives without any source replay path.
+                server.process.kill()
+                server.process.wait(timeout=15)
+                server.log.close()
+                reader_token = directory / "reader.token"
+                if environment.get("MONGOT_CA"):
+                    reader_token.write_text(secrets.token_hex(32))
+                    yaml = server.config.read_text()
+                    yaml = yaml.replace(
+                        "        indexes: ['*']",
+                        "        indexes: ['*']\n"
+                        + "      - name: reader\n"
+                        + f"        tokenFile: {json.dumps(str(reader_token))}\n"
+                        + "        roles: [query]\n"
+                        + f"        indexes: ['{states[0]['text']['indexId']}']",
+                    )
+                    server.config.write_text(yaml)
                 server.start()
                 for state in states:
                     with Driver(state["language"], environment, directory) as client:
                         verify_restart(client, state)
-                    print(f"{state['language']}: restart verification passed", flush=True)
+                    print(f"{state['language']}: crash restart passed", flush=True)
+                if environment.get("MONGOT_CA"):
+                    for language in args.languages:
+                        with Driver(
+                            language,
+                            dict(environment, MONGOT_TOKEN_FILE=str(reader_token)),
+                            directory,
+                        ) as reader:
+                            check(
+                                ids(
+                                    all_results(reader, search(reader, states[0]["text"], "coffee"))
+                                )
+                                == {"0"},
+                                "Reader cannot query its granted index",
+                            )
+                            reader.call(
+                                "Search",
+                                {
+                                    "indexId": states[0]["vector"]["indexId"],
+                                    "queryBson": encoded(
+                                        {"text": {"path": "title", "query": "coffee"}}
+                                    ),
+                                },
+                                error="PERMISSION_DENIED",
+                            )
+                            reader.call(
+                                "Upsert",
+                                {
+                                    "indexId": states[0]["text"]["indexId"],
+                                    "documentsBson": [encoded({"_id": "no-write"})],
+                                },
+                                error="PERMISSION_DENIED",
+                            )
+                            reader.call("GetStatus", error="PERMISSION_DENIED")
+                data = directory / "data"
+                check(not (data / "standalone.sqlite").exists(), "Unexpected source database")
+                allowed = {
+                    "standalone.lock",
+                    "indexes.json",
+                    "configJournal.json",
+                    "dynamicFeatureFlags.json",
+                }
+                check(
+                    {p.name for p in data.iterdir() if p.is_file()} <= allowed,
+                    "Unexpected content sidecar",
+                )
             report["passed"] = True
     except BaseException as error:
         report["error"] = f"{type(error).__name__}: {error}"

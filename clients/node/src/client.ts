@@ -2,18 +2,12 @@ import type { UpsertRequest } from './generated/mongot/standalone/v1/UpsertReque
 import type { UpsertResponse__Output } from './generated/mongot/standalone/v1/UpsertResponse';
 import type { DeleteRequest } from './generated/mongot/standalone/v1/DeleteRequest';
 import type { DeleteResponse__Output } from './generated/mongot/standalone/v1/DeleteResponse';
-import type { DeleteByQueryRequest } from './generated/mongot/standalone/v1/DeleteByQueryRequest';
-import type { DeleteByQueryResult__Output } from './generated/mongot/standalone/v1/DeleteByQueryResult';
-import type { GetDeleteByQueryResultRequest } from './generated/mongot/standalone/v1/GetDeleteByQueryResultRequest';
 import * as grpc from '@grpc/grpc-js';
 import * as loader from '@grpc/proto-loader';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serialize, deserialize, Document } from 'bson';
 import type { ProtoGrpcType } from './generated/standalone';
-import type { CreateCollectionRequest } from './generated/mongot/standalone/v1/CreateCollectionRequest';
-import type { CollectionDescription__Output } from './generated/mongot/standalone/v1/CollectionDescription';
-import type { GetCollectionRequest } from './generated/mongot/standalone/v1/GetCollectionRequest';
 import type { CreateIndexRequest } from './generated/mongot/standalone/v1/CreateIndexRequest';
 import type { IndexDescription__Output } from './generated/mongot/standalone/v1/IndexDescription';
 import type { UpdateIndexRequest } from './generated/mongot/standalone/v1/UpdateIndexRequest';
@@ -21,12 +15,6 @@ import type { DropIndexRequest } from './generated/mongot/standalone/v1/DropInde
 import type { GetIndexRequest } from './generated/mongot/standalone/v1/GetIndexRequest';
 import type { ListIndexesRequest } from './generated/mongot/standalone/v1/ListIndexesRequest';
 import type { ListIndexesResponse__Output } from './generated/mongot/standalone/v1/ListIndexesResponse';
-import type { WriteRequest } from './generated/mongot/standalone/v1/WriteRequest';
-import type { WriteResponse__Output } from './generated/mongot/standalone/v1/WriteResponse';
-import type { WriteBatchRequest } from './generated/mongot/standalone/v1/WriteBatchRequest';
-import type { GetWriteResultRequest } from './generated/mongot/standalone/v1/GetWriteResultRequest';
-import type { AwaitSequenceRequest } from './generated/mongot/standalone/v1/AwaitSequenceRequest';
-import type { IndexWatermarks__Output } from './generated/mongot/standalone/v1/IndexWatermarks';
 import type { GetStatusRequest } from './generated/mongot/standalone/v1/GetStatusRequest';
 import type { ServiceStatus__Output } from './generated/mongot/standalone/v1/ServiceStatus';
 import type { QueryRequest } from './generated/mongot/standalone/v1/QueryRequest';
@@ -68,12 +56,6 @@ export class StandaloneClient {
       if (error) reject(error); else if (value === undefined) reject(new Error('Missing gRPC response')); else resolve(value);
     }));
   }
-  createCollection(request: CreateCollectionRequest): Promise<CollectionDescription__Output> {
-    return this.call((metadata, options, callback) => this.catalog.createCollection(request, metadata, options, callback));
-  }
-  getCollection(request: GetCollectionRequest): Promise<CollectionDescription__Output> {
-    return this.call((metadata, options, callback) => this.catalog.getCollection(request, metadata, options, callback));
-  }
   createIndex(request: CreateIndexRequest): Promise<IndexDescription__Output> {
     return this.call((metadata, options, callback) => this.catalog.createIndex(request, metadata, options, callback));
   }
@@ -88,18 +70,6 @@ export class StandaloneClient {
   }
   listIndexes(request: ListIndexesRequest): Promise<ListIndexesResponse__Output> {
     return this.call((metadata, options, callback) => this.catalog.listIndexes(request, metadata, options, callback));
-  }
-  write(request: WriteRequest): Promise<WriteResponse__Output> {
-    return this.call((metadata, options, callback) => this.documents.write(request, metadata, options, callback));
-  }
-  writeBatch(request: WriteBatchRequest): Promise<WriteResponse__Output> {
-    return this.call((metadata, options, callback) => this.documents.writeBatch(request, metadata, options, callback));
-  }
-  getWriteResult(request: GetWriteResultRequest): Promise<WriteResponse__Output> {
-    return this.call((metadata, options, callback) => this.documents.getWriteResult(request, metadata, options, callback));
-  }
-  awaitSequence(request: AwaitSequenceRequest): Promise<IndexWatermarks__Output> {
-    return this.call((metadata, options, callback) => this.documents.awaitSequence(request, metadata, options, callback));
   }
   getStatus(request: GetStatusRequest): Promise<ServiceStatus__Output> {
     return this.call((metadata, options, callback) => this.operations.getStatus(request, metadata, options, callback));
@@ -121,11 +91,5 @@ export class StandaloneClient {
   }
   delete(request: DeleteRequest): Promise<DeleteResponse__Output> {
     return this.call((metadata, options, callback) => this.documents.delete(request, metadata, options, callback));
-  }
-  deleteByQuery(request: DeleteByQueryRequest): Promise<DeleteByQueryResult__Output> {
-    return this.call((metadata, options, callback) => this.documents.deleteByQuery(request, metadata, options, callback));
-  }
-  getDeleteByQueryResult(request: GetDeleteByQueryResultRequest): Promise<DeleteByQueryResult__Output> {
-    return this.call((metadata, options, callback) => this.documents.getDeleteByQueryResult(request, metadata, options, callback));
   }
 }

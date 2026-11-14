@@ -29,7 +29,6 @@ class StagedIndexesSwapper {
       throws IOException, Invariants.InvariantException {
     List<IndexGeneration> swapIn =
         configState.staged.getIndexes().stream()
-            .filter(staged -> configState.canSwapGeneration(staged.getGenerationId()))
             .filter(
                 staged -> {
                   // select serviceable staged indexes
@@ -111,20 +110,13 @@ class StagedIndexesSwapper {
     // Live indexes from the catalog we intend to swap out
     List<IndexGeneration> swapOut = correspondingIndexesInCatalog(configState, swapIn);
 
-    if (swap(configState, swapIn, swapOut)) {
-      updateCounters(swapIn, swapOut, metricsFactory);
-    }
+    swap(configState, swapIn, swapOut);
+    updateCounters(swapIn, swapOut, metricsFactory);
   }
 
-  static boolean swap(
+  static void swap(
       ConfigState configState, List<IndexGeneration> swapIn, List<IndexGeneration> swapOut)
       throws IOException, Invariants.InvariantException {
-    // Also guard direct callers, including startup format upgrades. An incomplete API snapshot
-    // must never be promoted just because the old generation is failed or unsupported.
-    if (swapIn.stream()
-        .anyMatch(index -> !configState.canSwapGeneration(index.getGenerationId()))) {
-      return false;
-    }
     List<GenerationId> swapOutIds = IndexDefinitions.indexesGenerationIds(swapOut);
     List<GenerationId> swapInIds = IndexDefinitions.indexesGenerationIds(swapIn);
     logIds(swapInIds, swapOutIds);
@@ -152,7 +144,6 @@ class StagedIndexesSwapper {
     swapIn.forEach(configState.staged::removeIndex);
 
     // configState is now consistent with the journal written above.
-    return true;
   }
 
   private static List<IndexGeneration> correspondingIndexesInCatalog(

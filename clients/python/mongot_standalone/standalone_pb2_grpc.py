@@ -26,7 +26,9 @@ if _version_not_supported:
 
 
 class CatalogServiceStub:
-    """Missing associated documentation comment in .proto file."""
+    """Push mode manages indexes only. Mapping updates replace an index with an empty generation;
+    callers must reingest their source content. There is no source document store or replay log.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -34,16 +36,6 @@ class CatalogServiceStub:
         Args:
             channel: A grpc.Channel.
         """
-        self.CreateCollection = channel.unary_unary(
-                '/mongot.standalone.v1.CatalogService/CreateCollection',
-                request_serializer=standalone__pb2.CreateCollectionRequest.SerializeToString,
-                response_deserializer=standalone__pb2.CollectionDescription.FromString,
-                _registered_method=True)
-        self.GetCollection = channel.unary_unary(
-                '/mongot.standalone.v1.CatalogService/GetCollection',
-                request_serializer=standalone__pb2.GetCollectionRequest.SerializeToString,
-                response_deserializer=standalone__pb2.CollectionDescription.FromString,
-                _registered_method=True)
         self.CreateIndex = channel.unary_unary(
                 '/mongot.standalone.v1.CatalogService/CreateIndex',
                 request_serializer=standalone__pb2.CreateIndexRequest.SerializeToString,
@@ -72,19 +64,9 @@ class CatalogServiceStub:
 
 
 class CatalogServiceServicer:
-    """Missing associated documentation comment in .proto file."""
-
-    def CreateCollection(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetCollection(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+    """Push mode manages indexes only. Mapping updates replace an index with an empty generation;
+    callers must reingest their source content. There is no source document store or replay log.
+    """
 
     def CreateIndex(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -119,16 +101,6 @@ class CatalogServiceServicer:
 
 def add_CatalogServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'CreateCollection': grpc.unary_unary_rpc_method_handler(
-                    servicer.CreateCollection,
-                    request_deserializer=standalone__pb2.CreateCollectionRequest.FromString,
-                    response_serializer=standalone__pb2.CollectionDescription.SerializeToString,
-            ),
-            'GetCollection': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetCollection,
-                    request_deserializer=standalone__pb2.GetCollectionRequest.FromString,
-                    response_serializer=standalone__pb2.CollectionDescription.SerializeToString,
-            ),
             'CreateIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateIndex,
                     request_deserializer=standalone__pb2.CreateIndexRequest.FromString,
@@ -163,61 +135,9 @@ def add_CatalogServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class CatalogService:
-    """Missing associated documentation comment in .proto file."""
-
-    @staticmethod
-    def CreateCollection(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.CatalogService/CreateCollection',
-            standalone__pb2.CreateCollectionRequest.SerializeToString,
-            standalone__pb2.CollectionDescription.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetCollection(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.CatalogService/GetCollection',
-            standalone__pb2.GetCollectionRequest.SerializeToString,
-            standalone__pb2.CollectionDescription.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
+    """Push mode manages indexes only. Mapping updates replace an index with an empty generation;
+    callers must reingest their source content. There is no source document store or replay log.
+    """
 
     @staticmethod
     def CreateIndex(request,
@@ -374,86 +294,18 @@ class DocumentServiceStub:
                 request_serializer=standalone__pb2.DeleteRequest.SerializeToString,
                 response_deserializer=standalone__pb2.DeleteResponse.FromString,
                 _registered_method=True)
-        self.DeleteByQuery = channel.unary_unary(
-                '/mongot.standalone.v1.DocumentService/DeleteByQuery',
-                request_serializer=standalone__pb2.DeleteByQueryRequest.SerializeToString,
-                response_deserializer=standalone__pb2.DeleteByQueryResult.FromString,
-                _registered_method=True)
-        self.GetDeleteByQueryResult = channel.unary_unary(
-                '/mongot.standalone.v1.DocumentService/GetDeleteByQueryResult',
-                request_serializer=standalone__pb2.GetDeleteByQueryResultRequest.SerializeToString,
-                response_deserializer=standalone__pb2.DeleteByQueryResult.FromString,
-                _registered_method=True)
-        self.Write = channel.unary_unary(
-                '/mongot.standalone.v1.DocumentService/Write',
-                request_serializer=standalone__pb2.WriteRequest.SerializeToString,
-                response_deserializer=standalone__pb2.WriteResponse.FromString,
-                _registered_method=True)
-        self.WriteBatch = channel.unary_unary(
-                '/mongot.standalone.v1.DocumentService/WriteBatch',
-                request_serializer=standalone__pb2.WriteBatchRequest.SerializeToString,
-                response_deserializer=standalone__pb2.WriteResponse.FromString,
-                _registered_method=True)
-        self.GetWriteResult = channel.unary_unary(
-                '/mongot.standalone.v1.DocumentService/GetWriteResult',
-                request_serializer=standalone__pb2.GetWriteResultRequest.SerializeToString,
-                response_deserializer=standalone__pb2.WriteResponse.FromString,
-                _registered_method=True)
-        self.AwaitSequence = channel.unary_unary(
-                '/mongot.standalone.v1.DocumentService/AwaitSequence',
-                request_serializer=standalone__pb2.AwaitSequenceRequest.SerializeToString,
-                response_deserializer=standalone__pb2.IndexWatermarks.FromString,
-                _registered_method=True)
 
 
 class DocumentServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def Upsert(self, request, context):
-        """Document-oriented commands. Transport OK means every item completed at the requested concern.
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Delete(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def DeleteByQuery(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetDeleteByQueryResult(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def Write(self, request, context):
-        """Legacy mutation API, retained for mixed-operation batches and backwards compatibility.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def WriteBatch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetWriteResult(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def AwaitSequence(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -471,36 +323,6 @@ def add_DocumentServiceServicer_to_server(servicer, server):
                     servicer.Delete,
                     request_deserializer=standalone__pb2.DeleteRequest.FromString,
                     response_serializer=standalone__pb2.DeleteResponse.SerializeToString,
-            ),
-            'DeleteByQuery': grpc.unary_unary_rpc_method_handler(
-                    servicer.DeleteByQuery,
-                    request_deserializer=standalone__pb2.DeleteByQueryRequest.FromString,
-                    response_serializer=standalone__pb2.DeleteByQueryResult.SerializeToString,
-            ),
-            'GetDeleteByQueryResult': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetDeleteByQueryResult,
-                    request_deserializer=standalone__pb2.GetDeleteByQueryResultRequest.FromString,
-                    response_serializer=standalone__pb2.DeleteByQueryResult.SerializeToString,
-            ),
-            'Write': grpc.unary_unary_rpc_method_handler(
-                    servicer.Write,
-                    request_deserializer=standalone__pb2.WriteRequest.FromString,
-                    response_serializer=standalone__pb2.WriteResponse.SerializeToString,
-            ),
-            'WriteBatch': grpc.unary_unary_rpc_method_handler(
-                    servicer.WriteBatch,
-                    request_deserializer=standalone__pb2.WriteBatchRequest.FromString,
-                    response_serializer=standalone__pb2.WriteResponse.SerializeToString,
-            ),
-            'GetWriteResult': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetWriteResult,
-                    request_deserializer=standalone__pb2.GetWriteResultRequest.FromString,
-                    response_serializer=standalone__pb2.WriteResponse.SerializeToString,
-            ),
-            'AwaitSequence': grpc.unary_unary_rpc_method_handler(
-                    servicer.AwaitSequence,
-                    request_deserializer=standalone__pb2.AwaitSequenceRequest.FromString,
-                    response_serializer=standalone__pb2.IndexWatermarks.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -567,172 +389,9 @@ class DocumentService:
             metadata,
             _registered_method=True)
 
-    @staticmethod
-    def DeleteByQuery(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.DocumentService/DeleteByQuery',
-            standalone__pb2.DeleteByQueryRequest.SerializeToString,
-            standalone__pb2.DeleteByQueryResult.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetDeleteByQueryResult(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.DocumentService/GetDeleteByQueryResult',
-            standalone__pb2.GetDeleteByQueryResultRequest.SerializeToString,
-            standalone__pb2.DeleteByQueryResult.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def Write(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.DocumentService/Write',
-            standalone__pb2.WriteRequest.SerializeToString,
-            standalone__pb2.WriteResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def WriteBatch(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.DocumentService/WriteBatch',
-            standalone__pb2.WriteBatchRequest.SerializeToString,
-            standalone__pb2.WriteResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetWriteResult(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.DocumentService/GetWriteResult',
-            standalone__pb2.GetWriteResultRequest.SerializeToString,
-            standalone__pb2.WriteResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def AwaitSequence(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/mongot.standalone.v1.DocumentService/AwaitSequence',
-            standalone__pb2.AwaitSequenceRequest.SerializeToString,
-            standalone__pb2.IndexWatermarks.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
 
 class OperationsServiceStub:
-    """Instance-wide operations require the catalog role and a wildcard collection grant.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -748,8 +407,7 @@ class OperationsServiceStub:
 
 
 class OperationsServiceServicer:
-    """Instance-wide operations require the catalog role and a wildcard collection grant.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def GetStatus(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -774,8 +432,7 @@ def add_OperationsServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class OperationsService:
-    """Instance-wide operations require the catalog role and a wildcard collection grant.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def GetStatus(request,
@@ -806,9 +463,7 @@ class OperationsService:
 
 
 class QueryServiceStub:
-    """BSON search/vector expressions are executed by mongot's ordinary readers and cursor manager.
-    Results contain IDs/scores, or the configured stored source when returnStoredSource is true.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -839,9 +494,7 @@ class QueryServiceStub:
 
 
 class QueryServiceServicer:
-    """BSON search/vector expressions are executed by mongot's ordinary readers and cursor manager.
-    Results contain IDs/scores, or the configured stored source when returnStoredSource is true.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def Search(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -899,9 +552,7 @@ def add_QueryServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class QueryService:
-    """BSON search/vector expressions are executed by mongot's ordinary readers and cursor manager.
-    Results contain IDs/scores, or the configured stored source when returnStoredSource is true.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def Search(request,

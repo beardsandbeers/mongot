@@ -42,14 +42,12 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
 
   private static final class Lease {
     private final String principal;
-    private final String collection;
     private final String index;
     private final String generation;
     private volatile long lastAccess = System.nanoTime();
 
-    private Lease(String principal, String collection, String index, String generation) {
+    private Lease(String principal, String index, String generation) {
       this.principal = principal;
-      this.collection = collection;
       this.index = index;
       this.generation = generation;
     }
@@ -83,7 +81,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
 
   QueryResponse query(QueryRequest request, boolean vector) {
     var desired = this.runtime.catalog().getIndex(request.getIndexId());
-    StandaloneAuthInterceptor.requireCollection(desired.getCollectionId());
+    StandaloneAuthInterceptor.requireIndex(desired.getIndexId());
     if (desired.getLifecycleState().equals("DROPPED")) {
       throw Status.NOT_FOUND.withDescription("Index was dropped").asRuntimeException();
     }
@@ -175,10 +173,7 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
         this.leases.put(
             cursorId,
             new Lease(
-                StandaloneAuthInterceptor.principal().name(),
-                desired.getCollectionId(),
-                desired.getIndexId(),
-                generationId));
+                StandaloneAuthInterceptor.principal().name(), desired.getIndexId(), generationId));
         response.setCursorId(cursorId);
         retained = true;
       }
@@ -255,17 +250,19 @@ final class StandaloneQueryService extends QueryServiceGrpc.QueryServiceImplBase
     var lease = this.leases.get(id);
     if (lease == null
         || !lease.principal.equals(StandaloneAuthInterceptor.principal().name())
-        || !StandaloneAuthInterceptor.principal().allows(lease.collection)) {
+        || !StandaloneAuthInterceptor.principal().allows(lease.index)) {
       throw Status.NOT_FOUND
           .withDescription("Cursor does not exist for this principal")
           .asRuntimeException();
     }
     synchronized (lease) {
       // A search already in progress can register its cursor after drop's invalidation pass.
-      // Consult the durable tombstone so that such a cursor cannot serve another batch.
-      if (this.runtime.catalog().getIndex(lease.index).getLifecycleState().equals("DROPPED")) {
+      // Consult the index catalog so that such a cursor cannot serve another batch.
+      try {
+        this.runtime.catalog().getIndex(lease.index);
+      } catch (io.grpc.StatusRuntimeException e) {
         release(id, lease);
-        throw Status.NOT_FOUND.withDescription("Cursor index was dropped").asRuntimeException();
+        throw e;
       }
     }
     return lease;

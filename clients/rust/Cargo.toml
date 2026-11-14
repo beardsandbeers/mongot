@@ -1,11 +1,11 @@
 [package]
 name = "mongot-standalone-client"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Typed BSON/gRPC client for standalone mongot"
 license = "SSPL-1.0"
 readme = "README.md"
-repository = "https://github.com/beardsandbeers/mongot"
+repository = "https://github.com/beardsandbeers/nomongo-t"
 include = ["src/**", "proto/**", "build.rs", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "rustfmt.toml"]
 
 [dependencies]

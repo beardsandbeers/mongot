@@ -40,17 +40,11 @@ async fn dispatch(client: &mut Client, line: &str) -> Result<Value, Box<dyn std:
         }
     }; }
     match call["method"].as_str().unwrap_or("") {
-        "CreateCollection" => invoke!(create_collection),
-        "GetCollection" => invoke!(get_collection),
         "CreateIndex" => invoke!(create_index),
         "UpdateIndex" => invoke!(update_index),
         "DropIndex" => invoke!(drop_index),
         "GetIndex" => invoke!(get_index),
         "ListIndexes" => invoke!(list_indexes),
-        "Write" => invoke!(write),
-        "WriteBatch" => invoke!(write_batch),
-        "GetWriteResult" => invoke!(get_write_result),
-        "AwaitSequence" => invoke!(await_sequence),
         "GetStatus" => invoke!(get_status),
         "Search" => invoke!(search),
         "VectorSearch" => invoke!(vector_search),
@@ -58,8 +52,6 @@ async fn dispatch(client: &mut Client, line: &str) -> Result<Value, Box<dyn std:
         "KillCursor" => invoke!(kill_cursor),
         "Upsert" => invoke!(upsert),
         "Delete" => invoke!(delete),
-        "DeleteByQuery" => invoke!(delete_by_query),
-        "GetDeleteByQueryResult" => invoke!(get_delete_by_query_result),
         _ => Err("Unknown method".into()),
     }
 }
