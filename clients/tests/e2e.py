@@ -725,6 +725,9 @@ def main():
                                 error="PERMISSION_DENIED",
                             )
                             scoped.call("GetStatus", error="PERMISSION_DENIED")
+                # Catalog/journal writes atomically replace files via transient siblings. Inspect
+                # the persistent inventory only after the background reconciler has stopped.
+                server.stop()
                 data = directory / "data"
                 check(not (data / "standalone.sqlite").exists(), "Unexpected source database")
                 allowed = {
@@ -733,10 +736,8 @@ def main():
                     "configJournal.json",
                     "dynamicFeatureFlags.json",
                 }
-                check(
-                    {p.name for p in data.iterdir() if p.is_file()} <= allowed,
-                    "Unexpected content sidecar",
-                )
+                inventory = {p.name for p in data.iterdir() if p.is_file()}
+                check(inventory <= allowed, f"Unexpected content sidecar: {inventory - allowed}")
             report["passed"] = True
     except BaseException as error:
         report["error"] = f"{type(error).__name__}: {error}"
