@@ -10,6 +10,7 @@ const methods: Record<string, keyof StandaloneClient> = {
   UpdateIndex: 'updateIndex',
   DropIndex: 'dropIndex',
   GetIndex: 'getIndex',
+  GetIndexMappings: 'getIndexMappings',
   ListIndexes: 'listIndexes',
   GetStatus: 'getStatus',
   Search: 'search',

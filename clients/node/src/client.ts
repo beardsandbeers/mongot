@@ -13,6 +13,8 @@ import type { IndexDescription__Output } from './generated/mongot/standalone/v1/
 import type { UpdateIndexRequest } from './generated/mongot/standalone/v1/UpdateIndexRequest';
 import type { DropIndexRequest } from './generated/mongot/standalone/v1/DropIndexRequest';
 import type { GetIndexRequest } from './generated/mongot/standalone/v1/GetIndexRequest';
+import type { GetIndexMappingsRequest } from './generated/mongot/standalone/v1/GetIndexMappingsRequest';
+import type { GetIndexMappingsResponse__Output } from './generated/mongot/standalone/v1/GetIndexMappingsResponse';
 import type { ListIndexesRequest } from './generated/mongot/standalone/v1/ListIndexesRequest';
 import type { ListIndexesResponse__Output } from './generated/mongot/standalone/v1/ListIndexesResponse';
 import type { GetStatusRequest } from './generated/mongot/standalone/v1/GetStatusRequest';
@@ -67,6 +69,9 @@ export class StandaloneClient {
   }
   getIndex(request: GetIndexRequest): Promise<IndexDescription__Output> {
     return this.call((metadata, options, callback) => this.catalog.getIndex(request, metadata, options, callback));
+  }
+  getIndexMappings(request: GetIndexMappingsRequest): Promise<GetIndexMappingsResponse__Output> {
+    return this.call((metadata, options, callback) => this.catalog.getIndexMappings(request, metadata, options, callback));
   }
   listIndexes(request: ListIndexesRequest): Promise<ListIndexesResponse__Output> {
     return this.call((metadata, options, callback) => this.catalog.listIndexes(request, metadata, options, callback));

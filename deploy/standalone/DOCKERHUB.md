@@ -1,12 +1,16 @@
 # Running the push-mode container
 
-Release 0.3.0 is available as `mybyte/nomongo-t:0.3.0` (Linux amd64). The `latest`,
-`mongot-standalone`, and `mongot-standalone-v0.3.0` tags point to this release. Prefer a versioned
+Release 0.4.0 is available as `mybyte/nomongo-t:0.4.0` (Linux amd64). The `latest`,
+`mongot-standalone`, and `mongot-standalone-v0.4.0` tags point to this release. Prefer a versioned
 tag for reproducible upgrades.
+
+Version 0.4.0 adds `GetIndexMappings`: export a dynamic indexing run as a reusable static mapping,
+including mixed field types and configured analyzers. Matching Python, Rust, Java, and TypeScript
+clients are available; see the [client guide](https://github.com/beardsandbeers/nomongo-t/blob/standalone-v0.4.0/clients/README.md).
 
 ```sh
 docker run -d --name mongot -p 127.0.0.1:27029:27029 \
-  -v nomongo-t-push_state:/var/lib/mongot mybyte/nomongo-t:0.3.0
+  -v nomongo-t-push_state:/var/lib/mongot mybyte/nomongo-t:0.4.0
 docker exec mongot mongotctl status
 ```
 
@@ -36,7 +40,8 @@ Only Lucene content and index metadata persist. Stop the container before copyin
 volume for backup. Do not run two containers against the same state directory.
 
 Published `mybyte/nomongo-t:0.2.0` images use the older collection-backed implementation and
-protocol. Use matching 0.3.x clients and start with a new state volume. Recreate mappings and reingest your own source content. No automatic legacy data migration
+protocol. Use matching clients and start with a new state volume. Recreate mappings and reingest
+your own source content. No automatic legacy data migration
 or deletion is performed.
 
 For a faster build after `make build.deploy.standalone`, use `make build.docker.standalone.local`.

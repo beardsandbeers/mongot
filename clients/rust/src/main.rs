@@ -44,6 +44,7 @@ async fn dispatch(client: &mut Client, line: &str) -> Result<Value, Box<dyn std:
         "UpdateIndex" => invoke!(update_index),
         "DropIndex" => invoke!(drop_index),
         "GetIndex" => invoke!(get_index),
+        "GetIndexMappings" => invoke!(get_index_mappings),
         "ListIndexes" => invoke!(list_indexes),
         "GetStatus" => invoke!(get_status),
         "Search" => invoke!(search),

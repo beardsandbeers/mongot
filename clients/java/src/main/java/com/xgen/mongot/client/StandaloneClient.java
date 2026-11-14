@@ -80,6 +80,10 @@ public final class StandaloneClient implements AutoCloseable {
     return catalog.withDeadlineAfter(timeoutNanos, TimeUnit.NANOSECONDS).getIndex(request);
   }
 
+  public GetIndexMappingsResponse getIndexMappings(GetIndexMappingsRequest request) {
+    return catalog.withDeadlineAfter(timeoutNanos, TimeUnit.NANOSECONDS).getIndexMappings(request);
+  }
+
   public ListIndexesResponse listIndexes(ListIndexesRequest request) {
     return catalog.withDeadlineAfter(timeoutNanos, TimeUnit.NANOSECONDS).listIndexes(request);
   }

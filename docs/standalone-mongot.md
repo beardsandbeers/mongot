@@ -95,7 +95,7 @@ The authoritative [protobuf schema](../src/proto/standalone/v1/standalone.proto)
 
 | Service | Operations |
 | --- | --- |
-| CatalogService | CreateIndex, GetIndex, ListIndexes, UpdateIndex, DropIndex |
+| CatalogService | CreateIndex, GetIndex, GetIndexMappings, ListIndexes, UpdateIndex, DropIndex |
 | DocumentService | Upsert, Delete |
 | QueryService | Search, VectorSearch, GetMore, KillCursor |
 | OperationsService | GetStatus |
@@ -106,6 +106,13 @@ Poll GetIndex until `READY`. BSON uses the ordinary mongot schema, such as
 `{fields: [{type: 'vector', path: 'embedding', numDimensions: 3, similarity: 'cosine'}]}` for vectors.
 An equivalent CreateIndex with the same name returns the existing index; a conflicting definition
 fails. Index names are instance-wide. Up to 64 indexes are supported.
+
+`GetIndexMappings` exports a ready search index's configured mappings merged with dynamic types
+found in Lucene metadata, with `dynamic: false` at every document level. It returns the mappings
+and a complete reusable public index definition as Extended JSON, along with the generation and
+active revision. Readers are refreshed before the snapshot. The `catalog` role and index access
+are required. See [the mapping export example](../clients/README.md#export-a-dynamic-mapping) for
+creating a static index and the limits of metadata-based inference.
 
 Upsert carries an `index_id` and an ordered batch of complete BSON documents. Every document
 requires an `_id` (string, ObjectId, int32 or int64). Replacing the same ID removes the previous
@@ -161,7 +168,7 @@ data directory. Copy the full directory while stopped for backups.
 The push-only API and state layout are incompatible with collection-backed 0.2.x releases.
 Use a new data directory, recreate index definitions, and reingest from your source. Startup
 rejects a legacy document-store directory. It does not migrate or delete legacy data.
-Release 0.3.0 uses this push-only API. Use matching 0.3.x server and client packages;
+Release 0.4.0 uses this push-only API. Use matching server and client packages;
 0.2.x images and clients implement the older protocol.
 
 MongoDB synonym sources, views, automatic embedding and custom vector engines are unsupported.

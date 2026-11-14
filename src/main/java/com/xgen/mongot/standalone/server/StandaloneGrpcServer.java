@@ -6,6 +6,8 @@ import com.xgen.mongot.standalone.grpc.DeleteRequest;
 import com.xgen.mongot.standalone.grpc.DeleteResponse;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexMappingsRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexMappingsResponse;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
 import com.xgen.mongot.standalone.grpc.GetStatusRequest;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
@@ -177,6 +179,18 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           () -> {
             StandaloneAuthInterceptor.requireIndex(request.getIndexId());
             return StandaloneGrpcServer.this.runtime.describeIndex(request.getIndexId());
+          });
+    }
+
+    @Override
+    public void getIndexMappings(
+        GetIndexMappingsRequest request, StreamObserver<GetIndexMappingsResponse> observer) {
+      StandaloneGrpcServer.this.dispatcher.unary(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
+            return StandaloneGrpcServer.this.runtime.getIndexMappings(request);
           });
     }
 

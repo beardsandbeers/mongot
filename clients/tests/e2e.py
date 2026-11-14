@@ -25,6 +25,7 @@ from pathlib import Path
 import bson
 import grpc
 from bson import Int64
+from bson.json_util import loads
 from mongot_standalone import Client, api
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -324,6 +325,31 @@ def exercise(client):
         not all_results(client, search(client, other, "coffee")), "Writes leaked into another index"
     )
     checks.append("direct text writes, cursor pagination, BSON preservation, index isolation")
+    exported = client.call(
+        "GetIndexMappings",
+        {"indexId": text["indexId"], "generationId": text["generationId"]},
+    )
+    mapping = json.loads(exported["mappingsJson"])
+    check(mapping["dynamic"] is False, "Exported mapping is not static")
+    check(mapping["fields"]["amount"]["type"] == "number", "Numeric mapping missing")
+    check(mapping["fields"]["title"]["type"] == "string", "String mapping missing")
+    check(exported["generationId"] == text["generationId"], "Exported wrong generation")
+    static = client.call(
+        "CreateIndex",
+        {
+            "name": name + "-static",
+            "type": "INDEX_TYPE_SEARCH",
+            "definitionBson": encoded(loads(exported["definitionJson"])),
+        },
+    )
+    static = ready(client, static["indexId"])
+    client.call("Upsert", {"indexId": static["indexId"], "documentsBson": [encoded(docs[0])]})
+    check(
+        ids(all_results(client, search(client, static, "coffee"))) == {"0"},
+        "Export was not reusable",
+    )
+    client.call("DropIndex", {"indexId": static["indexId"], "expectedRevision": "1"})
+    checks.append("dynamic mapping export reused to create and query a static index")
     response = search(client, text, "coffee", size=1)
     cursor = response["cursorId"]
     client.call("KillCursor", {"cursorId": str(cursor)})
@@ -574,6 +600,11 @@ def main():
                                 error="PERMISSION_DENIED",
                             )
                             reader.call("GetStatus", error="PERMISSION_DENIED")
+                            reader.call(
+                                "GetIndexMappings",
+                                {"indexId": states[0]["text"]["indexId"]},
+                                error="PERMISSION_DENIED",
+                            )
                 data = directory / "data"
                 check(not (data / "standalone.sqlite").exists(), "Unexpected source database")
                 allowed = {

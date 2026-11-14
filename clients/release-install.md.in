@@ -12,5 +12,9 @@ Rust: `cargo add mongot-standalone-client@@VERSION@`
 (or use the included `.crate` as a vendored dependency).
 Docker: `docker pull mybyte/nomongo-t:@VERSION@`
 
+`CatalogService.GetIndexMappings` exports the configured mapping plus observed dynamic types as
+static mappings JSON and a complete reusable definition JSON. All four clients support this RPC;
+see [the mapping export example](https://github.com/beardsandbeers/nomongo-t/blob/@COMMIT@/clients/README.md#export-a-dynamic-mapping).
+
 This API manages indexes and pushes BSON to Lucene. Schema updates require reingestion. The
 collection-backed 0.2.x API and data directories are incompatible; use a new data directory.

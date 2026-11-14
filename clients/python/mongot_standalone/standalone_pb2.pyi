@@ -59,6 +59,28 @@ class GetIndexRequest(_message.Message):
     index_id: str
     def __init__(self, index_id: _Optional[str] = ...) -> None: ...
 
+class GetIndexMappingsRequest(_message.Message):
+    __slots__ = ("index_id", "generation_id")
+    INDEX_ID_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_ID_FIELD_NUMBER: _ClassVar[int]
+    index_id: str
+    generation_id: str
+    def __init__(self, index_id: _Optional[str] = ..., generation_id: _Optional[str] = ...) -> None: ...
+
+class GetIndexMappingsResponse(_message.Message):
+    __slots__ = ("index_id", "generation_id", "active_revision", "mappings_json", "definition_json")
+    INDEX_ID_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_ID_FIELD_NUMBER: _ClassVar[int]
+    ACTIVE_REVISION_FIELD_NUMBER: _ClassVar[int]
+    MAPPINGS_JSON_FIELD_NUMBER: _ClassVar[int]
+    DEFINITION_JSON_FIELD_NUMBER: _ClassVar[int]
+    index_id: str
+    generation_id: str
+    active_revision: int
+    mappings_json: str
+    definition_json: str
+    def __init__(self, index_id: _Optional[str] = ..., generation_id: _Optional[str] = ..., active_revision: _Optional[int] = ..., mappings_json: _Optional[str] = ..., definition_json: _Optional[str] = ...) -> None: ...
+
 class ListIndexesRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...

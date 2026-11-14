@@ -6,14 +6,14 @@ mongot schema, then upsert BSON directly into that index. There is no collection
 source document store, durable retry identity or automatic backfill. Schema updates create an
 empty generation; reingest from your own source.
 
-The 0.3.x API breaks compatibility with collection-backed 0.2.x clients.
+Versions 0.3.0 and later use the push API, which is incompatible with collection-backed 0.2.x clients.
 Use matching server and client versions. Each wrapper provides TLS/bearer authentication,
 per-call deadlines, BSON helpers and all current RPCs. No automatic retries are performed.
 
 ## Python
 
 ```sh
-python3 -m pip install mongot-standalone-client==0.3.0
+python3 -m pip install mongot-standalone-client==0.4.0
 ```
 
 ```python
@@ -63,6 +63,39 @@ UpsertRequest contains `index_id`, `documents_bson`, optional `generation_id` an
 DeleteRequest substitutes `ids_bson`, each containing `{_id: value}`. Queries continue to use
 `index_id` and BSON search/vector expressions. CreateIndex takes name, type and definition BSON;
 ListIndexes takes an empty request. Index names are instance-wide.
+
+## Export a dynamic mapping
+
+After indexing representative documents into a search index, call `CatalogService.GetIndexMappings`
+to export a static mapping. The RPC requires the `catalog` role and access to that index.
+`GetIndexMappings` is available in server and client versions 0.4.0 and later:
+
+```python
+from bson.json_util import loads
+from mongot_standalone import api, encode_bson
+
+exported = client.get_index_mappings(api.GetIndexMappingsRequest(index_id=index.index_id))
+print(exported.mappings_json)
+static_index = client.create_index(api.CreateIndexRequest(
+    name="articles-static",
+    type=api.INDEX_TYPE_SEARCH,
+    definition_bson=encode_bson(loads(exported.definition_json)),
+))
+```
+
+`mappings_json` is the public `mappings` object. `definition_json` contains the complete public
+index definition with those mappings, preserving index-level analyzers, stored source, and other
+options. Both use Extended JSON. A path observed as both a number and a string becomes a list of
+mapping types. Explicit fields and options are preserved even when no document uses them;
+dynamic document and embedded-document fields are expanded with `dynamic: false` at every level.
+Reingest your documents into the new index after it becomes ready.
+
+The request accepts an optional `generation_id` fence. The response identifies the generation and
+active revision, and the server refreshes its readers before collecting metadata from all partitions.
+This is a snapshot of materialized types: deleted fields can remain until segment merges, while
+null-only fields, empty objects/arrays, and unindexed values cannot supply an inferred type.
+Concurrent writes can add fields after the snapshot. Vector-search indexes return
+`FAILED_PRECONDITION`; unavailable or transitioning search indexes return `UNAVAILABLE`.
 
 ## Verify
 

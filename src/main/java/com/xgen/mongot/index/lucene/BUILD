@@ -36,6 +36,7 @@ java_library(
         "LuceneGlobalSettings.java",
         "LuceneHighlighterContext.java",
         "LuceneIndexFactory.java",
+        "LuceneIndexMappingExporter.java",
         "LuceneIndexMetricValuesSupplier.java",
         "LuceneIndexSearcherReference.java",
         "LuceneMetaBucketProducer.java",

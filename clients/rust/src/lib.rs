@@ -173,6 +173,19 @@ impl Client {
             .map_err(normalize_status)?
             .into_inner())
     }
+    pub async fn get_index_mappings(
+        &mut self,
+        message: GetIndexMappingsRequest,
+    ) -> Result<GetIndexMappingsResponse, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .catalog
+            .get_index_mappings(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
     pub async fn get_status(&mut self, message: GetStatusRequest) -> Result<ServiceStatus, Status> {
         let mut request = Request::new(message);
         request.set_timeout(self.timeout);

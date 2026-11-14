@@ -10,6 +10,7 @@ service CatalogService {
   rpc UpdateIndex(UpdateIndexRequest) returns (IndexDescription);
   rpc DropIndex(DropIndexRequest) returns (IndexDescription);
   rpc GetIndex(GetIndexRequest) returns (IndexDescription);
+  rpc GetIndexMappings(GetIndexMappingsRequest) returns (GetIndexMappingsResponse);
   rpc ListIndexes(ListIndexesRequest) returns (ListIndexesResponse);
 }
 service DocumentService {
@@ -40,6 +41,23 @@ message UpdateIndexRequest {
 }
 message DropIndexRequest { string index_id = 1; uint64 expected_revision = 2; }
 message GetIndexRequest { string index_id = 1; }
+message GetIndexMappingsRequest {
+  string index_id = 1;
+  string generation_id = 2; // Optional fence against a schema change.
+}
+// Search indexes only. Refreshes the reader before inspecting every partition's field metadata.
+// Includes configured fields and observed dynamic types; dynamic is false at every document level.
+// Metadata can retain deleted fields until segment merges. Null-only fields, empty objects/arrays,
+// and values that never produced a typed Lucene field cannot be inferred from this snapshot.
+message GetIndexMappingsResponse {
+  string index_id = 1;
+  string generation_id = 2;
+  uint64 active_revision = 3;
+  string mappings_json = 4; // Public mappings object, including dynamic and fields.
+  // Complete public definition with mappings replaced by mappings_json. Parse as Extended JSON,
+  // encode as BSON, and pass to CreateIndex/UpdateIndex; preserves analyzers and other options.
+  string definition_json = 5;
+}
 message ListIndexesRequest {}
 message ListIndexesResponse { repeated IndexDescription indexes = 1; }
 message IndexDescription {

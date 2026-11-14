@@ -10,7 +10,7 @@ your own embeddings, or both. Indexes persist on disk. Clients are available for
 
 ## Quick start
 
-You need Docker. The image includes Java 21 and the native libraries. The published `0.3.0`
+You need Docker. The image includes Java 21 and the native libraries. The published `0.4.0`
 image targets Linux amd64. ARM hosts need amd64 emulation and the `--platform linux/amd64`
 option.
 
@@ -19,7 +19,7 @@ docker run --detach --name nomongo-t \
   --publish 127.0.0.1:27029:27029 \
   --memory 4g \
   --volume nomongo-t-data:/var/lib/mongot \
-  mybyte/nomongo-t:0.3.0
+  mybyte/nomongo-t:0.4.0
 ```
 
 The API listens at **localhost:27029 over gRPC with TLS**. On first startup, the container
@@ -50,7 +50,7 @@ docker cp nomongo-t:/var/lib/mongot/config/admin.token .nomongo-t/admin.token
 chmod 600 .nomongo-t/admin.token
 
 python3 -m venv .venv-nomongo-t
-.venv-nomongo-t/bin/python -m pip install mongot-standalone-client==0.3.0
+.venv-nomongo-t/bin/python -m pip install mongot-standalone-client==0.4.0
 ```
 
 Save the following as `demo.py`, then run `.venv-nomongo-t/bin/python demo.py`. It creates a
@@ -162,6 +162,11 @@ Each index receives its own writes. To search the same content with text and vec
 submit the corresponding documents to each index. For larger result sets, use `GetMore` when
 the query returns a nonzero cursor ID; see the [client guide](clients/README.md).
 
+After indexing representative documents with dynamic mappings, use `GetIndexMappings` to export a
+static mapping. It combines configured fields with observed dynamic types, including multiple types
+for the same field, and preserves analyzers and other index options in a reusable definition.
+See [the mapping export example](clients/README.md#export-a-dynamic-mapping).
+
 ## Configure the container
 
 Docker options control resource limits and networking. `JAVA_TOOL_OPTIONS` configures the JVM.
@@ -188,7 +193,7 @@ docker run --detach --name nomongo-t \
   --memory 8g \
   --env JAVA_TOOL_OPTIONS="-Xms512m -Xmx4g -XX:MaxDirectMemorySize=512m" \
   --volume nomongo-t-data:/var/lib/mongot \
-  mybyte/nomongo-t:0.3.0
+  mybyte/nomongo-t:0.4.0
 ```
 
 `--memory` limits the entire container; `-Xmx` limits only the Java heap. Leave space outside the
@@ -261,7 +266,7 @@ docker run --detach --name nomongo-t \
   --env MONGOT_CONTROL_ADDRESS=localhost:27029 \
   --env MONGOT_CONTROL_CA=/etc/nomongo-t/ca.crt \
   --env MONGOT_CONTROL_TOKEN_FILE=/etc/nomongo-t/admin.token \
-  mybyte/nomongo-t:0.3.0 --config /etc/nomongo-t/standalone.yaml
+  mybyte/nomongo-t:0.4.0 --config /etc/nomongo-t/standalone.yaml
 ```
 
 `--config` selects your YAML file instead of automatic credential generation. The
@@ -346,4 +351,4 @@ not needed. For client development, install `./clients/python` instead of the Py
 - [Client API and language bindings](clients/README.md)
 - [Server configuration, write semantics, and backpressure](docs/standalone-mongot.md)
 - [Architecture](docs/standalone-mongot-grpc-guide.md)
-- [Release downloads](https://github.com/beardsandbeers/nomongo-t/releases/tag/standalone-v0.3.0)
+- [Release downloads](https://github.com/beardsandbeers/nomongo-t/releases/tag/standalone-v0.4.0)

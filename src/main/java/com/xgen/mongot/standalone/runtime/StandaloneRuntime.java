@@ -9,11 +9,13 @@ import com.xgen.mongot.cursor.CursorConfig;
 import com.xgen.mongot.cursor.MongotCursorManagerImpl;
 import com.xgen.mongot.featureflag.FeatureFlags;
 import com.xgen.mongot.featureflag.dynamic.DynamicFeatureFlagRegistry;
+import com.xgen.mongot.index.InitializedSearchIndex;
 import com.xgen.mongot.index.analyzer.AnalyzerRegistry;
 import com.xgen.mongot.index.definition.SearchIndexDefinition;
 import com.xgen.mongot.index.definition.VectorIndexDefinition;
 import com.xgen.mongot.index.lucene.LuceneGlobalSettings;
 import com.xgen.mongot.index.lucene.LuceneIndexFactory;
+import com.xgen.mongot.index.lucene.LuceneIndexMappingExporter;
 import com.xgen.mongot.index.lucene.config.LuceneConfig;
 import com.xgen.mongot.index.lucene.directory.EnvironmentVariantPerfConfig;
 import com.xgen.mongot.lifecycle.DefaultLifecycleManager;
@@ -21,7 +23,10 @@ import com.xgen.mongot.lifecycle.LifecycleConfig;
 import com.xgen.mongot.metrics.MeterAndFtdcRegistry;
 import com.xgen.mongot.monitor.ReplicationStateMonitor;
 import com.xgen.mongot.standalone.catalog.LocalIndexCatalog;
+import com.xgen.mongot.standalone.catalog.StandaloneDefinitionValidator;
 import com.xgen.mongot.standalone.config.StandaloneConfig;
+import com.xgen.mongot.standalone.grpc.GetIndexMappingsRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexMappingsResponse;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
 import com.xgen.mongot.standalone.grpc.ServiceMetric;
 import com.xgen.mongot.standalone.grpc.ServiceStatus;
@@ -41,6 +46,8 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.bson.BsonDocument;
+import org.bson.RawBsonDocument;
 import org.bson.types.ObjectId;
 import org.jetbrains.annotations.Nullable;
 
@@ -51,6 +58,7 @@ public final class StandaloneRuntime implements Closeable {
   private final StandaloneConfig config;
   private final LocalIndexCatalog catalog;
   private final DefaultIndexCatalog liveIndexes;
+  private final InitializedIndexCatalog initializedIndexes;
   private final MongotCursorManagerImpl cursors;
   private final ApiIngestionManager ingestion;
   private final DefaultConfigManager configManager;
@@ -77,7 +85,8 @@ public final class StandaloneRuntime implements Closeable {
             this.metrics.meterRegistry().close();
           });
       this.liveIndexes = new DefaultIndexCatalog();
-      var initialized = new InitializedIndexCatalog();
+      this.initializedIndexes = new InitializedIndexCatalog();
+      var initialized = this.initializedIndexes;
       var flags = FeatureFlags.communityDefaults();
       var dynamicFlags = DynamicFeatureFlagRegistry.communityDefault();
       var diskMonitor = new StandaloneDiskMonitor(config.dataPath());
@@ -190,6 +199,72 @@ public final class StandaloneRuntime implements Closeable {
 
   public DefaultIndexCatalog liveIndexes() {
     return this.liveIndexes;
+  }
+
+  /** Exports one ready generation, serialized with writes, schema changes and retirement. */
+  public GetIndexMappingsResponse getIndexMappings(GetIndexMappingsRequest request) {
+    return this.ingestion.coordinate(
+        () -> {
+          var desired = this.catalog.getIndex(request.getIndexId());
+          if (desired.getLifecycleState().equals("DROPPED")) {
+            throw Status.NOT_FOUND.withDescription("Index was dropped").asRuntimeException();
+          }
+          var generation =
+              this.liveIndexes
+                  .getIndexById(new ObjectId(request.getIndexId()))
+                  .filter(index -> this.ingestion.isGenerationReady(index.getGenerationId()))
+                  .orElseThrow(
+                      () ->
+                          Status.UNAVAILABLE
+                              .withDescription("Index is not ready")
+                              .asRuntimeException());
+          String generationId = generation.getGenerationId().uniqueString();
+          if (!request.getGenerationId().isEmpty()
+              && !request.getGenerationId().equals(generationId)) {
+            throw Status.FAILED_PRECONDITION
+                .withDescription("Requested generation is no longer live")
+                .asRuntimeException();
+          }
+          long revision = generation.getDefinition().getDefinitionVersion().orElse(1L);
+          if (revision != desired.getDesiredRevision()) {
+            throw Status.UNAVAILABLE
+                .withDescription("Index schema is changing")
+                .asRuntimeException();
+          }
+          var initialized = this.initializedIndexes.getIndex(generation.getGenerationId());
+          if (initialized.isEmpty()
+              || !(initialized.get() instanceof InitializedSearchIndex search)) {
+            throw Status.FAILED_PRECONDITION
+                .withDescription("Mapping export requires a search index")
+                .asRuntimeException();
+          }
+          try {
+            var definition = generation.getDefinition().asSearchDefinition();
+            var reader = search.getReader();
+            reader.refresh();
+            var mappings =
+                LuceneIndexMappingExporter.export(
+                    definition,
+                    generation.getGenerationId().generation.formatVersion.asLucene(),
+                    reader.getFieldInfos());
+            var external = new BsonDocument();
+            external.putAll(
+                new RawBsonDocument(StandaloneDefinitionValidator.normalize(definition)));
+            external.put("mappings", mappings);
+            return GetIndexMappingsResponse.newBuilder()
+                .setIndexId(request.getIndexId())
+                .setGenerationId(generationId)
+                .setActiveRevision(revision)
+                .setMappingsJson(mappings.toJson())
+                .setDefinitionJson(external.toJson())
+                .build();
+          } catch (IOException | com.xgen.mongot.index.ReaderClosedException e) {
+            throw Status.UNAVAILABLE
+                .withDescription("Cannot read index field metadata")
+                .withCause(e)
+                .asRuntimeException();
+          }
+        });
   }
 
   /**

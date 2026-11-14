@@ -163,7 +163,8 @@ public record FieldDefinition(
             definition -> definition.isPresent() && !excluded.contains(definition.get().getType()));
   }
 
-  Stream<Optional<? extends FieldTypeDefinition>> getAllDefinitions() {
+  /** Returns every supported mapping type in serialization order, including absent types. */
+  public Stream<Optional<? extends FieldTypeDefinition>> getAllDefinitions() {
     return Stream.of(
         this.autocompleteFieldDefinition,
         this.booleanFieldDefinition,
