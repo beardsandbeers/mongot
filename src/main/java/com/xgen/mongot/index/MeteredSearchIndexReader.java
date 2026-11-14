@@ -14,6 +14,14 @@ import java.util.function.BooleanSupplier;
 import org.apache.lucene.index.FieldInfos;
 
 public class MeteredSearchIndexReader implements SearchIndexReader {
+
+  @Override
+  public com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot acquireStatisticsSnapshot()
+      throws IOException, ReaderClosedException {
+    return this.indexReader.acquireStatisticsSnapshot();
+  }
+
+
   private final SearchIndexReader indexReader;
   private final IndexMetricsUpdater.QueryingMetricsUpdater queryingMetricsUpdater;
   private final QueryMetricsRecorder queryMetricsRecorder;

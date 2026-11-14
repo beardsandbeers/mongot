@@ -168,7 +168,7 @@ data directory. Copy the full directory while stopped for backups.
 The push-only API and state layout are incompatible with collection-backed 0.2.x releases.
 Use a new data directory, recreate index definitions, and reingest from your source. Startup
 rejects a legacy document-store directory. It does not migrate or delete legacy data.
-Release 0.4.0 uses this push-only API. Use matching server and client packages;
+Release 0.5.0 uses this push-only API. Use matching server and client packages;
 0.2.x images and clients implement the older protocol.
 
 MongoDB synonym sources, views, automatic embedding and custom vector engines are unsupported.

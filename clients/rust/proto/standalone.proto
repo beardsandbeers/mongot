@@ -11,6 +11,8 @@ service CatalogService {
   rpc DropIndex(DropIndexRequest) returns (IndexDescription);
   rpc GetIndex(GetIndexRequest) returns (IndexDescription);
   rpc GetIndexMappings(GetIndexMappingsRequest) returns (GetIndexMappingsResponse);
+  rpc GetIndexStats(GetIndexStatsRequest) returns (IndexStats);
+  rpc GetIndexFieldStats(GetIndexFieldStatsRequest) returns (IndexFieldStatsResponse);
   rpc ListIndexes(ListIndexesRequest) returns (ListIndexesResponse);
 }
 service DocumentService {
@@ -59,6 +61,118 @@ message GetIndexMappingsResponse {
   string definition_json = 5;
 }
 message ListIndexesRequest {}
+
+// Statistics require catalog role and a grant for this index. Refresh is visible, not a commit.
+message GetIndexStatsRequest {
+  string index_id = 1;
+  string generation_id = 2;
+  bool refresh = 3;
+}
+enum MeasurementMethod {
+  MEASUREMENT_METHOD_UNAVAILABLE = 0;
+  MEASUREMENT_METHOD_FILE_RANGE = 1;
+  MEASUREMENT_METHOD_RESOURCE_ACCOUNTING = 2;
+  MEASUREMENT_METHOD_CODEC_WORKING_SET = 3;
+  MEASUREMENT_METHOD_MODEL_ESTIMATE = 4;
+}
+enum MeasurementCompleteness {
+  MEASUREMENT_COMPLETENESS_UNAVAILABLE = 0;
+  MEASUREMENT_COMPLETENESS_COMPLETE = 1;
+  MEASUREMENT_COMPLETENESS_PARTIAL = 2;
+}
+message ByteMeasurement {
+  optional uint64 value = 1; // Absent is unavailable; zero is a supported measurement of zero.
+  MeasurementMethod method = 2;
+  MeasurementCompleteness completeness = 3;
+  repeated string included_components = 4;
+  repeated string omitted_components = 5;
+}
+// These domains must not be added together as actual RAM/RSS. Off-heap is desired capacity.
+message IndexMemoryStats {
+  ByteMeasurement accounted_reader_heap_bytes = 1;
+  ByteMeasurement accounted_writer_buffer_heap_bytes = 2;
+  ByteMeasurement accounted_cache_heap_bytes = 3;
+  ByteMeasurement desired_vector_off_heap_bytes = 4;
+}
+message IndexStats {
+  string index_id = 1;
+  string generation_id = 2;
+  uint64 active_revision = 3;
+  string snapshot_id = 4;
+  uint64 sampled_at_unix_millis = 5;
+  uint64 document_count = 6; // Live root/source documents, excluding embedded children.
+  uint64 lucene_document_count = 7;
+  uint64 deleted_lucene_document_count = 8;
+  uint64 index_size_bytes = 9; // Unique physical segment files referenced by the pinned snapshot.
+  ByteMeasurement directory_size_bytes = 10; // Separate, non-atomic sample, including retained files.
+  uint64 directory_sampled_at_unix_millis = 11;
+  optional double average_index_bytes_per_document = 12; // Absent for an empty index.
+  optional double average_directory_bytes_per_document = 13;
+  IndexMemoryStats memory = 14;
+  uint64 memory_sampled_at_unix_millis = 15;
+  uint64 age_millis = 16;
+}
+message GetIndexFieldStatsRequest {
+  string index_id = 1;
+  string generation_id = 2;
+  bool refresh = 3;
+  repeated string paths = 4; // Exact canonical paths; filters select rows, not the global ledger.
+  uint32 page_size = 5; // Default 100, maximum 500, also bounded by serialized response size.
+  string page_token = 6; // Bound to principal, generation, filters, size and immutable snapshot.
+}
+enum StatsCollectionState {
+  STATS_COLLECTION_STATE_COLLECTING = 0;
+  STATS_COLLECTION_STATE_READY = 1;
+}
+message FieldRepresentationStats {
+  string physical_name = 1;
+  string mapping_type = 2;
+  string multi = 3;
+  string embedded_root = 4;
+  ByteMeasurement attributed_disk_bytes = 5;
+  ByteMeasurement accounted_reader_heap_bytes = 6;
+  ByteMeasurement desired_vector_off_heap_bytes = 7;
+  map<string, uint64> vector_working_set_categories = 8;
+}
+message IndexFieldStats {
+  string path = 1;
+  bool configured = 2;
+  bool observed = 3;
+  ByteMeasurement attributed_disk_bytes = 4;
+  ByteMeasurement accounted_reader_heap_bytes = 5;
+  ByteMeasurement desired_vector_off_heap_bytes = 6;
+  repeated FieldRepresentationStats representations = 7;
+}
+message StorageStatsBucket {
+  string component = 1;
+  repeated string owners = 2;
+  uint64 bytes = 3;
+  bool unattributed = 4;
+  string reason = 5;
+  uint64 owner_count = 6;
+  bool owner_list_complete = 7; // Owner name samples are bounded; bytes/totals are never truncated.
+}
+message MemoryStatsBucket {
+  string component = 1;
+  repeated string owners = 2;
+  ByteMeasurement bytes = 3;
+  uint64 owner_count = 4;
+  bool owner_list_complete = 5;
+}
+message IndexFieldStatsResponse {
+  StatsCollectionState state = 1;
+  IndexStats index_stats = 2; // Present only when READY; summary belongs to this field snapshot.
+  repeated IndexFieldStats fields = 3;
+  uint64 total_attributed_disk_bytes = 4; // Global totals, independent of filter and page.
+  uint64 shared_disk_bytes = 5;
+  uint64 unattributed_disk_bytes = 6;
+  optional double attribution_coverage = 7;
+  repeated StorageStatsBucket storage_buckets = 8;
+  repeated MemoryStatsBucket memory_buckets = 9;
+  string next_page_token = 10;
+  bool refresh_in_progress = 11;
+  uint32 retry_after_millis = 12;
+}
 message ListIndexesResponse { repeated IndexDescription indexes = 1; }
 message IndexDescription {
   string index_id = 1;

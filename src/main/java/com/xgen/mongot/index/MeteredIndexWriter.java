@@ -6,6 +6,13 @@ import java.io.IOException;
 import java.util.Optional;
 
 public class MeteredIndexWriter implements IndexWriter {
+
+  @Override
+  public java.util.OptionalLong getBufferHeapBytes() throws WriterClosedException {
+    return this.indexWriter.getBufferHeapBytes();
+  }
+
+
   private final IndexWriter indexWriter;
   private final IndexMetricsUpdater.IndexingMetricsUpdater indexingMetricsUpdater;
 

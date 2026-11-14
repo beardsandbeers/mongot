@@ -12,6 +12,8 @@ const methods: Record<string, keyof StandaloneClient> = {
   GetIndex: 'getIndex',
   GetIndexMappings: 'getIndexMappings',
   ListIndexes: 'listIndexes',
+  GetIndexStats: 'getIndexStats',
+  GetIndexFieldStats: 'getIndexFieldStats',
   GetStatus: 'getStatus',
   Search: 'search',
   VectorSearch: 'vectorSearch',

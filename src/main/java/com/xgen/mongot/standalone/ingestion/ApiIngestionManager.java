@@ -37,9 +37,66 @@ public final class ApiIngestionManager implements ReplicationManager {
   private final InitializedIndexCatalog initializedIndexes;
   private final Limits limits;
   private final Map<String, InitializedIndex> indexes = new HashMap<>();
+  private final Map<String, StatisticsLeases> statisticsLeases = new HashMap<>();
   private final java.util.Set<String> dirty = new java.util.HashSet<>();
   private final ScheduledThreadPoolExecutor commits;
   private boolean stopping;
+
+  private static final class StatisticsLeases {
+    private int count;
+    private final CompletableFuture<Void> drained = new CompletableFuture<>();
+  }
+
+  /** Prevents lifecycle close/drop while a bounded statistics collection owns reader resources. */
+  public final class StatisticsLease implements AutoCloseable {
+    private final GenerationId generation;
+    private final InitializedIndex index;
+    private final java.util.concurrent.atomic.AtomicBoolean closed =
+        new java.util.concurrent.atomic.AtomicBoolean();
+
+    private StatisticsLease(GenerationId generation, InitializedIndex index) {
+      this.generation = generation;
+      this.index = index;
+    }
+
+    public InitializedIndex index() {
+      return this.index;
+    }
+
+    public boolean retired() {
+      return !isGenerationReady(this.generation);
+    }
+
+    @Override
+    public void close() {
+      if (!this.closed.compareAndSet(false, true)) {
+        return;
+      }
+      CompletableFuture<Void> drained;
+      synchronized (ApiIngestionManager.this) {
+        String id = this.generation.uniqueString();
+        var leases = ApiIngestionManager.this.statisticsLeases.get(id);
+        leases.count--;
+        if (leases.count != 0) {
+          return;
+        }
+        ApiIngestionManager.this.statisticsLeases.remove(id);
+        drained = leases.drained;
+      }
+      // Completing this future may close and delete Lucene resources. Never run those lifecycle
+      // continuations while holding the ingestion monitor.
+      drained.complete(null);
+    }
+  }
+
+  public synchronized StatisticsLease acquireStatisticsLease(GenerationId generation) {
+    if (!isGenerationReady(generation)) {
+      throw Status.UNAVAILABLE.withDescription("Index is not ready").asRuntimeException();
+    }
+    String id = generation.uniqueString();
+    this.statisticsLeases.computeIfAbsent(id, ignored -> new StatisticsLeases()).count++;
+    return new StatisticsLease(generation, this.indexes.get(id));
+  }
 
   public ApiIngestionManager(
       IndexCatalog liveIndexes,
@@ -200,7 +257,8 @@ public final class ApiIngestionManager implements ReplicationManager {
     String id = generation.uniqueString();
     this.indexes.remove(id);
     this.dirty.remove(id);
-    return CompletableFuture.completedFuture(null);
+    var leases = this.statisticsLeases.get(id);
+    return leases == null ? CompletableFuture.completedFuture(null) : leases.drained;
   }
 
   @Override
@@ -226,7 +284,10 @@ public final class ApiIngestionManager implements ReplicationManager {
       for (String id : List.copyOf(this.dirty)) {
         commit(id, this.indexes.get(id));
       }
-      return CompletableFuture.completedFuture(null);
+      return CompletableFuture.allOf(
+          this.statisticsLeases.values().stream()
+              .map(leases -> leases.drained)
+              .toArray(CompletableFuture<?>[]::new));
     } catch (java.io.IOException e) {
       return CompletableFuture.failedFuture(e);
     }

@@ -24,7 +24,8 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Supports both float32 and byte vector types.
  */
-class FullScanFlatVectorsReaderDecorator extends KnnVectorsReader {
+class FullScanFlatVectorsReaderDecorator extends KnnVectorsReader
+    implements org.apache.lucene.util.Accountable {
 
   private final FlatVectorsReader reader;
 
@@ -52,6 +53,11 @@ class FullScanFlatVectorsReaderDecorator extends KnnVectorsReader {
   @Override
   public Map<String, Long> getOffHeapByteSize(FieldInfo fieldInfo) {
     return this.reader.getOffHeapByteSize(fieldInfo);
+  }
+
+  @Override
+  public long ramBytesUsed() {
+    return this.reader.ramBytesUsed();
   }
 
   @Override

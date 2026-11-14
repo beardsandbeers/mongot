@@ -12,13 +12,18 @@ import com.xgen.mongot.standalone.grpc.DeleteRequest;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
 import com.xgen.mongot.standalone.grpc.DocumentWriteConcern;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexFieldStatsRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexMappingsRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexStatsRequest;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
+import com.xgen.mongot.standalone.grpc.IndexFieldStatsResponse;
+import com.xgen.mongot.standalone.grpc.IndexStats;
 import com.xgen.mongot.standalone.grpc.IndexType;
 import com.xgen.mongot.standalone.grpc.ListIndexesRequest;
 import com.xgen.mongot.standalone.grpc.QueryRequest;
 import com.xgen.mongot.standalone.grpc.QueryServiceGrpc;
+import com.xgen.mongot.standalone.grpc.StatsCollectionState;
 import com.xgen.mongot.standalone.grpc.UpdateIndexRequest;
 import com.xgen.mongot.standalone.grpc.UpsertRequest;
 import com.xgen.mongot.standalone.runtime.StandaloneRuntime;
@@ -37,6 +42,219 @@ import org.junit.rules.TemporaryFolder;
 
 public class StandaloneGrpcServerTest {
   @Rule public final TemporaryFolder folder = new TemporaryFolder();
+
+  @Test
+  public void getIndexStats_emptyAndMutations_reportsLiveDocumentsAndOptionalAverages()
+      throws Exception {
+    try (var f = new Fixture(data())) {
+      String id = f.create("stats");
+
+      var empty = f.stats(id);
+      assertThat(empty.getDocumentCount()).isEqualTo(0);
+      assertThat(empty.hasAverageIndexBytesPerDocument()).isFalse();
+      assertThat(empty.hasAverageDirectoryBytesPerDocument()).isFalse();
+      f.upsert(id, "{_id:'a',title:'coffee'}");
+      f.upsert(id, "{_id:'b',title:'tea'}");
+      f.upsert(id, "{_id:'a',title:'replacement'}");
+      var two = f.stats(id);
+
+      assertThat(two.getDocumentCount()).isEqualTo(2);
+      assertThat(two.getLuceneDocumentCount()).isEqualTo(2);
+      assertThat(two.getIndexSizeBytes()).isGreaterThan(0);
+      assertThat(two.getAverageIndexBytesPerDocument()).isEqualTo(two.getIndexSizeBytes() / 2.0);
+      assertThat(two.getDirectorySizeBytes().hasValue()).isTrue();
+      assertThat(two.getMemory().getAccountedWriterBufferHeapBytes().hasValue()).isTrue();
+      f.docs.delete(
+          DeleteRequest.newBuilder().setIndexId(id).addIdsBson(bson("{_id:'b'}")).build());
+      assertThat(f.stats(id).getDocumentCount()).isEqualTo(1);
+    }
+  }
+
+  @Test
+  public void getIndexFieldStats_partitionedEmbeddedMixedTypes_reconcilesLedgerAndPreservesPages()
+      throws Exception {
+    try (var f = new Fixture(data())) {
+      String id =
+          f.catalog
+              .createIndex(
+                  CreateIndexRequest.newBuilder()
+                      .setName("field-stats")
+                      .setType(IndexType.INDEX_TYPE_SEARCH)
+                      .setDefinitionBson(
+                          bson(
+                              """
+                              {numPartitions:2,mappings:{dynamic:true,fields:{
+                                unused:{type:'number'},
+                                items:{type:'embeddedDocuments',dynamic:true}
+                              }}}
+                              """))
+                      .build())
+              .getIndexId();
+      f.ready(id, 1);
+      f.upsert(id, "{_id:'a',mixed:17,items:[{value:'one'},{value:'two'}]}");
+      f.upsert(id, "{_id:'b',mixed:'seventeen',items:[{value:'three'}]}");
+
+      var full = f.fieldStats(id, 100);
+
+      assertThat(full.getIndexStats().getDocumentCount()).isEqualTo(2);
+      assertThat(full.getIndexStats().getLuceneDocumentCount()).isEqualTo(5);
+      assertThat(
+              full.getTotalAttributedDiskBytes()
+                  + full.getSharedDiskBytes()
+                  + full.getUnattributedDiskBytes())
+          .isEqualTo(full.getIndexStats().getIndexSizeBytes());
+      assertThat(
+              full.getFieldsList().stream()
+                  .mapToLong(field -> field.getAttributedDiskBytes().getValue())
+                  .sum())
+          .isEqualTo(full.getTotalAttributedDiskBytes());
+      var mixed =
+          full.getFieldsList().stream()
+              .filter(field -> field.getPath().equals("mixed"))
+              .findFirst()
+              .orElseThrow();
+      assertThat(mixed.getRepresentationsList().stream().map(rep -> rep.getMappingType()).toList())
+          .containsAtLeast("number", "string");
+      var unused =
+          full.getFieldsList().stream()
+              .filter(field -> field.getPath().equals("unused"))
+              .findFirst()
+              .orElseThrow();
+      assertThat(unused.getConfigured()).isTrue();
+      assertThat(unused.getObserved()).isFalse();
+      assertThat(unused.getAttributedDiskBytes().getValue()).isEqualTo(0);
+      var first = f.fieldStats(id, 1);
+      assertThat(first.getFieldsCount()).isEqualTo(1);
+      assertThat(first.getNextPageToken()).isNotEmpty();
+      f.upsert(id, "{_id:'c',newField:'after snapshot'}");
+      var second =
+          f.catalog.getIndexFieldStats(
+              GetIndexFieldStatsRequest.newBuilder()
+                  .setIndexId(id)
+                  .setPageSize(1)
+                  .setPageToken(first.getNextPageToken())
+                  .build());
+      assertThat(second.getIndexStats().getSnapshotId())
+          .isEqualTo(first.getIndexStats().getSnapshotId());
+      assertThat(second.getIndexStats().getDocumentCount()).isEqualTo(2);
+      assertThat(f.stats(id).getDocumentCount()).isEqualTo(3);
+      var selected =
+          f.catalog.getIndexFieldStats(
+              GetIndexFieldStatsRequest.newBuilder().setIndexId(id).addPaths("mixed").build());
+      assertThat(selected.getFieldsCount()).isEqualTo(1);
+      assertThat(selected.getTotalAttributedDiskBytes())
+          .isEqualTo(full.getTotalAttributedDiskBytes());
+      assertThat(
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.catalog.getIndexFieldStats(
+                              GetIndexFieldStatsRequest.newBuilder()
+                                  .setIndexId(id)
+                                  .setPageSize(2)
+                                  .setPageToken(first.getNextPageToken())
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.INVALID_ARGUMENT);
+    }
+  }
+
+  @Test
+  public void getIndexStats_nestedVectors_excludesChildDocumentsFromSourceCount() throws Exception {
+    try (var f = new Fixture(data())) {
+      String id =
+          f.catalog
+              .createIndex(
+                  CreateIndexRequest.newBuilder()
+                      .setName("nested-vector-stats")
+                      .setType(IndexType.INDEX_TYPE_VECTOR_SEARCH)
+                      .setDefinitionBson(
+                          bson(
+                              """
+                              {numPartitions:2,nestedRoot:'sections',fields:[
+                                {type:'vector',path:'sections.embedding',numDimensions:3,
+                                 similarity:'euclidean'}]}
+                              """))
+                      .build())
+              .getIndexId();
+      f.ready(id, 1);
+      f.upsert(id, "{_id:'a',sections:[{embedding:[1,0,0]},{embedding:[0,1,0]}]}");
+      f.upsert(id, "{_id:'b',sections:[{embedding:[0,0,1]}]}");
+
+      var fields = f.fieldStats(id, 100);
+
+      assertThat(fields.getIndexStats().getDocumentCount()).isEqualTo(2);
+      assertThat(fields.getIndexStats().getLuceneDocumentCount()).isEqualTo(5);
+      assertThat(fields.getFieldsList().stream().map(field -> field.getPath()).toList())
+          .contains("sections.embedding");
+    }
+  }
+
+  @Test
+  public void getIndexStats_invalidTargetsAndTokens_returnsGrpcErrors() throws Exception {
+    try (var f = new Fixture(data())) {
+      String id = f.create("stats-errors");
+
+      assertThat(
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.catalog.getIndexStats(
+                              GetIndexStatsRequest.newBuilder().setIndexId("bad").build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.INVALID_ARGUMENT);
+      assertThat(
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.catalog.getIndexStats(
+                              GetIndexStatsRequest.newBuilder()
+                                  .setIndexId(id)
+                                  .setGenerationId("stale")
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.FAILED_PRECONDITION);
+      assertThat(
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.catalog.getIndexFieldStats(
+                              GetIndexFieldStatsRequest.newBuilder()
+                                  .setIndexId(id)
+                                  .setPageSize(501)
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.INVALID_ARGUMENT);
+      assertThat(
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.catalog.getIndexFieldStats(
+                              GetIndexFieldStatsRequest.newBuilder()
+                                  .setIndexId(id)
+                                  .setPageToken("invalid")
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.INVALID_ARGUMENT);
+      assertThat(
+              assertThrows(
+                      StatusRuntimeException.class,
+                      () ->
+                          f.catalog.getIndexFieldStats(
+                              GetIndexFieldStatsRequest.newBuilder()
+                                  .setIndexId(id)
+                                  .setPageToken("00000000-0000-0000-0000-000000000000")
+                                  .build()))
+                  .getStatus()
+                  .getCode())
+          .isEqualTo(Status.Code.FAILED_PRECONDITION);
+    }
+  }
 
   @Test
   public void getIndexMappings_mixedNestedFields_canCreateAndQueryStaticIndex() throws Exception {
@@ -596,6 +814,25 @@ public class StandaloneGrpcServerTest {
                           .build())
                   .getIndexedCount())
           .isEqualTo(1);
+    }
+
+    private IndexStats stats(String id) {
+      return this.catalog.getIndexStats(
+          GetIndexStatsRequest.newBuilder().setIndexId(id).setRefresh(true).build());
+    }
+
+    private IndexFieldStatsResponse fieldStats(String id, int size) throws Exception {
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+      while (System.nanoTime() < deadline) {
+        var result =
+            this.catalog.getIndexFieldStats(
+                GetIndexFieldStatsRequest.newBuilder().setIndexId(id).setPageSize(size).build());
+        if (result.getState() == StatsCollectionState.STATS_COLLECTION_STATE_READY) {
+          return result;
+        }
+        Thread.sleep(20);
+      }
+      throw new AssertionError("Field statistics did not finish");
     }
 
     private BsonDocument results(String id, String term) {

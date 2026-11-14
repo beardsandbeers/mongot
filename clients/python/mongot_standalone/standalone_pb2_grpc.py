@@ -61,6 +61,16 @@ class CatalogServiceStub:
                 request_serializer=standalone__pb2.GetIndexMappingsRequest.SerializeToString,
                 response_deserializer=standalone__pb2.GetIndexMappingsResponse.FromString,
                 _registered_method=True)
+        self.GetIndexStats = channel.unary_unary(
+                '/mongot.standalone.v1.CatalogService/GetIndexStats',
+                request_serializer=standalone__pb2.GetIndexStatsRequest.SerializeToString,
+                response_deserializer=standalone__pb2.IndexStats.FromString,
+                _registered_method=True)
+        self.GetIndexFieldStats = channel.unary_unary(
+                '/mongot.standalone.v1.CatalogService/GetIndexFieldStats',
+                request_serializer=standalone__pb2.GetIndexFieldStatsRequest.SerializeToString,
+                response_deserializer=standalone__pb2.IndexFieldStatsResponse.FromString,
+                _registered_method=True)
         self.ListIndexes = channel.unary_unary(
                 '/mongot.standalone.v1.CatalogService/ListIndexes',
                 request_serializer=standalone__pb2.ListIndexesRequest.SerializeToString,
@@ -103,6 +113,18 @@ class CatalogServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetIndexStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetIndexFieldStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListIndexes(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -136,6 +158,16 @@ def add_CatalogServiceServicer_to_server(servicer, server):
                     servicer.GetIndexMappings,
                     request_deserializer=standalone__pb2.GetIndexMappingsRequest.FromString,
                     response_serializer=standalone__pb2.GetIndexMappingsResponse.SerializeToString,
+            ),
+            'GetIndexStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetIndexStats,
+                    request_deserializer=standalone__pb2.GetIndexStatsRequest.FromString,
+                    response_serializer=standalone__pb2.IndexStats.SerializeToString,
+            ),
+            'GetIndexFieldStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetIndexFieldStats,
+                    request_deserializer=standalone__pb2.GetIndexFieldStatsRequest.FromString,
+                    response_serializer=standalone__pb2.IndexFieldStatsResponse.SerializeToString,
             ),
             'ListIndexes': grpc.unary_unary_rpc_method_handler(
                     servicer.ListIndexes,
@@ -280,6 +312,60 @@ class CatalogService:
             '/mongot.standalone.v1.CatalogService/GetIndexMappings',
             standalone__pb2.GetIndexMappingsRequest.SerializeToString,
             standalone__pb2.GetIndexMappingsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetIndexStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mongot.standalone.v1.CatalogService/GetIndexStats',
+            standalone__pb2.GetIndexStatsRequest.SerializeToString,
+            standalone__pb2.IndexStats.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetIndexFieldStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mongot.standalone.v1.CatalogService/GetIndexFieldStats',
+            standalone__pb2.GetIndexFieldStatsRequest.SerializeToString,
+            standalone__pb2.IndexFieldStatsResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -13,7 +13,7 @@ per-call deadlines, BSON helpers and all current RPCs. No automatic retries are 
 ## Python
 
 ```sh
-python3 -m pip install mongot-standalone-client==0.4.0
+python3 -m pip install mongot-standalone-client==0.5.0
 ```
 
 ```python
@@ -96,6 +96,69 @@ This is a snapshot of materialized types: deleted fields can remain until segmen
 null-only fields, empty objects/arrays, and unindexed values cannot supply an inferred type.
 Concurrent writes can add fields after the snapshot. Vector-search indexes return
 `FAILED_PRECONDITION`; unavailable or transitioning search indexes return `UNAVAILABLE`.
+
+## Index and field statistics
+
+Server and client versions 0.5.0 and later provide `CatalogService.GetIndexStats` and
+`CatalogService.GetIndexFieldStats`. Both require the `catalog` role and a grant for the requested
+index. They work for search and vector-search indexes. `GetStatus` still requires wildcard access.
+
+```python
+stats = client.get_index_stats(api.GetIndexStatsRequest(
+    index_id=index.index_id, refresh=True,
+))
+print(stats.document_count, stats.index_size_bytes)
+if stats.HasField("average_index_bytes_per_document"):
+    print(stats.average_index_bytes_per_document)
+
+request = api.GetIndexFieldStatsRequest(index_id=index.index_id, page_size=100)
+while True:
+    page = client.get_index_field_stats(request)
+    if page.state == api.STATS_COLLECTION_STATE_COLLECTING:
+        time.sleep(page.retry_after_millis / 1000)
+        continue
+    for field in page.fields:
+        measured = field.attributed_disk_bytes
+        print(field.path, measured.value if measured.HasField("value") else None)
+    if not page.next_page_token:
+        break
+    request.page_token = page.next_page_token
+```
+
+Typed equivalents are `client.getIndexStats(request)` / `getIndexFieldStats(request)` in Java
+and TypeScript, and `client.get_index_stats(request).await?` / `get_index_field_stats(request).await?`
+in Rust. Generated request/response types use the same RPC names. TypeScript counts and byte
+values are decimal strings, including `ByteMeasurement.value` when present.
+
+`document_count` counts live source/root documents; `lucene_document_count` also includes embedded
+children. `index_size_bytes` counts files referenced by the pinned searchable snapshot.
+`directory_size_bytes` is a separate `ByteMeasurement` including merge/retention files; its sample
+is not atomic with the snapshot. Empty-index averages are absent. File lengths differ from
+filesystem allocated blocks and incremental storage cost.
+
+The field response includes its matching `index_stats` and snapshot-wide attributed/shared/
+unattributed totals. These reconcile exactly with that summary's `index_size_bytes`. Filters
+(`paths=["title"]`) and pages select rows without changing global totals or coverage. Exclusive
+codec ranges are attributed; shared postings and compressed stored source are kept in named
+buckets. Each representation preserves its mapping type, multi-field name and embedded scope.
+
+Memory domains are separate: accounted reader heap, writer buffers, caches, and desired vector
+off-heap working set. Per-field heap is available only where ownership can be established. These
+are partial accounting and capacity measurements, not process RSS or guaranteed removal savings.
+Always inspect `method`, `completeness`, and included/omitted components. Missing `value` means
+unavailable; present zero means a supported measurement returned zero.
+
+Summary caches last five seconds and field caches sixty seconds. `refresh=True` starts/coalesces
+a bounded collection and can refresh readers; it does not force a commit, merge, or data scan.
+Poll field collections without repeatedly setting refresh. When cached results are returned,
+`refresh_in_progress` and summary `age_millis` describe freshness. All pages bind to one immutable
+snapshot, generation, principal, filters and page size and expire after two minutes (or eviction).
+Do not set refresh on subsequent pages; repeat the same filters and page size. Supply an optional
+`generation_id` fence when a generation replacement should fail the request.
+
+Limits return `RESOURCE_EXHAUSTED`; reduce selected paths or retry queue admission with backoff.
+Expired snapshots return `FAILED_PRECONDITION`, requiring a fresh first page. See the
+[design and attribution rules](../docs/standalone-index-stats-design.md) for supported components.
 
 ## Verify
 

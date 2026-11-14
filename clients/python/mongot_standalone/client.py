@@ -92,6 +92,18 @@ class Client(DocumentCommandsMixin):
             request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
         )
 
+    def get_index_stats(self, request: api.GetIndexStatsRequest, *, timeout=None) -> api.IndexStats:
+        return self.catalog.GetIndexStats(
+            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
+        )
+
+    def get_index_field_stats(
+        self, request: api.GetIndexFieldStatsRequest, *, timeout=None
+    ) -> api.IndexFieldStatsResponse:
+        return self.catalog.GetIndexFieldStats(
+            request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata
+        )
+
     def get_status(self, request: api.GetStatusRequest, *, timeout=None) -> api.ServiceStatus:
         return self.operations.GetStatus(
             request, timeout=self.timeout if timeout is None else timeout, metadata=self.metadata

@@ -3,6 +3,7 @@ package com.xgen.mongot.index.lucene.writer;
 import com.google.common.collect.Lists;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
+import com.google.errorprone.annotations.Var;
 import com.xgen.mongot.index.DocumentEvent;
 import com.xgen.mongot.index.EncodedUserData;
 import com.xgen.mongot.index.ExceededLimitsException;
@@ -144,6 +145,19 @@ public class MultiLuceneIndexWriter implements LuceneIndexWriter {
         .stream()
         .mapToLong(Long::longValue)
         .sum();
+  }
+
+  @Override
+  public java.util.OptionalLong getBufferHeapBytes() throws WriterClosedException {
+    @Var long bytes = 0;
+    for (var writer : this.indexWriters) {
+      var value = writer.getBufferHeapBytes();
+      if (value.isEmpty()) {
+        return java.util.OptionalLong.empty();
+      }
+      bytes = Math.addExact(bytes, value.getAsLong());
+    }
+    return java.util.OptionalLong.of(bytes);
   }
 
   @Override

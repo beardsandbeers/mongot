@@ -61,6 +61,7 @@ public final class StandaloneRuntime implements Closeable {
   private final InitializedIndexCatalog initializedIndexes;
   private final MongotCursorManagerImpl cursors;
   private final ApiIngestionManager ingestion;
+  private final StandaloneIndexStatistics statistics;
   private final DefaultConfigManager configManager;
   private final MeterAndFtdcRegistry metrics;
   private final StandaloneMetrics serviceMetrics;
@@ -157,6 +158,14 @@ public final class StandaloneRuntime implements Closeable {
       this.resources.remove(cursorOwner);
       this.resources.remove(lifecycleOwner);
       this.resources.addFirst(this.configManager::close);
+      this.statistics =
+          new StandaloneIndexStatistics(
+              this.catalog,
+              this.liveIndexes,
+              this.ingestion,
+              config.maxRpcDuration(),
+              this.serviceMetrics);
+      this.resources.addFirst(this.statistics);
       reconcile();
       this.reconciler =
           new ScheduledThreadPoolExecutor(
@@ -191,6 +200,10 @@ public final class StandaloneRuntime implements Closeable {
 
   public ApiIngestionManager ingestion() {
     return this.ingestion;
+  }
+
+  public StandaloneIndexStatistics statistics() {
+    return this.statistics;
   }
 
   public MongotCursorManagerImpl cursors() {

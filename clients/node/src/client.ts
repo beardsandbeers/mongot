@@ -25,6 +25,11 @@ import type { GetMoreRequest } from './generated/mongot/standalone/v1/GetMoreReq
 import type { KillCursorRequest } from './generated/mongot/standalone/v1/KillCursorRequest';
 import type { KillCursorResponse__Output } from './generated/mongot/standalone/v1/KillCursorResponse';
 
+import type { GetIndexStatsRequest } from './generated/mongot/standalone/v1/GetIndexStatsRequest';
+import type { IndexStats__Output } from './generated/mongot/standalone/v1/IndexStats';
+import type { GetIndexFieldStatsRequest } from './generated/mongot/standalone/v1/GetIndexFieldStatsRequest';
+import type { IndexFieldStatsResponse__Output } from './generated/mongot/standalone/v1/IndexFieldStatsResponse';
+
 export const encodeBson = (document: Document): Buffer => Buffer.from(serialize(document));
 export const decodeBson = (data: Uint8Array): Document => deserialize(data, { promoteLongs: false });
 export interface ClientOptions { address?: string; caFile?: string; tokenFile?: string; timeoutMs?: number }
@@ -75,6 +80,12 @@ export class StandaloneClient {
   }
   listIndexes(request: ListIndexesRequest): Promise<ListIndexesResponse__Output> {
     return this.call((metadata, options, callback) => this.catalog.listIndexes(request, metadata, options, callback));
+  }
+  getIndexStats(request: GetIndexStatsRequest): Promise<IndexStats__Output> {
+    return this.call((metadata, options, callback) => this.catalog.getIndexStats(request, metadata, options, callback));
+  }
+  getIndexFieldStats(request: GetIndexFieldStatsRequest): Promise<IndexFieldStatsResponse__Output> {
+    return this.call((metadata, options, callback) => this.catalog.getIndexFieldStats(request, metadata, options, callback));
   }
   getStatus(request: GetStatusRequest): Promise<ServiceStatus__Output> {
     return this.call((metadata, options, callback) => this.operations.getStatus(request, metadata, options, callback));

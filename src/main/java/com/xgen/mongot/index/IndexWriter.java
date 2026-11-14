@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * Responsible for mutating the state of an Index, either in response to a DocumentEvent or because
@@ -13,6 +14,11 @@ import java.util.Optional;
  * using all its methods.
  */
 public interface IndexWriter extends Closeable {
+
+  /** Accounted writer-buffer heap, not total process memory or field-level memory ownership. */
+  default OptionalLong getBufferHeapBytes() throws WriterClosedException {
+    return OptionalLong.empty();
+  }
 
   /** Updates the index to reflect the changed document. */
   void updateIndex(DocumentEvent event) throws IOException, FieldExceededLimitsException;

@@ -1,16 +1,17 @@
 # Running the push-mode container
 
-Release 0.4.0 is available as `mybyte/nomongo-t:0.4.0` (Linux amd64). The `latest`,
-`mongot-standalone`, and `mongot-standalone-v0.4.0` tags point to this release. Prefer a versioned
+Release 0.5.0 is available as `mybyte/nomongo-t:0.5.0` (Linux amd64). The `latest`,
+`mongot-standalone`, and `mongot-standalone-v0.5.0` tags point to this release. Prefer a versioned
 tag for reproducible upgrades.
 
-Version 0.4.0 adds `GetIndexMappings`: export a dynamic indexing run as a reusable static mapping,
-including mixed field types and configured analyzers. Matching Python, Rust, Java, and TypeScript
-clients are available; see the [client guide](https://github.com/beardsandbeers/nomongo-t/blob/standalone-v0.4.0/clients/README.md).
+Version 0.5.0 adds `GetIndexStats` and `GetIndexFieldStats`: per-index live document counts,
+storage averages, and per-field storage and memory diagnostics with explicit shared and unknown
+costs. Dynamic mapping export via `GetIndexMappings` is also available. Matching Python, Rust, Java, and TypeScript
+clients are available; see the [client guide](https://github.com/beardsandbeers/nomongo-t/blob/standalone-v0.5.0/clients/README.md).
 
 ```sh
 docker run -d --name mongot -p 127.0.0.1:27029:27029 \
-  -v nomongo-t-push_state:/var/lib/mongot mybyte/nomongo-t:0.4.0
+  -v nomongo-t-push_state:/var/lib/mongot mybyte/nomongo-t:0.5.0
 docker exec mongot mongotctl status
 ```
 

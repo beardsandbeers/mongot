@@ -14,6 +14,12 @@ import org.bson.BsonArray;
 // TODO(CLOUDP-210212): vector search: expand this to record more detailed query stats
 public class MeteredVectorIndexReader implements VectorIndexReader {
 
+  @Override
+  public com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot acquireStatisticsSnapshot()
+      throws IOException, ReaderClosedException {
+    return this.indexReader.acquireStatisticsSnapshot();
+  }
+
   private final VectorIndexReader indexReader;
   private final IndexMetricsUpdater.QueryingMetricsUpdater metricsUpdater;
   private final QueryMetricsRecorder queryMetricsRecorder;

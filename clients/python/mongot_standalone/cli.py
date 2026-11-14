@@ -15,6 +15,8 @@ METHODS = {
     "CreateIndex": ("create_index", api.CreateIndexRequest),
     "UpdateIndex": ("update_index", api.UpdateIndexRequest),
     "DropIndex": ("drop_index", api.DropIndexRequest),
+    "GetIndexStats": ("get_index_stats", api.GetIndexStatsRequest),
+    "GetIndexFieldStats": ("get_index_field_stats", api.GetIndexFieldStatsRequest),
     "GetIndex": ("get_index", api.GetIndexRequest),
     "GetIndexMappings": ("get_index_mappings", api.GetIndexMappingsRequest),
     "ListIndexes": ("list_indexes", api.ListIndexesRequest),

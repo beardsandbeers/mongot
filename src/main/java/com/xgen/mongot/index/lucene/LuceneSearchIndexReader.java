@@ -575,6 +575,19 @@ public class LuceneSearchIndexReader implements SearchIndexReader {
   }
 
   @Override
+  public com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot acquireStatisticsSnapshot()
+      throws IOException, ReaderClosedException {
+    try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
+      ensureOpen("acquireStatisticsSnapshot");
+      try (var reference = createSearcherReference(false)) {
+        return com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot.retain(
+            (org.apache.lucene.index.DirectoryReader) reference.getIndexSearcher().getIndexReader(),
+            getTokenFacetsStateCacheSnapshot().heapBytes());
+      }
+    }
+  }
+
+  @Override
   public void refresh() throws IOException {
     try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
       ensureOpen("refresh");

@@ -68,6 +68,19 @@ public final class MongotBloomFieldsProducerRegistry {
     return new BloomStats(loadedSegments, heapBytes, mappedBytes);
   }
 
+  /** Only loaded resources belonging to this pinned segment; does not load bloom bitsets. */
+  public static BloomStats bloomStats(SegmentReader reader) {
+    return lookup(
+            reader, com.xgen.mongot.index.lucene.field.FieldName.MetaField.ID.getLuceneFieldName())
+        .map(
+            producer ->
+                new BloomStats(
+                    producer.hasLoadedBloom() ? 1 : 0,
+                    producer.heapBloomRamBytesUsed(),
+                    producer.mappedBloomBytes()))
+        .orElse(new BloomStats(0, 0, 0));
+  }
+
   static final class Key {
     private final Directory directory;
     private final String segmentName;

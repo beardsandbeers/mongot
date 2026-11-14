@@ -145,6 +145,22 @@ public class MultiLuceneVectorIndexReader implements VectorIndexReader {
   }
 
   @Override
+  public com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot acquireStatisticsSnapshot()
+      throws IOException, ReaderClosedException {
+    var snapshots =
+        new java.util.ArrayList<com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot>();
+    try {
+      for (var reader : this.readers) {
+        snapshots.add(reader.acquireStatisticsSnapshot());
+      }
+      return com.xgen.mongot.index.statistics.LuceneStatisticsSnapshot.combine(snapshots);
+    } catch (IOException | ReaderClosedException | RuntimeException | Error e) {
+      org.apache.lucene.util.IOUtils.closeWhileHandlingException(snapshots);
+      throw e;
+    }
+  }
+
+  @Override
   public void refresh() throws IOException, ReaderClosedException {
     for (var reader : this.readers) {
       reader.refresh();

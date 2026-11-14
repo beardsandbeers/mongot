@@ -459,6 +459,16 @@ public class SingleLuceneIndexWriter implements LuceneIndexWriter {
   }
 
   @Override
+  public java.util.OptionalLong getBufferHeapBytes() throws WriterClosedException {
+    try (LockGuard ignored = LockGuard.with(this.shutdownSharedLock)) {
+      if (this.closed) {
+        throw WriterClosedException.create("getBufferHeapBytes");
+      }
+      return java.util.OptionalLong.of(this.luceneWriter.ramBytesUsed());
+    }
+  }
+
+  @Override
   public long getNumLuceneMaxDocs() throws WriterClosedException {
     return getMaxLuceneMaxDocs();
   }

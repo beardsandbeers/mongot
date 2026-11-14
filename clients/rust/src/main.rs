@@ -46,6 +46,8 @@ async fn dispatch(client: &mut Client, line: &str) -> Result<Value, Box<dyn std:
         "GetIndex" => invoke!(get_index),
         "GetIndexMappings" => invoke!(get_index_mappings),
         "ListIndexes" => invoke!(list_indexes),
+        "GetIndexStats" => invoke!(get_index_stats),
+        "GetIndexFieldStats" => invoke!(get_index_field_stats),
         "GetStatus" => invoke!(get_status),
         "Search" => invoke!(search),
         "VectorSearch" => invoke!(vector_search),

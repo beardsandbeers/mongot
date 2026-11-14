@@ -219,7 +219,7 @@ public final class Lucene99NativeHnswVectorsFormat extends KnnVectorsFormat {
    * entry was resolved rather than the stock Lucene one.
    */
   public static final class Lucene99NativeHnswVectorsReader extends KnnVectorsReader
-      implements HnswGraphProvider {
+      implements HnswGraphProvider, org.apache.lucene.util.Accountable {
     private final Lucene99HnswVectorsReader delegate;
 
     Lucene99NativeHnswVectorsReader(Lucene99HnswVectorsReader delegate) {
@@ -265,6 +265,11 @@ public final class Lucene99NativeHnswVectorsFormat extends KnnVectorsFormat {
     @Override
     public Map<String, Long> getOffHeapByteSize(FieldInfo info) {
       return this.delegate.getOffHeapByteSize(info);
+    }
+
+    @Override
+    public long ramBytesUsed() {
+      return this.delegate.ramBytesUsed();
     }
 
     @Override

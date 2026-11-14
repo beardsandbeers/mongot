@@ -66,6 +66,16 @@ public final class ClientCli {
               JsonFormat.parser().merge(request, b);
               response = client.getIndexMappings(b.build());
             }
+            case "GetIndexStats" -> {
+              var b = GetIndexStatsRequest.newBuilder();
+              JsonFormat.parser().merge(request, b);
+              response = client.getIndexStats(b.build());
+            }
+            case "GetIndexFieldStats" -> {
+              var b = GetIndexFieldStatsRequest.newBuilder();
+              JsonFormat.parser().merge(request, b);
+              response = client.getIndexFieldStats(b.build());
+            }
             case "GetStatus" -> {
               var b = GetStatusRequest.newBuilder();
               JsonFormat.parser().merge(request, b);

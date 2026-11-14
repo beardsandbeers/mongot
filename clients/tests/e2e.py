@@ -294,6 +294,66 @@ def ids(results):
     return {row["_id"] if "_id" in row else row["storedSource"]["_id"] for row in results}
 
 
+def field_stats(client, index_id, *, page_size=100, paths=None):
+    request = {"indexId": index_id, "pageSize": page_size, "paths": paths or []}
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        response = client.call("GetIndexFieldStats", request)
+        if response.get("state") == "STATS_COLLECTION_STATE_READY":
+            return response
+        time.sleep(0.05)
+    raise TimeoutError("Field statistics did not finish")
+
+
+def verify_stats(client, index, expected_docs):
+    response = client.call("GetIndexStats", {"indexId": index["indexId"], "refresh": True})
+    check(int(response.get("documentCount", "0")) == expected_docs, "Wrong logical document count")
+    size = int(response.get("indexSizeBytes", "0"))
+    check(size > 0, "No snapshot storage bytes reported")
+    check(
+        abs(response["averageIndexBytesPerDocument"] - size / expected_docs) < 0.000001,
+        "Incorrect average bytes per document",
+    )
+    fields = field_stats(client, index["indexId"])
+    total = int(fields.get("totalAttributedDiskBytes", "0"))
+    shared = int(fields.get("sharedDiskBytes", "0"))
+    unknown = int(fields.get("unattributedDiskBytes", "0"))
+    check(
+        total + shared + unknown == int(fields["indexStats"]["indexSizeBytes"]),
+        "Storage ledger does not reconcile",
+    )
+    check(
+        sum(int(row["attributedDiskBytes"].get("value", "0")) for row in fields.get("fields", []))
+        == total,
+        "Field attributed totals do not match global attributed bytes",
+    )
+    first = field_stats(client, index["indexId"], page_size=1)
+    check(bool(first.get("nextPageToken")), "Field statistics did not paginate")
+    next_page = client.call(
+        "GetIndexFieldStats",
+        {"indexId": index["indexId"], "pageSize": 1, "pageToken": first["nextPageToken"]},
+    )
+    check(
+        next_page["indexStats"]["snapshotId"] == first["indexStats"]["snapshotId"],
+        "Pagination changed snapshot",
+    )
+    client.call(
+        "GetIndexFieldStats",
+        {"indexId": index["indexId"], "pageSize": 2, "pageToken": first["nextPageToken"]},
+        error="INVALID_ARGUMENT",
+    )
+    selected = field_stats(client, index["indexId"], paths=["title"])
+    check(
+        [row["path"] for row in selected.get("fields", [])] == ["title"], "Field path filter failed"
+    )
+    check(
+        selected.get("totalAttributedDiskBytes", "0")
+        == fields.get("totalAttributedDiskBytes", "0"),
+        "Filtering changed the global storage ledger",
+    )
+    return first["nextPageToken"]
+
+
 def exercise(client):
     checks = []
     name = client.language + "-" + uuid.uuid4().hex
@@ -325,6 +385,10 @@ def exercise(client):
         not all_results(client, search(client, other, "coffee")), "Writes leaked into another index"
     )
     checks.append("direct text writes, cursor pagination, BSON preservation, index isolation")
+    verify_stats(client, text, 3)
+    checks.append(
+        "per-index stats, bytes per document, field ledger, filtered immutable pagination"
+    )
     exported = client.call(
         "GetIndexMappings",
         {"indexId": text["indexId"], "generationId": text["generationId"]},
@@ -471,6 +535,14 @@ def exercise(client):
     )
     client.call("DropIndex", {"indexId": other["indexId"], "expectedRevision": "1"})
     client.call("GetIndex", {"indexId": other["indexId"]}, error="NOT_FOUND")
+    vector_stats = client.call("GetIndexStats", {"indexId": vector["indexId"], "refresh": True})
+    check(int(vector_stats["documentCount"]) == 1, "Wrong vector document count")
+    vector_fields = field_stats(client, vector["indexId"])
+    embedding = next(row for row in vector_fields["fields"] if row["path"] == "embedding")
+    check(
+        int(embedding["desiredVectorOffHeapBytes"]["value"]) > 0,
+        "Vector working-set bytes unavailable",
+    )
     check(client.called == RPC_NAMES, f"Missing RPC coverage: {RPC_NAMES - client.called}")
     checks.append("vector writes and queries; index drop; every RPC")
     return {
@@ -493,6 +565,11 @@ def verify_restart(client, state):
     check(
         ids(all_results(client, client.call("VectorSearch", state["vectorQuery"]))) == {"near"},
         "Committed vectors disappeared",
+    )
+    stats = client.call("GetIndexStats", {"indexId": text["indexId"], "refresh": True})
+    check(
+        int(stats["documentCount"]) == 1 and int(stats["indexSizeBytes"]) > 0,
+        "Index stats did not recover after restart",
     )
     state["checks"].append("crash restart preserves committed Lucene content and index definitions")
 
@@ -550,8 +627,10 @@ def main():
                 server.process.wait(timeout=15)
                 server.log.close()
                 reader_token = directory / "reader.token"
+                stats_token = directory / "stats.token"
                 if environment.get("MONGOT_CA"):
                     reader_token.write_text(secrets.token_hex(32))
+                    stats_token.write_text(secrets.token_hex(32))
                     yaml = server.config.read_text()
                     yaml = yaml.replace(
                         "        indexes: ['*']",
@@ -559,6 +638,10 @@ def main():
                         + "      - name: reader\n"
                         + f"        tokenFile: {json.dumps(str(reader_token))}\n"
                         + "        roles: [query]\n"
+                        + f"        indexes: ['{states[0]['text']['indexId']}']\n"
+                        + "      - name: stats\n"
+                        + f"        tokenFile: {json.dumps(str(stats_token))}\n"
+                        + "        roles: [catalog]\n"
                         + f"        indexes: ['{states[0]['text']['indexId']}']",
                     )
                     server.config.write_text(yaml)
@@ -601,10 +684,47 @@ def main():
                             )
                             reader.call("GetStatus", error="PERMISSION_DENIED")
                             reader.call(
+                                "GetIndexStats",
+                                {"indexId": states[0]["text"]["indexId"]},
+                                error="PERMISSION_DENIED",
+                            )
+                            reader.call(
+                                "GetIndexFieldStats",
+                                {"indexId": states[0]["text"]["indexId"]},
+                                error="PERMISSION_DENIED",
+                            )
+                            reader.call(
                                 "GetIndexMappings",
                                 {"indexId": states[0]["text"]["indexId"]},
                                 error="PERMISSION_DENIED",
                             )
+                if environment.get("MONGOT_CA"):
+                    for language in args.languages:
+                        with Driver(
+                            language,
+                            dict(environment, MONGOT_TOKEN_FILE=str(stats_token)),
+                            directory,
+                        ) as scoped:
+                            stats = scoped.call(
+                                "GetIndexStats",
+                                {"indexId": states[0]["text"]["indexId"], "refresh": True},
+                            )
+                            check(
+                                int(stats["documentCount"]) == 1,
+                                "Scoped principal cannot inspect its index",
+                            )
+                            field_stats(scoped, states[0]["text"]["indexId"])
+                            scoped.call(
+                                "GetIndexStats",
+                                {"indexId": states[0]["vector"]["indexId"]},
+                                error="PERMISSION_DENIED",
+                            )
+                            scoped.call(
+                                "GetIndexFieldStats",
+                                {"indexId": states[0]["vector"]["indexId"]},
+                                error="PERMISSION_DENIED",
+                            )
+                            scoped.call("GetStatus", error="PERMISSION_DENIED")
                 data = directory / "data"
                 check(not (data / "standalone.sqlite").exists(), "Unexpected source database")
                 allowed = {

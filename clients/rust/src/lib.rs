@@ -186,6 +186,32 @@ impl Client {
             .map_err(normalize_status)?
             .into_inner())
     }
+    pub async fn get_index_stats(
+        &mut self,
+        message: GetIndexStatsRequest,
+    ) -> Result<IndexStats, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .catalog
+            .get_index_stats(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
+    pub async fn get_index_field_stats(
+        &mut self,
+        message: GetIndexFieldStatsRequest,
+    ) -> Result<IndexFieldStatsResponse, Status> {
+        let mut request = Request::new(message);
+        request.set_timeout(self.timeout);
+        Ok(self
+            .catalog
+            .get_index_field_stats(request)
+            .await
+            .map_err(normalize_status)?
+            .into_inner())
+    }
     pub async fn get_status(&mut self, message: GetStatusRequest) -> Result<ServiceStatus, Status> {
         let mut request = Request::new(message);
         request.set_timeout(self.timeout);

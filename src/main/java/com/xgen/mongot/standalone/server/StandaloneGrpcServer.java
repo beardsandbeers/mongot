@@ -6,11 +6,15 @@ import com.xgen.mongot.standalone.grpc.DeleteRequest;
 import com.xgen.mongot.standalone.grpc.DeleteResponse;
 import com.xgen.mongot.standalone.grpc.DocumentServiceGrpc;
 import com.xgen.mongot.standalone.grpc.DropIndexRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexFieldStatsRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexMappingsRequest;
 import com.xgen.mongot.standalone.grpc.GetIndexMappingsResponse;
 import com.xgen.mongot.standalone.grpc.GetIndexRequest;
+import com.xgen.mongot.standalone.grpc.GetIndexStatsRequest;
 import com.xgen.mongot.standalone.grpc.GetStatusRequest;
 import com.xgen.mongot.standalone.grpc.IndexDescription;
+import com.xgen.mongot.standalone.grpc.IndexFieldStatsResponse;
+import com.xgen.mongot.standalone.grpc.IndexStats;
 import com.xgen.mongot.standalone.grpc.ListIndexesRequest;
 import com.xgen.mongot.standalone.grpc.ListIndexesResponse;
 import com.xgen.mongot.standalone.grpc.OperationsServiceGrpc;
@@ -147,6 +151,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
                     .coordinate(
                         () -> StandaloneGrpcServer.this.runtime.catalog().updateIndex(request));
             StandaloneGrpcServer.this.queries.indexDropped(request.getIndexId());
+            StandaloneGrpcServer.this.runtime.statistics().invalidate(request.getIndexId());
             StandaloneGrpcServer.this.runtime.catalogChanged();
             return result;
           });
@@ -166,6 +171,7 @@ public final class StandaloneGrpcServer implements AutoCloseable {
                     .coordinate(
                         () -> StandaloneGrpcServer.this.runtime.catalog().dropIndex(request));
             StandaloneGrpcServer.this.queries.indexDropped(request.getIndexId());
+            StandaloneGrpcServer.this.runtime.statistics().invalidate(request.getIndexId());
             StandaloneGrpcServer.this.runtime.catalogChanged();
             return result;
           });
@@ -191,6 +197,32 @@ public final class StandaloneGrpcServer implements AutoCloseable {
           () -> {
             StandaloneAuthInterceptor.requireIndex(request.getIndexId());
             return StandaloneGrpcServer.this.runtime.getIndexMappings(request);
+          });
+    }
+
+    @Override
+    public void getIndexStats(GetIndexStatsRequest request, StreamObserver<IndexStats> observer) {
+      StandaloneGrpcServer.this.dispatcher.async(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
+            return StandaloneGrpcServer.this.runtime.statistics().summary(request);
+          });
+    }
+
+    @Override
+    public void getIndexFieldStats(
+        GetIndexFieldStatsRequest request, StreamObserver<IndexFieldStatsResponse> observer) {
+      StandaloneGrpcServer.this.dispatcher.unary(
+          request.getSerializedSize(),
+          observer,
+          () -> {
+            StandaloneAuthInterceptor.requireIndex(request.getIndexId());
+            return StandaloneGrpcServer.this
+                .runtime
+                .statistics()
+                .fields(request, StandaloneAuthInterceptor.principal().name());
           });
     }
 
